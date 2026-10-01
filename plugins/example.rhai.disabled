@@ -1,0 +1,15 @@
+// Example rbb plugin. Rename to `example.rhai` and restart the server to enable it.
+
+fn info() {
+    #{ name: "Example", author: "rbb", version: "1.0", description: "Turns :rust: into a crab and logs new threads." }
+}
+
+// Filter hook: receives the HTML of every parsed message and returns the new HTML.
+fn parse_message(html) {
+    html.replace(":rust:", "🦀")
+}
+
+// Action hook: runs after a thread is created.
+fn thread_created(data) {
+    log("New thread " + data.tid + " in forum " + data.fid + " by user " + data.uid);
+}

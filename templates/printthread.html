@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>{{ thread.subject }} — {{ bb.bbname }}</title>
+<link rel="stylesheet" href="{{ asset('css/rbb.css') }}"><style>body{background:#fff;color:#000}.wrap{max-width:820px}</style></head>
+<body><div class="wrap">
+<p class="small">{{ bb.bbname }} — {{ forum.name }}<br>{{ bb.bburl }}/thread/{{ thread.tid }}</p>
+<h1>{{ thread.subject }}</h1>
+{% for p in posts %}<div style="border-top:1px solid #999;padding:10px 0"><strong>{{ p.username }}</strong> — {{ p.dateline|date('datetime') }}<div class="post-body" style="padding:8px 0">{{ p.message|safe }}</div></div>{% endfor %}
+</div></body></html>

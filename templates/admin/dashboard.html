@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="two-col">
+<section class="box"><div class="box-head"><h2>Board</h2></div><div class="kv">
+  <div>Members</div><div>{{ base.users|num }} (+{{ users_today }} today){% if awaiting %} · <a href="/admin/users/awaiting">{{ awaiting }} awaiting activation</a>{% endif %}</div>
+  <div>Threads</div><div>{{ base.threads|num }} (+{{ threads_today }} today)</div>
+  <div>Posts</div><div>{{ base.posts|num }} (+{{ posts_today }} today)</div>
+  <div>Online now</div><div>{{ online }}</div>
+  <div>Moderation</div><div><a href="/modcp/modqueue">{{ uthreads }} threads, {{ uposts }} posts awaiting approval</a> · <a href="/modcp/reports">{{ reports }} open reports</a></div>
+  <div>Mail queue</div><div><a href="/admin/tools/mailerrors">{{ mailq }} pending</a></div>
+</div></section>
+<section class="box"><div class="box-head"><h2>Server</h2></div><div class="kv">
+  <div>rbb version</div><div>{{ version }}</div>
+  <div>PostgreSQL</div><div>{{ pgversion }}</div>
+  <div>Database size</div><div>{{ dbsize|bytes }}</div>
+  <div>Attachments</div><div>{{ attach_size|bytes }}</div>
+  <div>Uptime</div><div>{{ uptime }} (node {{ node }})</div>
+  <div>Board</div><div>{% if bb.boardclosed == '1' %}<span class="flag closed">Closed</span> <a href="/admin/settings/general">open it</a>{% else %}Open{% endif %}</div>
+</div></section>
+</div>
+{% if history|length > 1 %}
+<section class="box"><div class="box-head"><h2>Last {{ history|length }} days</h2></div>
+<table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in history|reverse %}<tr><td>{{ h[0]|date('date') }}</td><td class="num">{{ h[1]|num }}</td><td class="num">{{ h[2]|num }}</td><td class="num">{{ h[3]|num }}</td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
+<div class="two-col">
+<form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6">{{ notes }}</textarea></div><div class="box-foot"><button class="btn small">Save notes</button></div></form>
+<section class="box"><div class="box-head"><h2>Recent admin actions</h2><a class="right" href="/admin/tools/adminlog">All</a></div>
+<table class="grid"><tbody>{% for l in logs %}<tr><td class="small">{{ l[5] or 'system' }}</td><td class="small">{{ l[2] }}</td><td class="small muted">{{ l[4]|date }}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endblock %}

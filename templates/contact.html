@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+{{ m.errors_box(errors) }}
+<form method="post" action="/contact" class="box" style="max-width:760px">
+  {{ m.csrf_field() }}
+  <div class="box-head"><h2>Contact the staff of {{ bb.bbname }}</h2></div>
+  {% if not me %}<div class="form-row"><label for="email">Your email</label><input id="email" type="email" name="email" value="{{ form.email }}" required></div>{% endif %}
+  <div class="form-row"><label for="subject">Subject</label><input id="subject" type="text" name="subject" value="{{ form.subject }}" maxlength="200" required></div>
+  <div class="form-row"><label for="message">Message</label><textarea id="message" name="message" rows="8" required>{{ form.message }}</textarea></div>
+  {% if captcha %}<div class="form-row"><span class="label"><strong>Verification</strong></span><div>{% include "captcha_field.html" %}</div></div>{% endif %}
+  <div class="box-foot"><button class="btn" type="submit">Send message</button></div>
+</form>
+{% endblock %}

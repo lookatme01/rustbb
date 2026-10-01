@@ -1,0 +1,24 @@
+{% extends "usercp/base.html" %}
+{% block head %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endblock %}
+{% block ucp %}
+<header class="pgp-page-head">
+  <div>
+    <h1>Encryption &amp; identity</h1>
+    <p class="pgp-muted">Sign and encrypt your private messages, and verify the people you talk to.</p>
+  </div>
+</header>
+<div data-pgp-settings data-pgp-board="{{ board }}">
+  <div class="pgp-loading"><span class="pgp-spinner"></span>Loading your keys…</div>
+  <noscript><div class="notice warn">Your keys are created and kept in your browser, so this page needs JavaScript.</div></noscript>
+</div>
+<details class="pgp-faq">
+  <summary>How does this work?</summary>
+  <div>
+    <p><strong>Your key is made in your browser.</strong> Only the public half is sent to the board. The private half stays on your device, locked with your passphrase. If you choose to keep a backup on the board, it is locked before it leaves your browser; the board can't open it.</p>
+    <p><strong>Signed messages</strong> carry a signature over the sender, recipients, subject, text and time. Your recipients' browsers check it, so they'd notice if anyone, including the board itself, changed a message or sent one in your name.</p>
+    <p><strong>Encrypted messages</strong> are sealed to your recipients' keys (and yours, so you can read your sent copy) before they are sent. Subjects are not encrypted.</p>
+    <p><strong>Verifying someone</strong> means comparing a safety number with them over a channel you trust, such as in person or on a call. If the numbers match, you have each other's real keys. If their key ever changes, you'll be told.</p>
+    <p><strong>Limits.</strong> This protects messages in storage and in transit, and warns you about swapped keys. As with any web app, you are trusting the code the board sends to your browser. For the highest assurance, export your key and use a desktop OpenPGP app.</p>
+  </div>
+</details>
+{% endblock %}

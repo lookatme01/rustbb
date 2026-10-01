@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<form method="get" action="/member/activate" class="box" style="max-width:520px">
+  <div class="box-head"><h2>Activate your account</h2></div>
+  <div class="form-row"><label for="uid">User ID</label><input id="uid" type="number" name="uid" required></div>
+  <div class="form-row"><label for="code">Activation code</label><input id="code" type="text" name="code" required></div>
+  <div class="box-foot actions" style="margin:0"><button class="btn" type="submit">Activate</button><a class="small" href="/member/resendactivation">Resend activation email</a></div>
+</form>
+{% endblock %}

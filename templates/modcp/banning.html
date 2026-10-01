@@ -1,0 +1,11 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<div class="actions"><a class="btn small" href="/modcp/ban">Ban a user</a></div>
+<section class="box"><div class="box-head"><h2>Banned users</h2></div>
+<table class="grid"><thead><tr><th>User</th><th>Reason</th><th>Banned by</th><th>Banned</th><th>Lifts</th><th></th></tr></thead><tbody>
+{% for b in bans %}<tr><td><a href="{{ url_user(b[0]) }}">{{ b[1] }}</a></td><td>{{ b[2] }}</td><td>{{ b[6] }}</td><td class="small">{{ b[4]|date('date') }}</td><td class="small">{% if b[5] %}{{ b[5]|date }}{% else %}Never{% endif %}</td>
+<td class="num"><form method="post" action="/modcp/liftban">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ b[0] }}"><button class="btn secondary small">Lift ban</button></form></td></tr>
+{% else %}<tr><td colspan="6" class="empty">No users are banned.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

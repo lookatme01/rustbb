@@ -1,0 +1,15 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Leaders of {{ group.title }}</h2></div>
+<table class="grid"><thead><tr><th>User</th><th>Manage members</th><th>Manage requests</th><th>Invite</th><th></th></tr></thead><tbody>
+{% for l in leaders %}<tr><td>{{ l[2] }}</td><td>{{ 'Yes' if l[3] else 'No' }}</td><td>{{ 'Yes' if l[4] else 'No' }}</td><td>{{ 'Yes' if l[5] else 'No' }}</td><td class="num"><form method="post" action="/admin/groups/{{ group.gid }}/leaders/remove">{{ m.csrf_field() }}<input type="hidden" name="lid" value="{{ l[0] }}"><button class="btn secondary small">Remove</button></form></td></tr>{% else %}<tr><td colspan="5" class="empty">No leaders.</td></tr>{% endfor %}
+</tbody></table></section>
+<form method="post" action="/admin/groups/{{ group.gid }}/leaders" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Add leader</h2></div>
+  <div class="form-row"><label for="username">Username</label><input id="username" type="text" name="username" required></div>
+  <div class="form-row"><span class="label"><strong>Can</strong></span><div class="checks"><label><input type="checkbox" name="canmanagemembers" value="1" checked> Manage members</label><label><input type="checkbox" name="canmanagerequests" value="1" checked> Manage join requests</label><label><input type="checkbox" name="caninvitemembers" value="1" checked> Invite members</label></div></div>
+  <div class="box-foot"><button class="btn small">Add leader</button></div>
+</form>
+{% if requests %}<section class="box"><div class="box-head"><h2>Pending join requests</h2></div><table class="grid"><tbody>{% for r in requests %}<tr><td>{{ r[1] }}</td><td>{{ r[2] }}</td><td class="small">{{ r[3]|date }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% endblock %}

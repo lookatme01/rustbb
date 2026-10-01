@@ -1,0 +1,26 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<section class="box"><div class="box-head"><h2>Your account</h2></div>
+<div class="kv">
+  <div>Username</div><div><a href="{{ url_user(user.uid, user.username) }}">{{ me.formatted|safe }}</a></div>
+  <div>Email</div><div>{{ user.email }}</div>
+  <div>Registered</div><div>{{ user.regdate|date('date') }}</div>
+  <div>Posts</div><div>{{ user.postnum|num }} · <a href="/user/{{ user.uid }}/posts">find your posts</a></div>
+  <div>Threads</div><div>{{ user.threadnum|num }} · <a href="/user/{{ user.uid }}/threads">find your threads</a></div>
+  {% if bb.enablereputation == '1' %}<div>Reputation</div><div><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a></div>{% endif %}
+  {% if bb.enablewarningsystem == '1' and warnlevel %}<div>Warning level</div><div>{{ warnlevel }}%</div>{% endif %}
+</div></section>
+{% if warnings %}
+<section class="box"><div class="box-head"><h2>Active warnings</h2></div>
+<table class="grid"><thead><tr><th>Warning</th><th class="num">Points</th><th>Issued</th><th>Expires</th></tr></thead><tbody>
+{% for w in warnings %}<tr><td>{{ w[0] }}</td><td class="num">{{ w[1] }}</td><td>{{ w[2]|date('date') }}</td><td>{% if w[3] %}{{ w[3]|date('date') }}{% else %}Never{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endif %}
+<section class="box"><div class="box-head"><h2>Latest activity in your subscriptions</h2><a class="right" href="/usercp/subscriptions">All subscriptions</a></div>
+{% for t in subscribed %}{{ m.thread_row(t, true) }}{% else %}<div class="empty">You aren't subscribed to any threads. Use “Subscribe” on a thread to follow it.</div>{% endfor %}
+</section>
+<section class="box"><div class="box-head"><h2>Your latest threads</h2></div>
+{% for t in latest %}{{ m.thread_row(t, true) }}{% else %}<div class="empty">You haven't started any threads yet.</div>{% endfor %}
+</section>
+{% endblock %}

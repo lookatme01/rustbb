@@ -1,0 +1,12 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{{ m.errors_box(errors) }}
+<form method="post" action="/usercp/email" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Change email address</h2><span class="desc">Current: {{ email }}</span></div>
+  <div class="form-row"><label for="password">Current password</label><input id="password" type="password" name="password" autocomplete="current-password" required></div>
+  <div class="form-row"><label for="email">New email</label><input id="email" type="email" name="email" required></div>
+  <div class="form-row"><label for="email2">Confirm new email</label><input id="email2" type="email" name="email2" required></div>
+  <div class="box-foot"><button class="btn" type="submit">Change email</button></div>
+</form>
+{% endblock %}

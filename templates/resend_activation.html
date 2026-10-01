@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<form method="post" action="/member/resendactivation" class="box" style="max-width:520px">
+  <input type="hidden" name="my_post_key" value="{{ csrf }}">
+  <div class="box-head"><h2>Resend activation email</h2></div>
+  <div class="form-row"><label for="email">Email address</label><input id="email" type="email" name="email" required></div>
+  <div class="box-foot"><button class="btn" type="submit">Resend</button></div>
+</form>
+{% endblock %}

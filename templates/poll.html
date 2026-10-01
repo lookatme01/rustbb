@@ -1,0 +1,23 @@
+<section class="box" id="poll">
+  <div class="box-head"><h2>Poll: {{ poll.question }}</h2>{% if poll.closed %}<span class="right">This poll is closed.</span>{% elif poll.timeout %}<span class="right small">Closes {{ poll.timeout|date('datetime') }}</span>{% endif %}</div>
+  {% if poll.can_vote %}
+  <form method="post" action="/thread/{{ thread.tid }}/poll/vote" class="box-body">
+    <input type="hidden" name="my_post_key" value="{{ csrf }}">
+    <div class="checks">
+      {% for o in poll.options %}<label><input type="{{ 'checkbox' if poll.multiple else 'radio' }}" name="option" value="{{ loop.index }}"> {{ o.html|safe }}</label>{% endfor %}
+    </div>
+    <div class="actions"><button class="btn" type="submit">Vote</button><a class="small" href="/thread/{{ thread.tid }}/poll/results">Show results</a>{% if poll.multiple and poll.maxoptions %}<span class="small muted">Choose up to {{ poll.maxoptions }} options.</span>{% endif %}</div>
+  </form>
+  {% else %}
+  <div class="box-body">
+    {% for o in poll.options %}
+    <div class="poll-option{% if o.mine %} mine{% endif %}">
+      <div>{{ o.html|safe }}{% if o.mine %} <span class="tag">your vote</span>{% endif %}<div class="poll-bar"><span style="width: {{ o.percent }}%"></span></div>{% if o.voters %}<div class="small faint">{{ o.voters|join(", ") }}</div>{% endif %}</div>
+      <div class="num small">{{ o.votes }} ({{ o.percent }}%)</div>
+    </div>
+    {% endfor %}
+    <div class="small muted">Total: {{ poll.numvotes }} vote{{ '' if poll.numvotes == 1 else 's' }}{% if poll.multiple %} · multiple choice{% endif %}{% if poll.public %} · public poll{% endif %}</div>
+    {% if poll.can_undo %}<form method="post" action="/thread/{{ thread.tid }}/poll/undo" class="actions"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">Undo my vote</button></form>{% endif %}
+  </div>
+  {% endif %}
+</section>

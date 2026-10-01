@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Spam log</h2><span class="right small">Blocked registrations</span></div>
+<table class="grid"><thead><tr><th>Username</th><th>Email</th><th>IP</th><th>Date</th><th>Reason</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r[0] }}</td><td class="small">{{ r[1] }}</td><td class="small"><a href="/modcp/ipsearch?ip={{ r[2]|urlenc }}">{{ r[2] }}</a></td><td class="small">{{ r[3]|date }}</td><td class="small">{{ r[4] }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No blocked registrations.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

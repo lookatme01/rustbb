@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="{{ _lang or 'en' }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if thread %}{{ thread.subject }} — {% elif forum %}{{ forum.name }} — {% endif %}{{ bb.bbname }} (lite)</title>
+<link rel="canonical" href="{{ bb.bburl }}{{ full_url }}">
+<style>
+body{font:16px/1.55 Georgia,serif;max-width:760px;margin:0 auto;padding:16px;background:#fff;color:#1d2530}
+a{color:#1f5f8b}h1{font-size:1.4rem}.nav{font-size:.9rem;margin-bottom:12px}.post{border-top:1px solid #ccc;padding:10px 0}
+.meta{font:.85rem system-ui,sans-serif;color:#555}.pages{font:.9rem system-ui,sans-serif;margin:12px 0}.pages a,.pages span{margin-right:6px}
+blockquote{border-left:3px solid #ccc;margin:6px 0;padding:2px 10px;color:#444}pre{overflow:auto;background:#f4f4f4;padding:8px}img{max-width:100%}
+@media (prefers-color-scheme:dark){body{background:#151a1f;color:#e3e8ed}a{color:#8cc3ec}.meta{color:#aaa}pre{background:#222}}
+</style></head><body>
+<div class="nav"><a href="/archive">{{ bb.bbname }}</a>{% if forum %} › <a href="/archive/forum/{{ forum.fid }}">{{ forum.name }}</a>{% endif %}{% if thread %} › {{ thread.subject }}{% endif %} · <a href="{{ full_url }}">Full version</a></div>
+{% if mode == 'index' %}
+<h1>{{ bb.bbname }}</h1>
+<ul>{% for f in forums %}<li style="margin-left:{{ f.depth * 18 }}px;list-style:{{ 'none' if f.category else 'disc' }}">{% if f.category %}<strong>{{ f.name }}</strong>{% else %}<a href="/archive/forum/{{ f.fid }}">{{ f.name }}</a>{% endif %}</li>{% endfor %}</ul>
+{% elif mode == 'forum' %}
+<h1>{{ forum.name }}</h1>
+{% if subforums %}<p>Subforums: {% for s in subforums %}<a href="/archive/forum/{{ s[0] }}">{{ s[1] }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+<ol start="{{ (pagination.page - 1) * 50 + 1 }}">{% for t in threads %}<li>{% if t[3] %}<strong>Sticky:</strong> {% endif %}<a href="/archive/thread/{{ t[0] }}">{{ t[1] }}</a> <span class="meta">({{ t[2] }} replies)</span></li>{% endfor %}</ol>
+{% else %}
+<h1>{{ thread.subject }}</h1>
+{% for p in posts %}<div class="post"><div class="meta"><strong>{{ p.username }}</strong> — {{ p.dateline|date('datetime') }}</div><div>{{ p.html|safe }}</div></div>{% endfor %}
+{% endif %}
+{% if pagination and pagination.pages > 1 %}<div class="pages">Pages: {% for l in pagination.links %}{% if l.gap %}<span>…</span>{% elif l.current %}<span><strong>{{ l.page }}</strong></span>{% else %}<a href="{{ l.url }}">{{ l.page }}</a>{% endif %}{% endfor %}</div>{% endif %}
+</body></html>

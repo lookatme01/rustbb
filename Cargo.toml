@@ -1,0 +1,70 @@
+[package]
+name = "rbb"
+version = "0.5.0"
+edition = "2024"
+description = "A fast, scalable, production-ready forum engine inspired by MyBB"
+license = "LGPL-3.0-or-later"
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["multipart", "macros"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tower = { version = "0.5", features = ["util", "timeout", "limit"] }
+tower-http = { version = "0.6", features = ["fs", "compression-full", "trace", "set-header", "catch-panic", "request-id", "timeout", "limit"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "json", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_urlencoded = "0.7"
+minijinja = { version = "2", features = ["loader", "json", "urlencode", "speedups"] }
+minijinja-contrib = { version = "2", features = ["pycompat"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chrono-tz = "0.10"
+regex = "1"
+arc-swap = "1"
+dashmap = "6"
+moka = { version = "0.12", features = ["future", "sync"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+mime_guess = "2"
+rust-embed = { version = "8", features = ["include-exclude"] }
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-stream = "0.3"
+url = "2"
+percent-encoding = "2"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+clap = { version = "4", features = ["derive", "env"] }
+dotenvy = "0.15"
+uuid = { version = "1", features = ["v4"] }
+bytes = "1"
+http = "1"
+once_cell = "1"
+pgp = { version = "0.20", default-features = false }
+rsa = "0.9"
+brotli = "8"
+flate2 = "1"
+rhai = { version = "1", features = ["sync", "serde"] }
+fake = { version = "2", optional = true }
+
+[features]
+default = []
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+opt-level = 3
+debug = false
+
+[profile.dev.package."*"]
+opt-level = 2

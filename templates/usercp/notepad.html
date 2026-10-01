@@ -1,0 +1,9 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/notepad" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Personal notepad</h2><span class="desc">Only you can see this.</span></div>
+  <div class="box-body"><textarea name="notepad" rows="14">{{ notepad }}</textarea></div>
+  <div class="box-foot"><button class="btn" type="submit">Save notes</button></div>
+</form>
+{% endblock %}

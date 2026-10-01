@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<p class="muted">Templates use <a href="https://docs.rs/minijinja/latest/minijinja/syntax/index.html" rel="noopener" target="_blank">Jinja2 syntax</a>. Editing a template creates an override for this theme only; revert to go back to the default.</p>
+<section class="box"><div class="box-head"><h2>Templates of {{ th.name }}</h2></div>
+<table class="grid"><tbody>{% for t in list %}<tr><td><a href="/admin/themes/{{ th.tid }}/template?name={{ t.name|urlenc }}"><code>{{ t.name }}</code></a></td><td>{% if t.own %}<span class="tag">customized</span>{% elif t.inherited %}<span class="tag">inherited from {{ t.inherited }}</span>{% else %}<span class="small faint">default</span>{% endif %}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Members referred by {{ username }}</h2></div>
+<table class="grid"><thead><tr><th>Member</th><th>Registered</th></tr></thead><tbody>
+{% for r in list %}<tr><td><a href="{{ url_user(r.uid, r.username) }}">{{ r.formatted|safe }}</a></td><td>{{ r.regdate|date('date') }}</td></tr>{% else %}<tr><td colspan="2" class="empty">No referrals yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="two-col">
+<section class="box"><div class="box-head"><h2>Application</h2></div><div class="kv">
+  <div>Version</div><div>{{ version }}</div><div>Node</div><div>{{ node }}</div><div>Uptime</div><div>{{ uptime }}</div>
+  <div>DB pool</div><div>{{ pool_size }} connections ({{ pool_idle }} idle)</div>
+  <div>Buffered activity</div><div>{{ activity_buffer }} sessions, {{ view_buffer }} thread views</div>
+  <div>Live subscribers</div><div>{{ live_subscribers }}</div>
+  <div>Uploads on disk</div><div>{{ uploads|bytes }}</div>
+</div></section>
+<section class="box"><div class="box-head"><h2>Database</h2></div><div class="kv">
+  <div>Connections</div><div>{{ total_conns }} ({{ active }} active)</div>
+  <div>Buffer cache hit rate</div><div>{{ cache_hit }}%</div>
+</div></section>
+</div>
+<section class="box"><div class="box-head"><h2>Largest tables</h2></div>
+<table class="grid"><thead><tr><th>Table</th><th class="num">Rows (approx.)</th><th class="num">Size</th></tr></thead><tbody>{% for t in tables %}<tr><td><code>{{ t[0] }}</code></td><td class="num">{{ t[1]|num }}</td><td class="num">{{ t[2]|bytes }}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Administrators</h2></div>
+<table class="grid"><tbody>{% for a in list %}<tr><td><strong>{{ a.username }}</strong>{% if a.restricted %} <span class="tag">restricted</span>{% endif %}</td><td class="num">{% if a.uid != me.uid %}<a class="btn secondary small" href="/admin/adminperms/{{ a.uid }}">Edit permissions</a>{% else %}<span class="small muted">you</span>{% endif %}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

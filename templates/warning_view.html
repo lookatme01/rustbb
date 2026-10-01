@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<section class="box" style="max-width:760px"><div class="box-head"><h2>Warning: {{ w[1] }}</h2></div>
+<div class="kv">
+  <div>User</div><div><a href="/warnings/{{ w[0] }}">{{ username }}</a></div>
+  <div>Points</div><div>{{ w[2] }}</div>
+  <div>Issued</div><div>{{ w[3]|date('datetime') }}{% if w[10] %} by {{ w[10] }}{% endif %}</div>
+  <div>Expires</div><div>{% if w[4] %}{{ w[4]|date('datetime') }}{% else %}Never{% endif %}{% if w[5] %} (expired){% endif %}</div>
+  {% if w[7] %}<div>Post</div><div><a href="/post/{{ w[7] }}">View post</a></div>{% endif %}
+  {% if show_notes and w[8] %}<div>Notes</div><div>{{ w[8] }}</div>{% endif %}
+  {% if w[6] %}<div>Revoked</div><div>{{ w[6]|date('datetime') }}{% if w[11] %} by {{ w[11] }}{% endif %}{% if w[9] %} — {{ w[9] }}{% endif %}</div>{% endif %}
+</div>
+{% if can_revoke %}<form method="post" action="/warning/{{ wid }}/revoke" class="box-foot actions" style="margin:0">{{ m.csrf_field() }}<input type="text" name="reason" placeholder="Reason for revoking" required><button class="btn secondary small">Revoke warning</button></form>{% endif %}
+</section>
+{% endblock %}

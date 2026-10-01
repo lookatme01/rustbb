@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="/moderation/move" class="box">{{ m.csrf_field() }}
+  {% for t in tids %}<input type="hidden" name="tids" value="{{ t }}">{% endfor %}
+  <div class="box-head"><h2>Move or copy {{ tids|length }} thread{{ '' if tids|length == 1 else 's' }}</h2></div>
+  <div class="form-row"><label for="target">Destination forum</label><select id="target" name="target">{% for f in forums %}<option value="{{ f[0] }}"{% if f[0] == fid %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><span class="label"><strong>Method</strong></span><div class="checks">
+    <label><input type="radio" name="method" value="move" checked> Move</label>
+    <label><input type="radio" name="method" value="redirect"> Move and leave a redirect for <input type="number" name="redirect_days" value="7" min="0" style="width:70px"> days (0 = permanent)</label>
+    <label><input type="radio" name="method" value="copy"> Copy</label>
+  </div></div>
+  <div class="box-foot"><button class="btn" type="submit">Move threads</button></div>
+</form>
+<form method="post" action="/moderation/delayed" class="box">{{ m.csrf_field() }}
+  {% for t in tids %}<input type="hidden" name="tids" value="{{ t }}">{% endfor %}
+  <div class="box-head"><h2>Or schedule an action</h2></div>
+  <div class="box-body actions" style="margin:0">
+    <select name="action" aria-label="Action"><option value="close">Close</option><option value="open">Open</option><option value="stick">Stick</option><option value="unstick">Unstick</option><option value="move">Move to the forum above</option><option value="softdelete">Soft delete</option></select>
+    <span>in</span><input type="number" name="days" value="7" min="1" max="365" style="width:70px" aria-label="Days"><span>days</span>
+    <select name="target" aria-label="Move target">{% for f in forums %}<option value="{{ f[0] }}"{% if f[0] == fid %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select>
+    <button class="btn secondary small" type="submit">Schedule</button>
+  </div>
+</form>
+{% endblock %}

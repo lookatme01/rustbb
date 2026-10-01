@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block bodyclass %}acp{% endblock %}
+{% block content %}
+<div class="with-sidebar">
+  <nav class="sidenav" aria-label="Admin CP">
+    <h3>Admin CP</h3>
+    <a href="/admin"{% if acp_section == 'home' %} class="active"{% endif %}>Dashboard</a>
+    <a href="/admin/settings"{% if acp_section == 'settings' %} class="active"{% endif %}>Board settings</a>
+    <h3>Forums &amp; posts</h3>
+    <a href="/admin/forums">Forums &amp; permissions</a>
+    <a href="/admin/crud/prefixes">Thread prefixes</a>
+    <a href="/admin/automod">Automated moderation</a>
+    <a href="/admin/crud/modtools">Moderator tools</a>
+    <a href="/modcp/announcements">Announcements</a>
+    <a href="/modcp/modqueue">Moderation queue</a>
+    <h3>Users &amp; groups</h3>
+    <a href="/admin/users">Users</a>
+    <a href="/admin/users/awaiting">Awaiting activation</a>
+    <a href="/admin/groups">User groups</a>
+    <a href="/admin/crud/usertitles">User titles</a>
+    <a href="/admin/promotions">Promotions</a>
+    <a href="/admin/crud/profilefields">Profile fields</a>
+    <a href="/admin/crud/warningtypes">Warning types</a>
+    <a href="/admin/crud/warninglevels">Warning levels</a>
+    <a href="/modcp/banning">Banned users</a>
+    <a href="/admin/crud/banfilters">Ban filters</a>
+    <a href="/admin/massmail">Mass mail</a>
+    <a href="/admin/adminperms">Admin permissions</a>
+    <h3>Style</h3>
+    <a href="/admin/themes">Themes &amp; templates</a>
+    <h3>Posting</h3>
+    <a href="/admin/crud/smilies">Smilies</a>
+    <a href="/admin/crud/icons">Post icons</a>
+    <a href="/admin/crud/mycode">Custom MyCode</a>
+    <a href="/admin/crud/badwords">Word filters</a>
+    <a href="/admin/crud/attachtypes">Attachment types</a>
+    <a href="/admin/crud/reportreasons">Report reasons</a>
+    <a href="/admin/crud/questions">Security questions</a>
+    <a href="/admin/crud/calendars">Calendars</a>
+    <a href="/admin/crud/helpsections">Help sections</a>
+    <a href="/admin/crud/helpdocs">Help documents</a>
+    <h3>Tools</h3>
+    <a href="/admin/tools">System health</a>
+    <a href="/admin/tools/tasks">Scheduled tasks</a>
+    <a href="/admin/tools/recount">Recount &amp; rebuild</a>
+    <a href="/admin/tools/cache">Cache manager</a>
+    <a href="/admin/tools/backup">Database backup</a>
+    <a href="/admin/tools/attachments">Attachments</a>
+    <a href="/admin/tools/plugins">Plugins</a>
+    <a href="/admin/tools/stats">Statistics</a>
+    <h3>Logs</h3>
+    <a href="/admin/tools/adminlog">Admin log</a>
+    <a href="/modcp/modlogs">Moderator log</a>
+    <a href="/admin/tools/maillogs">Mail log</a>
+    <a href="/admin/tools/mailerrors">Mail queue</a>
+    <a href="/admin/tools/spamlog">Spam log</a>
+    <a href="/admin/tools/systemlog">System log</a>
+    <a href="/admin/promotions/logs">Promotion log</a>
+    <a href="/modcp/warninglogs">Warning log</a>
+  </nav>
+  <div>{% block acp %}{% endblock %}</div>
+</div>
+{% endblock %}

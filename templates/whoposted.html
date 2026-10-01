@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Who posted in <a href="{{ url_thread(thread.tid, thread.subject) }}">{{ thread.subject }}</a></h2></div>
+<table class="grid"><thead><tr><th>{{ t("User") }}</th><th class="num">{{ t("Posts") }}</th></tr></thead>
+<tbody>{% for u in list %}<tr><td>{% if u.uid > 0 %}<a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% else %}{{ u.formatted|safe }}{% endif %}</td><td class="num">{{ u.posts|num }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr><td>{{ t("Total") }}</td><td class="num">{{ total|num }}</td></tr></tfoot></table></section>
+{% endblock %}

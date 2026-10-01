@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<article class="post" style="grid-template-columns:1fr">
+  <div class="post-main">
+    <header class="post-head"><strong>Announcement</strong>{% if author %} by <a href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a>{% endif %} · {{ a.startdate|date('datetime') }}{% if a.enddate %} · until {{ a.enddate|date('date') }}{% endif %}</header>
+    <div class="post-body">{{ html|safe }}</div>
+  </div>
+</article>
+{% endblock %}

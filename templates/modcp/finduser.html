@@ -1,0 +1,10 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<form method="get" action="/modcp/finduser" class="actions"><input type="search" name="username" value="{{ username }}" placeholder="Username contains…" aria-label="Username"><button class="btn small">Find</button></form>
+<section class="box"><div class="box-head"><h2>Users</h2></div>
+<table class="grid"><thead><tr><th>User</th><th class="num">Posts</th><th>Registered</th><th>Last active</th><th></th></tr></thead><tbody>
+{% for u in list %}<tr><td><a href="{{ url_user(u.uid, u.username) }}">{{ u.formatted|safe }}</a></td><td class="num">{{ u.postnum }}</td><td class="small">{{ u.regdate|date('date') }}</td><td class="small">{{ u.lastactive|date }}</td><td class="num">{% if perms.caneditprofiles %}<a class="btn secondary small" href="/modcp/editprofile/{{ u.uid }}">Edit</a>{% endif %} {% if perms.canbanusers %}<a class="btn secondary small" href="/modcp/ban?uid={{ u.uid }}">Ban</a>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="empty">{{ 'No users found.' if username else 'Search for a user by name.' }}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

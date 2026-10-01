@@ -1,0 +1,15 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<div class="actions"><a class="btn {{ 'small' if status == 0 else 'secondary small' }}" href="/modcp/reports">Open reports</a><a class="btn {{ 'small' if status == 1 else 'secondary small' }}" href="/modcp/reports?status=1">Handled reports</a></div>
+<form method="post" action="/modcp/reports" class="box">{{ m.csrf_field() }}
+<div class="box-head"><h2>{{ 'Open' if status == 0 else 'Handled' }} reports</h2></div>
+<table class="grid"><thead><tr><th>Reported</th><th>Reason</th><th>Reported by</th><th class="num">Reports</th><th>Last report</th><th></th></tr></thead><tbody>
+{% for r in reports %}<tr><td><a href="{{ r.link }}">{% if r.kind == 'post' %}Post in “{{ r.subject }}”{% elif r.kind == 'profile' %}Profile of {{ r.target }}{% elif r.kind == 'reputation' %}Reputation for {{ r.target }}{% else %}{{ r.kind }}{% endif %}</a>{% if r.target and r.kind == 'post' %}<br><span class="small muted">by {{ r.target }}</span>{% endif %}</td>
+<td>{{ r.reason_title }}{% if r.reason %}<br><span class="small muted">{{ r.reason }}</span>{% endif %}</td><td>{{ r.reporter }}</td><td class="num">{{ r.reports }}</td><td class="small">{{ r.lastreport|date }}</td><td><input type="checkbox" name="ids" value="{{ r.rid }}" aria-label="Select"></td></tr>
+{% else %}<tr><td colspan="6" class="empty">There are no {{ 'open' if status == 0 else 'handled' }} reports.</td></tr>{% endfor %}
+</tbody></table>
+{% if reports %}<div class="box-foot actions" style="margin:0"><button class="btn small" name="action" value="{{ 'handled' if status == 0 else 'reopen' }}">{{ 'Mark selected as handled' if status == 0 else 'Reopen selected' }}</button></div>{% endif %}
+</form>
+{{ m.pagination(pagination) }}
+{% endblock %}

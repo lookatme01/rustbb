@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+{% if ban %}<div class="notice bad profile-ban" role="status">
+  <strong>{{ user.username }} is banned.</strong>
+  <span>Reason: {{ ban.reason or 'No reason given.' }}</span>
+  <span class="small">Banned {{ ban.since|date('date') }} · {% if ban.until %}Expires {{ ban.until|date }}{% else %}Permanent ban{% endif %}{% if ban.by %} · Banned by <a href="{{ url_user(ban.by_uid, ban.by) }}">{{ ban.by }}</a>{% endif %}</span>
+</div>{% endif %}
+<section class="profile-card av-{{ user.uid % 6 }}">
+  <div class="profile-cover"></div>
+  <div class="profile-head">
+    {{ m.face(author.avatar, user.username, user.uid, 116, '', online) }}
+    <div>
+      <h1>{{ author.formatted|safe }}</h1>
+      <div class="muted">{{ author.usertitle }}{% if author.stars %} · {% for i in range(author.stars) %}<img src="{{ author.starimage }}" alt="" width="13" height="13">{% endfor %}{% endif %}</div>
+      <div class="small faint">{{ group_title }}{% if additional_groups %} · also {{ additional_groups|join(", ") }}{% endif %}{% if online %} · <span style="color:var(--live)">Online now</span>{% endif %}</div>
+      {% if user.away %}<div class="notice warn small">Away{% if user.awayreason %}: {{ user.awayreason }}{% endif %}{% if user.returndate %} — returning {{ user.returndate }}{% endif %}</div>{% endif %}
+    </div>
+    <div class="actions">
+      {% if can_pm %}<a class="btn" href="/pm/send?uid={{ user.uid }}">Message</a>{% endif %}
+      {% if me and me.uid != user.uid %}
+      <form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removebuddy' if is_buddy else 'buddy' }}"><button class="btn secondary" type="submit">{{ 'Remove friend' if is_buddy else 'Add friend' }}</button></form>
+      {% endif %}
+      {% if can_email %}<a class="btn secondary" href="/user/{{ user.uid }}/email">Email</a>{% endif %}
+      {% if can_rep %}<a class="btn secondary" href="/reputation/{{ user.uid }}/add">Rate</a>{% endif %}
+      {% if me and me.uid != user.uid %}
+      <form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removeignore' if is_ignored else 'ignore' }}"><button class="btn ghost" type="submit">{{ 'Unignore' if is_ignored else 'Ignore' }}</button></form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="profile-stats">
+    <div><b><a href="/user/{{ user.uid }}/posts">{{ user.postnum|num }}</a></b><span>Posts</span></div>
+    <div><b><a href="/user/{{ user.uid }}/threads">{{ user.threadnum|num }}</a></b><span>Threads</span></div>
+    {% if bb.enablereputation == '1' %}<div><b><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a></b><span>Reputation</span></div>{% endif %}
+    <div><b>{{ user.regdate|date('date') }}</b><span>Joined</span></div>
+  </div>
+</section>
+
+{% if pgp %}
+<section class="box pgp-profile">
+  <div class="box-head"><h2>Identity key</h2><span class="desc">for signed and end-to-end encrypted messages</span>
+    <span class="right">{% if me and me.uid != user.uid and bb.enablepms == '1' and perms.canusepms %}<a class="btn {{ 'secondary ' if pgp.verified else '' }}small" href="/pm/verify/{{ user.uid }}">{{ 'Verified by you' if pgp.verified else 'Verify identity' }}</a>{% endif %}
+    <a class="btn ghost small" href="/user/{{ user.uid }}/pgp.asc">Public key</a></span></div>
+  <div class="box-body"><code class="pgp-fpr">{% for g in pgp.groups %}<span>{{ g }}</span>{% endfor %}</code>
+    <div class="small muted">{{ pgp.algorithm }} · in use since {{ pgp.added|date('date') }}</div></div>
+</section>
+{% endif %}
+
+{% if system_activity %}
+<section class="box system-activity">
+  <div class="box-head"><h2>What {{ user.username }} does</h2></div>
+  <div class="kv">
+    <div>Posts quarantined</div><div>{{ system_activity.quarantined|num }}</div>
+    <div>Automated messages</div><div>{{ system_activity.messages|num }}</div>
+    <div>Inactive threads closed</div><div>{{ system_activity.closed|num }}</div>
+    <div>Staff announcements and posts</div><div>{{ system_activity.staff_posts|num }}</div>
+  </div>
+  {% if system_activity.recent is not none %}
+  <div class="box-head"><h2>Latest actions</h2><a class="right small" href="/modcp/modlogs?uid={{ user.uid }}">All</a></div>
+  {% with logs = system_activity.recent %}{% include "modcp/logtable.html" %}{% endwith %}
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="two-col">
+  <section class="box">
+    <div class="box-head"><h2>Forum info</h2></div>
+    <div class="kv">
+      <div>Joined</div><div>{{ user.regdate|date('date') }}</div>
+      <div>Last visit</div><div>{% if lastvisit_visible %}{{ user.lastactive|date }}{% else %}(Hidden){% endif %}</div>
+      {% if location %}<div>Currently</div><div>{{ location|safe }}</div>{% endif %}
+      <div>Total posts</div><div>{{ user.postnum|num }} ({{ posts_per_day }} per day · {{ posts_percent }}% of all) — <a href="/user/{{ user.uid }}/posts">find all posts</a></div>
+      <div>Total threads</div><div>{{ user.threadnum|num }} ({{ threads_per_day }} per day · {{ threads_percent }}% of all) — <a href="/user/{{ user.uid }}/threads">find all threads</a></div>
+      <div>Time online</div><div>{{ timeonline }}</div>
+      {% if active_forum %}<div>Most active in</div><div><a href="{{ active_forum.url }}">{{ active_forum.name }}</a> ({{ active_forum.count|num }} posts)</div>{% endif %}
+      {% if bb.enablereputation == '1' %}<div>Reputation</div><div><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a>{% if can_rep %} · <a href="/reputation/{{ user.uid }}/add">rate</a>{% endif %}</div>{% endif %}
+      {% if warnings_visible %}<div>Warning level</div><div><div class="meter warnlevel" style="max-width:200px"><span style="width:{{ warn_level }}%"></span></div><a href="/warnings/{{ user.uid }}">{{ warn_level }}%</a>{% if can_warn %} · <a href="/warnings/{{ user.uid }}/warn">warn</a>{% endif %}</div>{% endif %}
+      {% if user.referrals %}<div>Referrals</div><div><a href="/user/{{ user.uid }}/referrals">{{ user.referrals }}</a></div>{% endif %}
+    </div>
+  </section>
+  <section class="box">
+    <div class="box-head"><h2>About {{ user.username }}</h2></div>
+    <div class="kv">
+      {% if user.website %}<div>Website</div><div><a href="{{ user.website }}" rel="nofollow ugc noopener" target="_blank">{{ user.website }}</a></div>{% endif %}
+      {% if birthday %}<div>Birthday</div><div>{{ birthday }}{% if age %} ({{ age }} years old){% endif %}</div>{% endif %}
+      {% for f in fields %}<div>{{ f[0] }}</div><div>{{ f[1]|safe }}</div>{% endfor %}
+      {% if not user.website and not birthday and not fields %}<div>—</div><div class="muted">This member hasn't added any details yet.</div>{% endif %}
+    </div>
+  </section>
+</div>
+
+{% if author.signature %}
+<section class="box"><div class="box-head"><h2>Signature</h2></div><div class="box-body post-body">{{ author.signature|safe }}</div></section>
+{% endif %}
+
+{% if is_mod_viewer or can_edit_profile or can_ban %}
+<section class="box">
+  <div class="box-head"><h2>Moderator options</h2></div>
+  <div class="box-body actions" style="margin:0">
+    {% if can_edit_profile %}<a class="btn secondary small" href="/modcp/editprofile/{{ user.uid }}">Edit profile</a>{% endif %}
+    {% if can_ban %}<a class="btn secondary small" href="/modcp/ban?uid={{ user.uid }}">Ban user</a>{% endif %}
+    {% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ user.uid }}">Edit in Admin CP</a>{% endif %}
+    {% if regip %}<span class="small muted">Registration IP: <a href="/modcp/ipsearch?ip={{ regip|urlenc }}">{{ regip }}</a> · Last IP: <a href="/modcp/ipsearch?ip={{ lastip|urlenc }}">{{ lastip }}</a></span>{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

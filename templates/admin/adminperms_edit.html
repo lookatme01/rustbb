@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/adminperms/{{ user.uid }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Admin CP access for {{ user.username }}</h2></div>
+  {% for it in items %}<div class="form-row"><span class="label">{{ it.title }}</span><label class="check"><input type="checkbox" name="{{ it.key }}" value="1"{% if it.allowed %} checked{% endif %}> Allowed</label></div>{% endfor %}
+  <div class="box-foot"><button class="btn">Save</button></div>
+</form>
+{% endblock %}

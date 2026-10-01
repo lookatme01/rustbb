@@ -1,0 +1,6 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<section class="box"><div class="box-head"><h2>Moderator logs</h2></div>{% include "modcp/logtable.html" %}</section>
+{{ m.pagination(pagination) }}
+{% endblock %}

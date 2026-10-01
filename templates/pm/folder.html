@@ -1,0 +1,26 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block pm %}
+<form method="get" action="/pm" class="actions"><input type="hidden" name="folder" value="{{ folder }}"><input type="search" name="q" value="{{ search }}" placeholder="Search messages" aria-label="Search messages"><button class="btn secondary small">Search</button>
+<span class="spacer"></span>{% if quota %}<span class="small muted">{{ used }} of {{ quota }} messages used</span><div class="meter" style="width:140px"><span style="width:{{ [used * 100 // quota, 100]|min }}%"></span></div>{% endif %}</form>
+<form method="post" action="/pm/action" class="box" id="pmlist">{{ m.csrf_field() }}<input type="hidden" name="folder" value="{{ folder }}">
+  <div class="box-head"><h2>{{ folder_name }}</h2></div>
+  <table class="grid"><thead><tr><th style="width:30px"></th><th>Subject</th><th>{{ 'To' if folder in [2, 3] else 'From' }}</th><th>Date</th><th style="width:30px"></th></tr></thead><tbody>
+  {% for p in messages %}
+  <tr{% if p.status == 0 and folder not in [2,3] %} style="font-weight:700"{% endif %}>
+    <td>{% if p.status == 0 and folder not in [2,3] %}<span class="tag" title="Unread">new</span>{% elif p.status == 3 %}<span class="faint" title="Replied">↩</span>{% elif p.status == 4 %}<span class="faint" title="Forwarded">↪</span>{% endif %}</td>
+    <td>{% if p.pgp == 2 %}<span class="pgp-flag is-encrypted" title="End-to-end encrypted"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 118 0v3"/></svg><span class="sr-only">Encrypted: </span></span>{% elif p.pgp == 1 %}<span class="pgp-flag is-signed" title="Signed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z"/></svg><span class="sr-only">Signed: </span></span>{% endif %}<a href="/pm/read/{{ p.pmid }}">{{ p.subject }}</a>{% if p.multi %} <span class="faint small">(group)</span>{% endif %}</td>
+    <td>{% if p.other_uid %}<a href="{{ url_user(p.other_uid) }}">{{ p.other|safe }}</a>{% else %}{{ p.other|safe }}{% endif %}</td>
+    <td class="small">{{ p.dateline|date }}</td>
+    <td><input type="checkbox" name="pmids" value="{{ p.pmid }}" aria-label="Select message"></td>
+  </tr>
+  {% else %}<tr><td colspan="5" class="empty">There are no messages in this folder.</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="box-foot actions" style="margin:0">
+    <select name="action" aria-label="Action"><option value="read">Mark as read</option><option value="unread">Mark as unread</option><option value="delete">Delete</option><option value="move">Move to…</option>{% if folder == 4 %}<option value="emptytrash">Empty trash can</option>{% endif %}</select>
+    <select name="target" aria-label="Target folder">{% for f in folders %}{% if f[0] != 3 %}<option value="{{ f[0] }}">{{ f[1] }}</option>{% endif %}{% endfor %}</select>
+    <button class="btn secondary small" type="submit">Go</button>
+  </div>
+</form>
+{{ m.pagination(pagination) }}
+{% endblock %}

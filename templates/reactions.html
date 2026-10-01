@@ -1,0 +1,5 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Reactions to <a href="/post/{{ pid }}">post #{{ pid }}</a></h2></div>
+<table class="grid"><tbody>{% for r in list %}<tr><td style="width:40px;font-size:1.3rem">{{ r.emoji }}</td><td><a href="{{ url_user(r.uid) }}">{{ r.formatted|safe }}</a></td><td class="small muted">{{ r.dateline|date }}</td></tr>{% else %}<tr><td class="empty">No reactions yet.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

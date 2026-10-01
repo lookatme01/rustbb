@@ -1,0 +1,29 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{{ m.errors_box(errors) }}
+<form method="post" action="/usercp/profile" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Edit profile</h2></div>
+  <div class="form-row"><span class="label"><strong>Birthday</strong></span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <select name="bday" aria-label="Day"><option value="0">Day</option>{% for d in range(1, 32) %}<option value="{{ d }}"{% if bday == d|string %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+      <select name="bmonth" aria-label="Month"><option value="0">Month</option>{% for mo in ['January','February','March','April','May','June','July','August','September','October','November','December'] %}<option value="{{ loop.index }}"{% if bmonth == loop.index|string %} selected{% endif %}>{{ mo }}</option>{% endfor %}</select>
+      <input type="number" name="byear" value="{{ byear }}" placeholder="Year" min="1900" max="2100" style="width:100px" aria-label="Year">
+      <select name="birthdayprivacy" aria-label="Birthday privacy">{% for o in [('all','Show birthday and age'),('age','Show only age'),('none','Hide birthday')] %}<option value="{{ o[0] }}"{% if user.birthdayprivacy == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+    </div>
+  </div>
+  {% if can_website %}<div class="form-row"><label for="website">Website</label><input id="website" type="url" name="website" value="{{ user.website }}" placeholder="https://"></div>{% endif %}
+  {% if can_title %}<div class="form-row"><label for="usertitle">Custom user title</label><div><input id="usertitle" type="text" name="usertitle" value="{{ user.usertitle }}" maxlength="{{ bb.customtitlemaxlength }}"><span class="help">Leave empty to use the default title for your group and post count.</span></div></div>{% endif %}
+  {% if allowaway %}
+  <div class="form-row"><span class="label"><strong>Away status</strong></span>
+    <div class="checks">
+      <label><input type="checkbox" name="away" value="1"{% if user.away %} checked{% endif %}> I'm away</label>
+      <input type="text" name="awayreason" value="{{ user.awayreason }}" placeholder="Reason (optional)" maxlength="200">
+      <input type="text" name="returndate" value="{{ user.returndate }}" placeholder="Returning on (optional)" maxlength="20">
+    </div>
+  </div>
+  {% endif %}
+  {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
+  <div class="box-foot"><button class="btn" type="submit">Save profile</button></div>
+</form>
+{% endblock %}

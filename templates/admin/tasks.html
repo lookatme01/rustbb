@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Scheduled tasks</h2></div>
+<table class="grid"><thead><tr><th>Task</th><th>Every</th><th>Last run</th><th>Next run</th><th></th></tr></thead><tbody>
+{% for t in tasks %}<tr><td><strong>{{ t[2] }}</strong>{% if not t[7] %} <span class="tag">disabled</span>{% endif %}<br><span class="small muted">{{ t[3] }}</span></td>
+<td><form method="post" action="/admin/tools/tasks" style="display:flex;gap:4px">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t[0] }}"><input type="hidden" name="action" value="interval"><input type="number" name="interval" value="{{ t[4] }}" min="60" style="width:90px" aria-label="Interval in seconds"><button class="btn secondary small">Set</button></form><span class="small muted">seconds</span></td>
+<td class="small">{{ t[6]|date }}</td><td class="small">{{ t[5]|date('datetime') }}</td>
+<td class="num" style="white-space:nowrap"><form method="post" action="/admin/tools/tasks" style="display:inline">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t[0] }}"><button class="btn secondary small" name="action" value="run">Run now</button> <button class="btn secondary small" name="action" value="toggle">{{ 'Disable' if t[7] else 'Enable' }}</button></form></td></tr>{% endfor %}
+</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Task log</h2></div><table class="grid"><tbody>{% for l in logs %}<tr><td>{{ l[0] }}</td><td class="small muted">{{ l[1]|date }}</td><td class="small">{{ l[2] }}</td></tr>{% else %}<tr><td class="empty">No task runs logged yet.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

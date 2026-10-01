@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/promotions/edit" class="box">{{ m.csrf_field() }}<input type="hidden" name="pid" value="{{ p[0] if p else 0 }}">
+  <div class="box-head"><h2>{{ title }}</h2></div>
+  <div class="form-row"><label for="t_">Title</label><input id="t_" type="text" name="title" value="{{ p[1] if p else '' }}" required></div>
+  <div class="form-row"><label for="d_">Description</label><input id="d_" type="text" name="description" value="{{ p[2] if p else '' }}"></div>
+  <div class="form-row"><span class="label"><strong>Requirements</strong></span><div style="display:grid;gap:6px">
+    {% for r in reqs %}<div style="display:flex;gap:6px;align-items:center"><label class="check" style="min-width:170px"><input type="checkbox" name="req_{{ r.key }}" value="1"{% if r.enabled %} checked{% endif %}> {{ r.label }}</label>
+      <select name="op_{{ r.key }}" aria-label="Comparison">{% for o in ['>=','>','=','<=','<','!='] %}<option{% if r.op == o %} selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+      <input type="number" name="val_{{ r.key }}" value="{{ r.value }}" style="width:100px" aria-label="Value"></div>{% endfor %}
+  </div></div>
+  <div class="form-row"><label for="og">From groups</label><div><select id="og" name="originalusergroup" multiple size="6">{% for g in groups %}<option value="{{ g[0] }}"{% if p and g[0] in p[6] %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select><span class="help">None = any group (except guests, awaiting activation and banned).</span></div></div>
+  <div class="form-row"><label for="ng">Promote to</label><div style="display:flex;gap:6px"><select id="ng" name="newusergroup">{% for g in groups %}<option value="{{ g[0] }}"{% if p and g[0] == p[7] %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
+    <select name="usergrouptype" aria-label="Group type"><option value="primary"{% if p and p[8] == 'primary' %} selected{% endif %}>as primary group</option><option value="secondary"{% if p and p[8] == 'secondary' %} selected{% endif %}>as additional group</option></select></div></div>
+  <div class="form-row"><span class="label"><strong>Options</strong></span><div class="checks"><label><input type="checkbox" name="enabled" value="1"{% if not p or p[3] %} checked{% endif %}> Enabled</label><label><input type="checkbox" name="logging" value="1"{% if not p or p[4] %} checked{% endif %}> Log promotions</label></div></div>
+  <div class="box-foot"><button class="btn">Save promotion</button></div>
+</form>
+{% endblock %}

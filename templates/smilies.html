@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Smilies</h2></div>
+<table class="grid"><thead><tr><th>Smilie</th><th>Name</th><th>Text</th></tr></thead><tbody>
+{% for s in smilies %}<tr><td><img src="{{ s.image }}" alt="{{ s.name }}" width="24" height="24"></td><td>{{ s.name }}</td><td><code>{{ s.find.split("\n")|join("  ") }}</code></td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

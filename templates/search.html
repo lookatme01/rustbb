@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+{{ m.errors_box(errors) }}
+<form method="post" action="/search" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Search the forums</h2></div>
+  <div class="form-row"><label for="keywords">Keywords</label><div><input id="keywords" type="search" name="keywords" style="width:100%;max-width:none" autofocus><span class="help">Use quotes for exact phrases ("like this"), <code>or</code> for alternatives and a leading minus to exclude words (-word).</span>
+    <div class="checks" style="margin-top:6px;flex-direction:row;gap:16px"><label><input type="radio" name="postthread" value="1" checked> Titles and posts</label><label><input type="radio" name="postthread" value="2"> Titles only</label></div></div></div>
+  <div class="form-row"><label for="author">Author</label><div><input id="author" type="text" name="author"><label class="check" style="margin-top:4px"><input type="checkbox" name="matchusername" value="1" checked> Exact username</label></div></div>
+  <div class="form-row"><label for="forums">In forums</label><div><select id="forums" name="forums" multiple size="8" style="width:100%;max-width:480px"><option value="0" selected>All forums</option>{% for f in forums %}<option value="{{ f[0] }}">{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select><span class="help">Subforums are always included.</span></div></div>
+  <div class="form-row"><span class="label"><strong>Date</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap">
+    <select name="pddir" aria-label="Direction"><option value="1">Newer than</option><option value="0">Older than</option></select>
+    <select name="postdate" aria-label="Age">{% for d in [(0,'Any date'),(1,'Yesterday'),(7,'A week ago'),(14,'2 weeks ago'),(30,'A month ago'),(90,'3 months ago'),(180,'6 months ago'),(365,'A year ago')] %}<option value="{{ d[0] }}">{{ d[1] }}</option>{% endfor %}</select>
+  </div></div>
+  <div class="form-row"><label for="numreplies">Minimum replies</label><input id="numreplies" type="number" name="numreplies" value="0" min="0" style="width:100px"></div>
+  <div class="form-row"><span class="label"><strong>Sort by</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap">
+    <select name="sortby" aria-label="Sort by">{% for o in [('lastpost','Last post date'),('relevance','Relevance (posts)'),('subject','Subject'),('replies','Replies'),('views','Views'),('starter','Author'),('forum','Forum')] %}<option value="{{ o[0] }}">{{ o[1] }}</option>{% endfor %}</select>
+    <select name="sortordr" aria-label="Order"><option value="desc">Descending</option><option value="asc">Ascending</option></select>
+  </div></div>
+  <div class="form-row"><span class="label"><strong>Show results as</strong></span><div class="checks" style="flex-direction:row;gap:16px"><label><input type="radio" name="showresults" value="threads" checked> Threads</label><label><input type="radio" name="showresults" value="posts"> Posts</label></div></div>
+  <div class="box-foot"><button class="btn" type="submit">Search</button></div>
+</form>
+<div class="actions"><a class="btn secondary small" href="/search/new">New posts</a><a class="btn secondary small" href="/search/today">Today's posts</a><a class="btn secondary small" href="/search/unanswered">Unanswered threads</a>{% if me %}<a class="btn secondary small" href="/search/unread">Unread threads</a>{% endif %}</div>
+{% endblock %}

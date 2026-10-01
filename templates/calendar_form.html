@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="{% if e %}/calendar/event/{{ e.eid }}/edit{% else %}/calendar/{{ cal.cid }}/addevent{% endif %}" class="box js-editor-form">{{ m.csrf_field() }}
+  <div class="box-head"><h2>{{ title }} — {{ cal.name }}</h2></div>
+  <div class="form-row"><label for="name">Event name</label><input id="name" type="text" name="name" value="{{ e.name if e else '' }}" maxlength="120" required></div>
+  <div class="form-row"><span class="label"><strong>When</strong></span><div style="display:grid;gap:6px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" name="date" value="{{ date }}" required aria-label="Start date"><input type="time" name="starttime" value="{{ starttime }}" aria-label="Start time"><span>to</span><input type="date" name="enddate" value="{{ enddate }}" aria-label="End date"><input type="time" name="endtime" value="{{ endtime }}" aria-label="End time"></div>
+    <span class="help">Leave the times empty for an all-day event.</span>
+  </div></div>
+  <div class="form-row"><span class="label"><strong>Repeats</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <select name="repeat" aria-label="Repeat">{% for r in [('none','Does not repeat'),('daily','Daily'),('weekly','Weekly'),('monthly','Monthly'),('yearly','Yearly')] %}<option value="{{ r[0] }}"{% if repeat == r[0] %} selected{% endif %}>{{ r[1] }}</option>{% endfor %}</select>
+    <span>every</span><input type="number" name="interval" value="{{ interval }}" min="1" max="365" style="width:70px" aria-label="Interval"><span>until</span><input type="date" name="until" value="{{ until }}" aria-label="Until">
+  </div></div>
+  <div class="form-row"><label for="message">Description</label><div>{% include "editor_widget.html" %}</div></div>
+  <div class="form-row"><span class="label"><strong>Privacy</strong></span><label class="check"><input type="checkbox" name="private" value="1"{% if e and e.private %} checked{% endif %}> Private event (only visible to me)</label></div>
+  <div class="box-foot"><button class="btn" type="submit">Save event</button></div>
+</form>
+{% endblock %}

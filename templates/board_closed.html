@@ -1,0 +1,4 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box" style="max-width:640px"><div class="box-head"><h2>Board closed</h2></div><div class="box-body"><p>{{ reason }}</p>{% if not me %}<p><a class="btn secondary" href="/member/login">Staff login</a></p>{% endif %}</div></section>
+{% endblock %}

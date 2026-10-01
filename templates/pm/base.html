@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="with-sidebar">
+  <nav class="sidenav" aria-label="Messages">
+    <h3>Messages</h3>
+    <a href="/pm/send"><strong>Compose message</strong></a>
+    {% for f in folders %}<a href="/pm?folder={{ f[0] }}"{% if folder is defined and folder == f[0] %} class="active"{% endif %}>{{ f[1] }}{% if f[0] == 1 and me.unreadpms %}<span class="count">{{ me.unreadpms }}</span>{% endif %}</a>{% endfor %}
+    <h3>Tools</h3>
+    <a href="/pm/folders">Manage folders</a>
+    <a href="/usercp/pgp">Encryption &amp; identity</a>
+    {% if perms.cantrackpms %}<a href="/pm/tracking">Message tracking</a>{% endif %}
+    <a href="/usercp">User CP</a>
+  </nav>
+  <div>{% block pm %}{% endblock %}</div>
+</div>
+{% endblock %}

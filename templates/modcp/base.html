@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="with-sidebar">
+  <nav class="sidenav" aria-label="Mod CP">
+    <h3>Moderation</h3>
+    <a href="/modcp"{% if mcp_active == 'home' %} class="active"{% endif %}>Overview</a>
+    <a href="/modcp/reports"{% if mcp_active == 'reports' %} class="active"{% endif %}>Reported content{% if report_count %}<span class="count">{{ report_count }}</span>{% endif %}</a>
+    <a href="/modcp/modqueue"{% if mcp_active == 'modqueue' %} class="active"{% endif %}>Moderation queue{% if modqueue_count %}<span class="count">{{ modqueue_count }}</span>{% endif %}</a>
+    <a href="/modcp/modlogs"{% if mcp_active == 'modlogs' %} class="active"{% endif %}>Moderator logs</a>
+    <a href="/modcp/delayed"{% if mcp_active == 'delayed' %} class="active"{% endif %}>Scheduled actions</a>
+    <a href="/modcp/announcements"{% if mcp_active == 'announcements' %} class="active"{% endif %}>Announcements</a>
+    <h3>Users</h3>
+    <a href="/modcp/finduser"{% if mcp_active == 'finduser' %} class="active"{% endif %}>Find users</a>
+    {% if perms.canbanusers %}<a href="/modcp/banning"{% if mcp_active == 'banning' %} class="active"{% endif %}>Banned users</a>{% endif %}
+    {% if perms.canviewwarnlogs %}<a href="/modcp/warninglogs"{% if mcp_active == 'warninglogs' %} class="active"{% endif %}>Warning logs</a>{% endif %}
+    {% if perms.canuseipsearch %}<a href="/modcp/ipsearch"{% if mcp_active == 'ipsearch' %} class="active"{% endif %}>IP search</a>{% endif %}
+  </nav>
+  <div>{% block mcp %}{% endblock %}</div>
+</div>
+{% endblock %}

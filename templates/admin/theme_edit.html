@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+{% set t = th %}
+<form method="post" action="/admin/themes/edit" class="box">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t.tid if t else 0 }}">
+  <div class="box-head"><h2>{{ title }}</h2></div>
+  <div class="form-row"><label for="name">Name</label><input id="name" type="text" name="name" value="{{ t.name if t else '' }}" required></div>
+  <div class="form-row"><label for="pid">Parent theme</label><div><select id="pid" name="pid"><option value="0">None</option>{% for x in all_themes %}{% if not t or x.tid != t.tid %}<option value="{{ x.tid }}"{% if (t and t.pid == x.tid) or (not t and x.def) %} selected{% endif %}>{{ x.name }}</option>{% endif %}{% endfor %}</select><span class="help">Stylesheets and templates are inherited from the parent.</span></div></div>
+  <div class="form-row"><label for="allowedgroups">Available to</label><div><select id="allowedgroups" name="allowedgroups" multiple size="5">{% for g in groups %}<option value="{{ g[0] }}"{% if t and g[0] in t.allowedgroups %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select><span class="help">None selected = everyone.</span></div></div>
+  <input type="hidden" name="branding" value="1">
+  {% set pr = t.properties if t else {} %}
+  <div class="box-sub">Branding</div>
+  <div class="form-row"><label for="brand">Brand colour</label><div class="brand-pick">
+    <label class="check"><input type="checkbox" name="use_brand" value="1"{% if pr.brand %} checked{% endif %}> Use a custom colour</label>
+    <input id="brand" type="color" name="brand" value="{{ pr.brand or '#5b5bf6' }}">
+    <span class="help">Buttons, links, highlights, unread markers and the banner gradient are all derived from this one colour, in light and dark mode.</span>
+    <div class="brand-preview" aria-hidden="true"><span class="btn small">Button</span><span class="btn secondary small">Secondary</span><a href="#brand">A link</a><span class="flag sticky">Pinned</span><span class="badge">3</span></div>
+  </div></div>
+  <div class="form-row"><label for="colormode">Default colour mode</label><div><select id="colormode" name="colormode">{% for mo in [('', 'Follow the visitor\'s device'), ('light', 'Light'), ('dark', 'Dark')] %}<option value="{{ mo[0] }}"{% if (pr.colormode or '') == mo[0] or (mo[0] == '' and pr.colormode == 'auto') %} selected{% endif %}>{{ mo[1] }}</option>{% endfor %}</select><span class="help">Members can still choose their own in the footer.</span></div></div>
+  <div class="form-row"><label for="hero_title">Banner title</label><div><input id="hero_title" type="text" name="hero_title" value="{{ pr.hero_title or '' }}" maxlength="80" placeholder="{{ bb.bbname }}"><span class="help">Shown in the banner at the top of the board index. Leave empty to use the board name.</span></div></div>
+  <div class="form-row"><label for="hero_text">Banner text</label><div><input id="hero_text" type="text" name="hero_text" value="{{ pr.hero_text or '' }}" maxlength="240" placeholder="A community built for good conversations. Join in."></div></div>
+  <div class="form-row"><label for="banner">Banner image</label><div><input id="banner" type="text" name="banner" value="{{ pr.banner or '' }}" placeholder="/uploads/banners/… or https://…"><span class="help">Leave empty for a gradient made from the brand colour.{% if t %} Or upload an image below.{% endif %}</span>
+    {% if pr.banner %}<div class="banner-thumb" style="background-image:url('{{ pr.banner }}')"></div>{% endif %}</div></div>
+  <div class="form-row"><label for="logo">Logo</label><div><input id="logo" type="text" name="logo" value="{{ pr.logo or '' }}" placeholder="/static/images/logo.svg"></div></div>
+  <div class="box-sub">Advanced</div>
+  <div class="form-row"><label for="properties">Properties (JSON)</label><div><textarea id="properties" name="properties" rows="5" style="font-family:var(--font-code);font-size:.85rem">{{ props }}</textarea><span class="help">Any extra properties. The Branding fields above take precedence.</span></div></div>
+  <div class="form-row"><label for="stylesheet">Stylesheet (CSS)</label><div><textarea id="stylesheet" name="stylesheet" rows="18" style="font-family:var(--font-code);font-size:.85rem" spellcheck="false">{{ t.stylesheet if t else '' }}</textarea><span class="help">Loaded after the base stylesheet. Override design tokens, e.g. <code>:root { --slate: #3b2f58; --unread: #ff7a59; }</code></span></div></div>
+  <div class="box-foot"><button class="btn">Save theme</button></div>
+</form>
+{% if t %}
+<form method="post" action="/admin/themes/{{ t.tid }}/banner" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Upload a banner</h2><span class="desc">JPEG, PNG, GIF or WebP. Wide images (2400 × 600 or so) look best; they are resized and compressed for you.</span></div>
+  <div class="box-body actions" style="margin:0"><input type="file" name="file" accept="image/*" required><button class="btn secondary">Upload</button></div>
+</form>
+{% endif %}
+{% endblock %}

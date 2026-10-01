@@ -1,0 +1,10 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Recount &amp; rebuild</h2></div>
+<table class="grid"><tbody>
+{% for r in [('forums','Forum counters','Recalculates thread/post counts and last post of every forum.'),('threads','Thread counters','Recounts replies, first/last post of every thread, then forums and users. Slow on large boards.'),('users','User post counts','Recalculates post and thread counts of every member.'),('reputation','Reputation totals','Recalculates reputation totals.'),('pms','Private message counters','Recalculates message and unread counts.'),('attachments','Attachment counts','Recalculates thread attachment counts.'),('posthtml','Parsed post cache','Forces every post to be re-parsed on its next view (after changing MyCode, smilies or filters).'),('all','Everything','Runs all counter rebuilds.')] %}
+<tr><td><strong>{{ r[1] }}</strong><br><span class="small muted">{{ r[2] }}</span></td><td class="num"><form method="post" action="/admin/tools/recount">{{ m.csrf_field() }}<input type="hidden" name="what" value="{{ r[0] }}"><button class="btn secondary small">Run</button></form></td></tr>
+{% endfor %}
+</tbody></table></section>
+{% endblock %}

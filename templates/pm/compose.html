@@ -1,0 +1,26 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block head %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endblock %}
+{% block pm %}
+{{ m.errors_box(errors) }}
+{% if preview %}<section class="box"><div class="box-head"><h2>Preview</h2></div><div class="box-body post-body">{{ preview|safe }}</div></section>{% endif %}
+{% if pgp_source %}<script type="application/json" id="pgp-source">{{ pgp_source|tojson }}</script>{% endif %}
+<form method="post" action="/pm/send" class="box js-editor-form" data-pgp-compose data-pgp-board="{{ board }}" data-pgp-mode="{{ form.pgp_mode }}"><input type="hidden" name="pgp_mode" value="{{ form.pgp_mode }}">{{ m.csrf_field() }}<input type="hidden" name="pmid" value="{{ form.pmid }}">
+  <div class="box-head"><h2>Compose message</h2></div>
+  <div class="form-row"><label for="to">To</label><div><input id="to" type="text" name="to" value="{{ form.to }}" required><span class="help">Separate multiple usernames with commas{% if max_recipients %} (up to {{ max_recipients }}){% endif %}.</span></div></div>
+  <div class="form-row"><label for="bcc">BCC</label><input id="bcc" type="text" name="bcc" value="{{ form.bcc }}"></div>
+  <div class="form-row"><label for="subject">Subject</label><input id="subject" type="text" name="subject" value="{{ form.subject }}" maxlength="120" required></div>
+  <div class="form-row"><label for="message">Message</label><div>{% include "editor_widget.html" %}</div></div>
+  <div class="form-row"><span class="label"><strong>Options</strong></span><div class="checks">
+    <label><input type="checkbox" name="savecopy" value="1" checked> Save a copy in Sent Items</label>
+    {% if can_track %}<label><input type="checkbox" name="receipt" value="1"> Request a read receipt</label>{% endif %}
+    <label><input type="checkbox" name="smilieoff" value="1"> Disable smilies</label>
+    {% if can_send_as_system %}<label><input type="checkbox" name="as_system" value="1"{% if form.as_system %} checked{% endif %}> Send as the System account <span class="small muted">(no reply, read receipt or Sent copy; administrators can see that you sent it)</span></label>{% endif %}
+  </div></div>
+  <div class="box-foot actions" style="margin:0">
+    <button class="btn" type="submit">Send message</button>
+    <button class="btn secondary" type="submit" name="preview" value="1">Preview</button>
+    <button class="btn secondary" type="submit" name="savedraft" value="1" formnovalidate>Save as draft</button>
+  </div>
+</form>
+{% endblock %}

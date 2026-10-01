@@ -1,0 +1,4 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>{{ title }}</h2>{% if subtitle %}<span class="desc">{{ subtitle }}</span>{% endif %}</div><div class="box-body post-body">{{ html|safe }}</div></section>
+{% endblock %}

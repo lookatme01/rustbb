@@ -1,0 +1,18 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<div class="actions">{% for k in [('threads','Threads'),('posts','Posts'),('attachments','Attachments')] %}<a class="btn {{ 'small' if kind == k[0] else 'secondary small' }}" href="/modcp/modqueue?kind={{ k[0] }}">{{ k[1] }}</a>{% endfor %}</div>
+<form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ kind }}">
+{% for i in items %}
+<section class="box">
+  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><a href="{{ i.url }}"><strong>{{ i.subject }}</strong></a>{% if i.forum %}<span>in {{ i.forum }}</span>{% endif %}<span>by {{ m.userlink(i.uid, i.username) }}</span><span>{{ i.dateline|date }}</span>
+    <span style="flex:1"></span>
+   
+    <label class="check"><input type="checkbox" name="approve" value="{{ i.id }}"> Approve</label>
+    <label class="check"><input type="checkbox" name="delete" value="{{ i.id }}"> Delete</label></div>
+  {% if i.html %}<div class="box-body post-body">{{ i.html|safe }}</div>{% elif i.download %}<div class="box-body"><a href="{{ i.download }}">Download file</a> ({{ i.size|bytes }})</div>{% endif %}
+</section>
+{% else %}<div class="box"><div class="empty">Nothing is awaiting moderation.</div></div>{% endfor %}
+{% if items %}<div class="actions"><button class="btn" type="submit">Perform actions</button></div>{% endif %}
+</form>
+{% endblock %}

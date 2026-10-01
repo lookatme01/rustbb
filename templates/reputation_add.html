@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="/reputation/{{ uid }}/add" class="box" style="max-width:720px">{{ m.csrf_field() }}<input type="hidden" name="pid" value="{{ pid }}">
+  <div class="box-head"><h2>Rate {{ username }}{% if post %} for a post in “{{ post[2] }}”{% endif %}</h2></div>
+  {% if existing %}<div class="notice warn" style="margin:12px">You have already rated {{ username }}{% if post %} for this post{% endif %}. Saving updates your rating.</div>{% endif %}
+  <div class="form-row"><label for="reputation">Rating</label><select id="reputation" name="reputation">{% for c in choices %}<option value="{{ c[0] }}"{% if existing and existing[0] == c[0] %} selected{% endif %}>{{ c[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="comments">Comment</label><textarea id="comments" name="comments" rows="3" maxlength="{{ maxlen }}">{{ existing[1] if existing else '' }}</textarea></div>
+  <div class="box-foot"><button class="btn" type="submit">Save rating</button></div>
+</form>
+{% endblock %}

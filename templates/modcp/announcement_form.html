@@ -1,0 +1,20 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<form method="post" action="/modcp/announcements/edit" class="box js-editor-form">{{ m.csrf_field() }}<input type="hidden" name="aid" value="{{ a.aid if a else 0 }}">
+  <div class="box-head"><h2>{{ 'Edit' if a else 'New' }} announcement</h2></div>
+  <div class="form-row"><label for="subject">Subject</label><input id="subject" type="text" name="subject" value="{{ a.subject if a else '' }}" required></div>
+  <div class="form-row"><label for="fid">Show in</label><select id="fid" name="fid">{% if can_global %}<option value="-1">All forums</option>{% endif %}{% for f in forums %}<option value="{{ f[0] }}"{% if (a and a.fid == f[0]) or (not a and fid == f[0]) %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="startdate">Starts</label><input id="startdate" type="datetime-local" name="startdate" value="{{ start }}"></div>
+  <div class="form-row"><label for="enddate">Ends</label><div><input id="enddate" type="datetime-local" name="enddate" value="{{ end }}"><span class="help">Leave empty to never expire.</span></div></div>
+  {% set form = {'message': a.message if a else ''} %}
+  <div class="form-row"><label for="message">Message</label><div>{% include "editor_widget.html" %}</div></div>
+  <div class="form-row"><span class="label"><strong>Options</strong></span><div class="checks">
+    <label><input type="checkbox" name="allowmycode" value="1"{% if not a or a.allowmycode %} checked{% endif %}> Allow MyCode</label>
+    <label><input type="checkbox" name="allowsmilies" value="1"{% if not a or a.allowsmilies %} checked{% endif %}> Allow smilies</label>
+    {% if can_post_as_system %}<label><input type="checkbox" name="as_system" value="1"{% if by_system %} checked{% endif %}> Post as the System account <span class="small muted">(administrators can see that you wrote it)</span></label>{% endif %}
+    {% if is_admin %}<label><input type="checkbox" name="allowhtml" value="1"{% if a and a.allowhtml %} checked{% endif %}> Allow HTML (sanitized)</label>{% endif %}
+  </div></div>
+  <div class="box-foot"><button class="btn" type="submit">Save announcement</button></div>
+</form>
+{% endblock %}

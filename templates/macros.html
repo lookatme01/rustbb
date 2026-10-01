@@ -1,0 +1,94 @@
+{% macro pagination(p) %}
+{% if p.pages > 1 %}
+<nav class="pagination" aria-label="Pages">
+  <span class="label">Pages ({{ p.pages }}):</span>
+  {% if p.prev %}<a href="{{ p.prev }}" rel="prev" aria-label="Previous page">‹</a>{% endif %}
+  {% for l in p.links %}{% if l.gap %}<span class="gap">…</span>{% elif l.current %}<span class="current" aria-current="page">{{ l.page }}</span>{% else %}<a href="{{ l.url }}">{{ l.page }}</a>{% endif %}{% endfor %}
+  {% if p.next %}<a href="{{ p.next }}" rel="next" aria-label="Next page">›</a>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
+
+{% macro userlink(uid, name, formatted=none) %}{% if uid %}<a href="{{ url_user(uid, name) }}">{{ formatted|safe if formatted else name }}</a>{% else %}{{ name or 'Guest' }}{% endif %}{% endmacro %}
+
+{# Round avatar with a coloured initial when there is no picture. #}
+{% macro face(url, name, uid=0, size=40, cls='', online=false) %}<span class="face av-{{ (uid or (name|length)) % 6 }}{% if cls %} {{ cls }}{% endif %}" style="--size:{{ size }}px" aria-hidden="true">{% if url and (not me or me.showavatars) %}<img src="{{ url }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy" decoding="async">{% else %}{{ (name or '?')[:1] }}{% endif %}{% if online %}<span class="presence"></span>{% endif %}</span>{% endmacro %}
+
+{% macro avatar(url, name, cls='avatar', size=96) %}{% if url %}<img class="{{ cls }}" src="{{ url }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy">{% else %}<div class="avatar-fallback" aria-hidden="true">{{ (name or '?')[:1]|upper }}</div>{% endif %}{% endmacro %}
+
+{% macro icon(name) %}{% if name == 'chat' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+{% elif name == 'lock' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 1 1 8 0v3"/></svg>
+{% elif name == 'link' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+{% elif name == 'folder' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+{% elif name == 'chevron' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+{% elif name == 'plus' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+{% elif name == 'reply' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M20 20v-4a7 7 0 0 0-7-7H4"/></svg>
+{% elif name == 'eye' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+{% elif name == 'bell' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+{% elif name == 'check' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>{% endif %}{% endmacro %}
+
+{% macro status_icon(kind) %}{% endmacro %}
+
+{% macro forum_row(f) %}
+<div class="forum-row{% if f.unread %} unread{% endif %}">
+  <span class="forum-icon{% if f.linkto %} is-link{% elif not f.open %} is-locked{% endif %}" title="{{ 'New posts' if f.unread else 'No new posts' }}">{{ icon('link' if f.linkto else ('lock' if not f.open else 'chat')) }}</span>
+  <div>
+    <div class="forum-name"><a href="{{ f.url }}">{{ f.name }}</a>{% if f.unread %}<span class="sr-only"> (new posts)</span>{% endif %}{% if f.unapproved %} <span class="tag" title="Awaiting moderation">{{ f.unapproved }} unapproved</span>{% endif %}{% if f.viewers %} <span class="faint small">· {{ f.viewers }} viewing</span>{% endif %}</div>
+    {% if f.description and bb.showdescriptions == '1' %}<div class="forum-desc">{{ f.description|safe }}</div>{% endif %}
+    {% if f.subforums %}<div class="subforums">{% for s in f.subforums %}<a href="{{ s.url }}"{% if s.unread %} class="unread"{% endif %}>{{ s.name }}</a>{% endfor %}</div>{% endif %}
+    {% if f.moderators %}<div class="moderators">Moderated by {% for m in f.moderators %}{% if m[2] %}{{ m[1]|safe }}{% else %}<a href="{{ url_user(m[0]) }}">{{ m[1]|safe }}</a>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  </div>
+  {% if f.linkto %}<div class="forum-stats"></div><div class="lastpost"><span class="none">Link to another site</span></div>
+  {% else %}
+  <div class="forum-stats"><div><b>{{ f.threads|num }}</b>threads</div><div><b>{{ f.posts|num }}</b>posts</div></div>
+  <div class="lastpost">
+    {% if f.lastpost %}
+      {{ face(f.lastpost.avatar, f.lastpost.username, f.lastpost.uid, 34) }}
+      <div class="lp-text">
+        <a class="subject" href="{{ f.lastpost.url }}" title="{{ f.lastpost.subject }}">{{ f.lastpost.subject }}</a>
+        <span class="by">{{ userlink(f.lastpost.uid, f.lastpost.username) }}</span> · {{ f.lastpost.dateline|date }}
+      </div>
+    {% elif f.password %}<span class="none">Password protected</span>
+    {% else %}<span class="none">No posts yet</span>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro thread_row(t, show_forum=false, check=false) %}
+<div class="thread-row{% if t.unread %} unread{% endif %}{% if t.sticky %} sticky{% endif %}{% if t.visible == 0 %} unapproved{% elif t.visible == -1 %} deleted{% endif %}{% if check %} with-check{% endif %}" data-tid="{{ t.tid }}">
+  {{ face(t.author_avatar, t.author, t.author_uid, 40) }}
+  <div>
+    <div class="thread-title">
+      {% if t.icon %}<img class="thread-icon" src="{{ t.icon }}" alt="">{% endif %}
+      {{ t.prefix_html|safe }}{% if t.moved %}<span class="faint">Moved:</span> {% endif %}<a href="{{ t.url }}"{% if t.preview %} title="{{ t.preview }}"{% endif %}>{{ t.subject }}</a>
+      <span class="thread-flags">{% if t.sticky %}<span class="flag sticky">Pinned</span>{% endif %}{% if t.closed %}<span class="flag closed">Closed</span>{% endif %}{% if t.poll %}<span class="flag poll">Poll</span>{% endif %}{% if t.hot %}<span class="flag hot">Hot</span>{% endif %}{% if t.visible == 0 %}<span class="flag">Unapproved</span>{% elif t.visible == -1 %}<span class="flag closed">Deleted</span>{% endif %}</span>
+      {% if t.unread %}<a class="newlink" href="{{ t.url }}/newpost" title="Go to first unread post">NEW</a>{% endif %}
+    </div>
+    <div class="thread-meta">
+      <span>{% if t.dot %}<span class="dot" title="You posted here">●</span> {% endif %}{{ userlink(t.author_uid, t.author) }}</span>
+      <span>{{ t.dateline|date }}</span>
+      {% if show_forum %}<span><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span>{% endif %}
+      {% if t.attachments %}<span>{{ t.attachments }} attachment{{ '' if t.attachments == 1 else 's' }}</span>{% endif %}
+      {% if t.numratings and bb.allowthreadratings == '1' %}<span>★ {{ "%.1f"|format(t.rating) }}</span>{% endif %}
+      {% if t.pages %}<span class="pages">{% for p in t.pages %}<a href="{{ p[1] }}">{{ p[0] }}</a>{% endfor %}{% if t.lastpage %}<a href="{{ t.lastpage }}">Last</a>{% endif %}</span>{% endif %}
+    </div>
+  </div>
+  <div class="thread-stats">
+    <div><a href="/thread/{{ t.tid }}/whoposted" title="Who posted?"><b>{{ t.replies|num }}</b></a>replies</div>
+    <div><b>{{ t.views|num }}</b>views</div>
+  </div>
+  <div class="lastpost">
+    {% if not t.moved %}{{ face(t.lastposter_avatar, t.lastposter, t.lastposteruid, 30) }}
+    <div class="lp-text"><span class="by">{{ userlink(t.lastposteruid, t.lastposter) }}</span><br><a href="{{ t.url }}/lastpost">{{ t.lastpost|date }}</a></div>{% endif %}
+  </div>
+  {% if check %}<input type="checkbox" class="inline-check" name="tids" value="{{ t.tid }}" form="inlinemod" aria-label="Select thread">{% endif %}
+</div>
+{% endmacro %}
+
+{% macro errors_box(errors) %}
+{% if errors %}<div class="notice bad" role="alert"><strong>Please correct the following:</strong><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% endmacro %}
+
+{% macro csrf_field() %}<input type="hidden" name="my_post_key" value="{{ csrf }}">{% endmacro %}

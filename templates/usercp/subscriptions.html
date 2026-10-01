@@ -1,0 +1,21 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/subscriptions" id="subs" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Thread subscriptions</h2></div>
+  {% for t in threads %}
+  <div class="thread-row with-check{% if t.unread %} unread{% endif %}">
+    {{ m.face(t.author_avatar, t.author, t.author_uid, 40) }}
+    <div><div class="thread-title"><a href="{{ t.url }}">{{ t.subject }}</a></div><div class="thread-meta"><span><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span><span>Notification: {{ ['none','email','private message'][notif[t.tid|string] or 0] }}</span></div></div>
+    <div class="thread-stats"><div><b>{{ t.replies|num }}</b>replies</div><div><b>{{ t.views|num }}</b>views</div></div>
+    <div class="lastpost">{{ m.face(t.lastposter_avatar, t.lastposter, t.lastposteruid, 30) }}<div class="lp-text"><span class="by">{{ t.lastposter }}</span><br><a href="{{ t.url }}/lastpost">{{ t.lastpost|date }}</a></div></div>
+    <input type="checkbox" class="inline-check" name="tids" value="{{ t.tid }}" aria-label="Select">
+  </div>
+  {% else %}<div class="empty">You have no thread subscriptions.</div>{% endfor %}
+  <div class="box-foot actions" style="margin:0">
+    <select name="action" aria-label="Action"><option value="delete">Unsubscribe selected</option><option value="notify0">No notification</option><option value="notify1">Email notification</option><option value="notify2">PM notification</option><option value="deleteall">Unsubscribe from all</option></select>
+    <button class="btn secondary small" type="submit">Go</button>
+  </div>
+</form>
+{{ m.pagination(pagination) }}
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<form method="get" action="/modcp/ipsearch" class="actions"><input type="text" name="ip" value="{{ ip }}" placeholder="IP address (wildcards with *)" aria-label="IP address"><button class="btn small">Search</button></form>
+{% if ip %}
+<section class="box"><div class="box-head"><h2>Users with IP {{ ip }}</h2></div>
+<table class="grid"><thead><tr><th>User</th><th>Registration IP</th><th>Last IP</th></tr></thead><tbody>{% for u in users %}<tr><td><a href="{{ url_user(u[0]) }}">{{ u[1] }}</a></td><td>{{ u[2] }}</td><td>{{ u[3] }}</td></tr>{% else %}<tr><td colspan="3" class="empty">No users.</td></tr>{% endfor %}</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Posts from IP {{ ip }}</h2></div>
+<table class="grid"><thead><tr><th>Post</th><th>Author</th><th>Date</th></tr></thead><tbody>{% for p in posts %}<tr><td><a href="/post/{{ p[0] }}">{{ p[3] or ('#' ~ p[0]) }}</a></td><td>{{ m.userlink(p[1], p[2]) }}</td><td class="small">{{ p[4]|date }}</td></tr>{% else %}<tr><td colspan="3" class="empty">No posts.</td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
+{% endblock %}

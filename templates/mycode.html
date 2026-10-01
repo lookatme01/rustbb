@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>MyCode reference</h2><span class="desc">How to format your posts</span></div>
+<table class="grid"><thead><tr><th>Tag</th><th>You type</th><th>Result</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><strong>{{ r.name }}</strong></td><td><pre style="margin:0;white-space:pre-wrap;font-size:.85rem">{{ r.code }}</pre></td><td class="post-body" style="padding:9px 12px">{{ r.html|safe }}</td></tr>{% endfor %}
+{% for c in custom %}<tr><td><strong>{{ c[0] }}</strong></td><td colspan="2">{{ c[1] }}</td></tr>{% endfor %}
+</tbody></table></section>
+<p><a href="/smilies">View all smilies</a></p>
+{% endblock %}

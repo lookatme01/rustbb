@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<article class="post stacked">
+  <aside class="post-author"><div class="post-author-inner">{% if author %}{{ m.face(author.avatar, author.username, author.uid, 88) }}<div class="name"><a href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a></div>{% endif %}</div></aside>
+  <div class="post-main">
+    <header class="post-head"><strong>{{ e.name }}</strong><span>{{ date }}{% if enddate and enddate != date %} → {{ enddate }}{% endif %}</span>{% if e.usingtime %}<span>{{ e.starttime|date('time') }}{% if e.endtime %} – {{ e.endtime|date('time') }}{% endif %}</span>{% else %}<span>All day</span>{% endif %}
+      {% if e.repeats.type and e.repeats.type != 'none' %}<span class="tag">Repeats {{ e.repeats.type }}</span>{% endif %}{% if e.private %}<span class="tag">Private</span>{% endif %}{% if not e.visible %}<span class="state">Awaiting approval</span>{% endif %}</header>
+    <div class="post-body">{{ html|safe }}</div>
+    <footer class="post-foot"><a class="btn secondary small" href="/calendar/{{ cal.cid }}/day/{{ date }}">Day view</a><span class="spacer"></span>
+      {% if can_moderate %}<form method="post" action="/calendar/event/{{ e.eid }}/approve">{{ m.csrf_field() }}<button class="btn secondary small">{{ 'Unapprove' if e.visible else 'Approve' }}</button></form>{% endif %}
+      {% if can_edit %}<a class="btn secondary small" href="/calendar/event/{{ e.eid }}/edit">Edit</a><form method="post" action="/calendar/event/{{ e.eid }}/delete" class="js-confirm" data-confirm="Delete this event?">{{ m.csrf_field() }}<button class="btn secondary small">Delete</button></form>{% endif %}
+    </footer>
+  </div>
+</article>
+{% endblock %}

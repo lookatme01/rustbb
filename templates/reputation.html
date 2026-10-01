@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<section class="box">
+  <div class="box-head"><h2>Reputation of {{ formatted|safe }}</h2><span class="right">Total: <strong>{{ reputation }}</strong></span></div>
+  <div class="box-body actions" style="margin:0">
+    <span class="small">Positive {{ stats[0] }} · Neutral {{ stats[1] }} · Negative {{ stats[2] }} · Last month: +{{ stats[3] }} / −{{ stats[4] }}</span>
+    <span class="spacer"></span>
+    {% for s in [('','All'),('positive','Positive'),('neutral','Neutral'),('negative','Negative')] %}<a class="btn {{ 'small' if show == s[0] else 'secondary small' }}" href="/reputation/{{ uid }}?show={{ s[0] }}">{{ s[1] }}</a>{% endfor %}
+    {% if can_give %}<a class="btn small" href="/reputation/{{ uid }}/add">Rate {{ username }}</a>{% endif %}
+  </div>
+</section>
+{% for r in list %}
+<section class="box">
+  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><strong style="color:{{ 'var(--ok)' if r.reputation > 0 else ('var(--bad)' if r.reputation < 0 else 'inherit') }}">{{ '+' if r.reputation > 0 }}{{ r.reputation }}</strong><span>from {% if r.from %}<a href="{{ url_user(r.adduid) }}">{{ r.from|safe }}</a>{% else %}deleted user{% endif %}</span><span>{{ r.dateline|date }}</span>{% if r.pid and r.subject %}<span>for <a href="/post/{{ r.pid }}">a post in “{{ r.subject }}”</a></span>{% endif %}
+    <span style="flex:1"></span>{% if me %}<a class="small" href="/report?type=reputation&id={{ r.rid }}">Report</a>{% endif %}
+    {% if r.can_delete %}<form method="post" action="/reputation/delete/{{ r.rid }}" class="js-confirm" data-confirm="Delete this rating?">{{ m.csrf_field() }}<button class="linklike small">Delete</button></form>{% endif %}</div>
+  {% if r.comments %}<div class="box-body">{{ r.comments|safe }}</div>{% endif %}
+</section>
+{% else %}<div class="box"><div class="empty">No reputation has been given yet.</div></div>{% endfor %}
+{{ m.pagination(pagination) }}
+{% endblock %}

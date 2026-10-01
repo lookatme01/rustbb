@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn small" href="/admin/forums/edit?type=c">Add category</a><a class="btn small" href="/admin/forums/edit">Add forum</a></div>
+<form method="post" action="/admin/forums/order" class="box">{{ m.csrf_field() }}
+<div class="box-head"><h2>Forums</h2></div>
+<table class="grid"><thead><tr><th>Forum</th><th class="num">Threads</th><th class="num">Posts</th><th>Order</th><th></th></tr></thead><tbody>
+{% for f in forums %}<tr>
+  <td><div style="padding-left:{{ f.depth * 22 }}px">{% if f.category %}<strong>{{ f.name }}</strong> <span class="tag">category</span>{% else %}<a href="/forum/{{ f.fid }}">{{ f.name }}</a>{% endif %}
+    {% if not f.active %}<span class="tag">inactive</span>{% endif %}{% if not f.open %}<span class="tag">closed</span>{% endif %}{% if f.linkto %}<span class="tag">link</span>{% endif %}
+    {% if f.custom_perms %}<span class="tag" title="Custom permissions">{{ f.custom_perms }} perm overrides</span>{% endif %}{% if f.mods %}<span class="tag">{{ f.mods }} moderators</span>{% endif %}</div></td>
+  <td class="num">{{ f.threads|num }}</td><td class="num">{{ f.posts|num }}</td>
+  <td><input type="number" name="order_{{ f.fid }}" value="{{ f.disporder }}" style="width:70px" aria-label="Display order"></td>
+  <td class="num" style="white-space:nowrap"><a class="btn secondary small" href="/admin/forums/edit?fid={{ f.fid }}">Edit</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/permissions">Permissions</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/moderators">Moderators</a> <a class="btn secondary small" href="/admin/forums/edit?pid={{ f.fid }}">Add child</a></td>
+</tr>{% endfor %}
+</tbody></table>
+<div class="box-foot"><button class="btn small">Save display order</button></div>
+</form>
+{% endblock %}

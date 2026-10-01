@@ -1,0 +1,19 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<form method="post" action="/modcp/editprofile/{{ user.uid }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Edit profile of <a href="{{ url_user(user.uid, user.username) }}">{{ user.username }}</a></h2></div>
+  <div class="form-row"><label for="usertitle">User title</label><input id="usertitle" type="text" name="usertitle" value="{{ user.usertitle }}"></div>
+  <div class="form-row"><label for="website">Website</label><input id="website" type="url" name="website" value="{{ user.website }}"></div>
+  <div class="form-row"><label for="signature">Signature</label><textarea id="signature" name="signature" rows="4">{{ user.signature }}</textarea></div>
+  {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
+  <div class="form-row"><span class="label"><strong>Avatar</strong></span><label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div>
+  <div class="form-row"><span class="label"><strong>Restrictions</strong></span><div class="checks">
+    <label><input type="checkbox" name="suspendposting" value="1"{% if user.suspendposting %} checked{% endif %}> Suspend posting for <input type="number" name="suspendposting_days" value="7" min="0" style="width:70px"> days (0 = permanently)</label>
+    <label><input type="checkbox" name="moderateposts" value="1"{% if user.moderateposts %} checked{% endif %}> Moderate all posts for <input type="number" name="moderateposts_days" value="7" min="0" style="width:70px"> days</label>
+    <label><input type="checkbox" name="suspendsignature" value="1"{% if user.suspendsignature %} checked{% endif %}> Hide signature for <input type="number" name="suspendsignature_days" value="7" min="0" style="width:70px"> days</label>
+  </div></div>
+  <div class="form-row"><label for="usernotes">Moderator notes</label><textarea id="usernotes" name="usernotes" rows="4">{{ usernotes }}</textarea></div>
+  <div class="box-foot"><button class="btn" type="submit">Save profile</button></div>
+</form>
+{% endblock %}

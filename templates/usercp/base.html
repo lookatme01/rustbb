@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="with-sidebar">
+  <nav class="sidenav" aria-label="User CP">
+    <h3>Your account</h3>
+    <a href="/usercp"{% if ucp_active == 'home' %} class="active"{% endif %}>Overview</a>
+    <a href="/usercp/profile"{% if ucp_active == 'profile' %} class="active"{% endif %}>Edit profile</a>
+    <a href="/usercp/avatar"{% if ucp_active == 'avatar' %} class="active"{% endif %}>Avatar</a>
+    <a href="/usercp/signature"{% if ucp_active == 'signature' %} class="active"{% endif %}>Signature</a>
+    <a href="/usercp/options"{% if ucp_active == 'options' %} class="active"{% endif %}>Options</a>
+    <a href="/usercp/email"{% if ucp_active == 'email' %} class="active"{% endif %}>Email address</a>
+    <a href="/usercp/password"{% if ucp_active == 'password' %} class="active"{% endif %}>Password</a>
+    {% if perms.canchangename %}<a href="/usercp/username"{% if ucp_active == 'username' %} class="active"{% endif %}>Username</a>{% endif %}
+    <a href="/usercp/security"{% if ucp_active == 'security' %} class="active"{% endif %}>Security &amp; sessions</a>
+    {% if bb.enablepms == '1' and perms.canusepms %}<a href="/usercp/pgp"{% if ucp_active == 'pgp' %} class="active"{% endif %}>Encryption &amp; identity</a>{% endif %}
+    <a href="/usercp/activity"{% if ucp_active == 'activity' %} class="active"{% endif %}>Account activity</a>
+    <h3>Activity</h3>
+    {% if bb.enablepms == '1' and perms.canusepms %}<a href="/pm">Private messages{% if me.unreadpms %}<span class="count">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
+    {% if bb.enablealerts == '1' %}<a href="/usercp/alerts"{% if ucp_active == 'alerts' %} class="active"{% endif %}>Alerts{% if me.unreadalerts %}<span class="count">{{ me.unreadalerts }}</span>{% endif %}</a>{% endif %}
+    <a href="/usercp/subscriptions"{% if ucp_active == 'subscriptions' %} class="active"{% endif %}>Thread subscriptions</a>
+    <a href="/usercp/forumsubscriptions"{% if ucp_active == 'forumsubscriptions' %} class="active"{% endif %}>Forum subscriptions</a>
+    <a href="/usercp/drafts"{% if ucp_active == 'drafts' %} class="active"{% endif %}>Saved drafts</a>
+    <a href="/usercp/attachments"{% if ucp_active == 'attachments' %} class="active"{% endif %}>Attachments</a>
+    <h3>Community</h3>
+    <a href="/usercp/lists"{% if ucp_active == 'lists' %} class="active"{% endif %}>Friends &amp; ignore list</a>
+    <a href="/usercp/usergroups"{% if ucp_active == 'usergroups' %} class="active"{% endif %}>Group memberships</a>
+    <a href="/usercp/notepad"{% if ucp_active == 'notepad' %} class="active"{% endif %}>Notepad</a>
+    <a href="/usercp/export">Download my data</a>
+    {% if bb.allowaccountdeletion == '1' %}<a href="/usercp/delete"{% if ucp_active == 'delete' %} class="active"{% endif %}>Delete account</a>{% endif %}
+  </nav>
+  <div>{% block ucp %}{% endblock %}</div>
+</div>
+{% endblock %}

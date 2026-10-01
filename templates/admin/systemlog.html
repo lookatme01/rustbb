@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>System log</h2><span class="right small">Content staff published as the System account</span></div>
+<table class="grid"><thead><tr><th>Written by</th><th>What</th><th>Details</th><th>Date</th><th>IP</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><a href="{{ url_user(r.actor) }}">{{ r.actor_name }}</a></td><td class="small">{% if r.link %}<a href="{{ r.link }}">{{ r.kind|capitalize }} #{{ r.id }}</a>{% else %}{{ 'Private message' if r.kind == 'pm' else r.kind|capitalize }} #{{ r.id }}{% endif %}</td><td class="small">{{ r.summary }}</td><td class="small">{{ r.dateline|date }}</td><td class="small">{% if r.ip %}<a href="/modcp/ipsearch?ip={{ r.ip|urlenc }}">{{ r.ip }}</a>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="empty">Nothing has been published as System yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{{ m.pagination(pagination) }}
+{% endblock %}

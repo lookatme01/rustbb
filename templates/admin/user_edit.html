@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn secondary small" href="{{ url_user(user.uid, user.username) }}">View profile</a><a class="btn secondary small" href="/modcp/ipsearch?ip={{ lastip|urlenc }}">Search IP</a><a class="btn secondary small" href="/warnings/{{ user.uid }}">Warnings</a><a class="btn secondary small" href="/admin/users/{{ user.uid }}/activity">Account activity</a><a class="btn secondary small" href="/user/{{ user.uid }}/posts">Posts</a></div>
+{% if banned %}<div class="notice bad">This user is banned{% if banned[0] %}: {{ banned[0] }}{% endif %}. {% if banned[1] %}Lifts {{ banned[1]|date('datetime') }}.{% else %}Permanent.{% endif %}</div>{% endif %}
+{% if user.is_system %}<div class="notice">This is the built-in System account. It never signs in and cannot be banned, deleted or merged; its email, password and groups are fixed. You can change its name, title, signature and avatar.</div>{% endif %}
+<form method="post" action="/admin/users/{{ user.uid }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Account</h2></div>
+  <div class="form-row"><label for="username">Username</label><input id="username" type="text" name="username" value="{{ user.username }}" required></div>
+  {% if not user.is_system %}
+  <div class="form-row"><label for="email">Email</label><input id="email" type="email" name="email" value="{{ email }}" required></div>
+  <div class="form-row"><label for="newpassword">New password</label><div><input id="newpassword" type="password" name="newpassword" autocomplete="new-password" placeholder="Leave empty to keep"><span class="help">Setting a password logs the user out everywhere.</span></div></div>
+  <div class="form-row"><label for="usergroup">Primary group</label><select id="usergroup" name="usergroup">{% for g in groups %}<option value="{{ g[0] }}"{% if g[0] == user.usergroup %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="additionalgroups">Additional groups</label><select id="additionalgroups" name="additionalgroups" multiple size="6">{% for g in groups %}<option value="{{ g[0] }}"{% if g[0] in user.additionalgroups %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select></div>
+  {% endif %}
+  <div class="form-row"><label for="displaygroup">Display group</label><select id="displaygroup" name="displaygroup"><option value="0">Primary group</option>{% for g in groups %}<option value="{{ g[0] }}"{% if g[0] == user.displaygroup %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select></div>
+  <div class="box-sub">Profile</div>
+  <div class="form-row"><label for="usertitle">User title</label><input id="usertitle" type="text" name="usertitle" value="{{ user.usertitle }}"></div>
+  <div class="form-row"><label for="website">Website</label><input id="website" type="text" name="website" value="{{ user.website }}"></div>
+  <div class="form-row"><label for="signature">Signature</label><textarea id="signature" name="signature" rows="3">{{ user.signature }}</textarea></div>
+  <div class="form-row"><label for="timezone">Timezone</label><input id="timezone" type="text" name="timezone" value="{{ user.timezone }}" placeholder="Board default"></div>
+  {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
+  <div class="form-row"><span class="label"><strong>Avatar</strong></span><div>{% if user.avatar %}<img src="{{ user.avatar }}" alt="" width="64" height="64" style="border-radius:6px"> {% endif %}<label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div></div>
+  <div class="box-sub">Statistics</div>
+  <div class="form-row"><label for="postnum">Post count</label><input id="postnum" type="number" name="postnum" value="{{ user.postnum }}" style="width:120px"></div>
+  <div class="form-row"><label for="threadnum">Thread count</label><input id="threadnum" type="number" name="threadnum" value="{{ user.threadnum }}" style="width:120px"></div>
+  {% if not user.is_system %}
+  <div class="box-sub">Moderation</div>
+  <div class="form-row"><span class="label"><strong>Restrictions</strong></span><div class="checks">
+    <label><input type="checkbox" name="suspendposting" value="1"{% if user.suspendposting %} checked{% endif %}> Suspend posting for <input type="number" name="suspendposting_days" value="7" min="0" style="width:70px"> days</label>
+    <label><input type="checkbox" name="moderateposts" value="1"{% if user.moderateposts %} checked{% endif %}> Moderate posts for <input type="number" name="moderateposts_days" value="7" min="0" style="width:70px"> days</label>
+    <label><input type="checkbox" name="suspendsignature" value="1"{% if user.suspendsignature %} checked{% endif %}> Suspend signature for <input type="number" name="suspendsignature_days" value="7" min="0" style="width:70px"> days</label>
+  </div></div>
+  {% endif %}
+  <div class="form-row"><label for="usernotes">Admin notes</label><textarea id="usernotes" name="usernotes" rows="3">{{ usernotes }}</textarea></div>
+  {% if not user.is_system %}<div class="form-row"><span class="label"><strong>Security</strong></span><div class="checks">{% if has2fa %}<label><input type="checkbox" name="reset2fa" value="1"> Turn off this user's two-factor authentication</label>{% endif %}<label><input type="checkbox" name="logoutall" value="1"> Log this user out everywhere</label></div></div>{% endif %}
+  <div class="box-foot"><button class="btn">Save user</button></div>
+</form>
+<div class="two-col">
+<section class="box"><div class="box-head"><h2>IP addresses</h2></div><div class="kv"><div>Registration</div><div>{{ regip }}</div><div>Last</div><div>{{ lastip }}</div>{% for ip in ips %}<div>Posted from</div><div><a href="/modcp/ipsearch?ip={{ ip[0]|urlenc }}">{{ ip[0] }}</a> <span class="small muted">{{ ip[1]|date }}</span></div>{% endfor %}</div></section>
+<section class="box"><div class="box-head"><h2>Active logins</h2></div><table class="grid"><tbody>{% for l in logins %}<tr><td class="small">{{ l[0]|date }}</td><td class="small">{{ l[1] }}</td><td class="small">{{ l[2]|truncate_chars(40) }}</td></tr>{% else %}<tr><td class="empty">None</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% if not user.is_system %}
+<div class="two-col">
+<form method="post" action="/admin/users/{{ user.uid }}/ban" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>{{ 'Ban' if not banned else 'Banned' }}</h2></div>
+  {% if banned %}<div class="box-body"><input type="hidden" name="lift" value="1"><button class="btn secondary small">Lift ban</button></div>
+  {% else %}<div class="box-body" style="display:grid;gap:6px"><input type="text" name="reason" placeholder="Reason"><select name="days" aria-label="Length">{% for d in [(1,'1 day'),(7,'1 week'),(30,'1 month'),(365,'1 year'),(0,'Permanent')] %}<option value="{{ d[0] }}">{{ d[1] }}</option>{% endfor %}</select><button class="btn danger small">Ban user</button></div>{% endif %}
+</form>
+<form method="post" action="/admin/users/{{ user.uid }}/delete" class="box js-confirm" data-confirm="Delete this user permanently?">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Delete</h2></div>
+  <div class="box-body" style="display:grid;gap:6px"><label class="check"><input type="checkbox" name="deletecontent" value="1"> Also delete all threads and posts</label><button class="btn danger small">Delete user</button></div>
+</form>
+</div>
+{% endif %}
+{% endblock %}

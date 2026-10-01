@@ -1,0 +1,12 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<div class="two-col">
+{% for l in [('buddy','Friends', buddies, 'removebuddy'), ('ignore','Ignored users', ignored, 'removeignore')] %}
+<section class="box"><div class="box-head"><h2>{{ l[1] }}</h2></div>
+  <table class="grid"><tbody>{% for u in l[2] %}<tr><td><a href="{{ url_user(u.uid, u.username) }}">{{ u.formatted|safe }}</a></td><td class="num"><form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="list" value="{{ l[3] }}"><input type="hidden" name="uid" value="{{ u.uid }}"><button class="btn secondary small" type="submit">Remove</button></form></td></tr>{% else %}<tr><td class="empty">Nobody here yet.</td></tr>{% endfor %}</tbody></table>
+  <form method="post" action="/usercp/lists/add" class="box-foot actions" style="margin:0">{{ m.csrf_field() }}<input type="hidden" name="list" value="{{ l[0] }}"><input type="text" name="usernames" placeholder="Usernames, comma separated" aria-label="Usernames" style="flex:1"><button class="btn small" type="submit">Add</button></form>
+</section>
+{% endfor %}
+</div>
+{% endblock %}

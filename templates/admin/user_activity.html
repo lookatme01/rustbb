@@ -1,0 +1,17 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn secondary small" href="/admin/users/{{ user.uid }}">Back to {{ user.username }}</a></div>
+<section class="box">
+  <div class="box-head"><h2>Account activity for {{ user.username }}</h2>
+    <nav class="seg right" aria-label="Filter events">
+      {% for k in [('', 'All'), ('security', 'Sign-ins & security'), ('account', 'Account changes'), ('staff', 'Staff actions')] %}<a href="/admin/users/{{ user.uid }}/activity?kind={{ k[0] }}"{% if kind == k[0] %} aria-current="true"{% endif %}>{{ k[1] }}</a>{% endfor %}
+    </nav>
+  </div>
+  <table class="grid"><thead><tr><th>When</th><th>Event</th><th>By</th><th>IP</th><th>Client</th></tr></thead><tbody>
+  {% for e in events %}<tr{% if e.action in ['login_failed','login_locked','login_2fa_failed'] %} class="row-alert"{% endif %}><td class="small">{{ e.dateline|date }}</td><td>{{ e.label }}{% if e.details.reason %} <span class="small muted">— {{ e.details.reason }}</span>{% endif %}</td><td class="small">{% if e.actor_name %}<a href="/admin/users/{{ e.actor }}">{{ e.actor_name }}</a>{% else %}<span class="muted">owner</span>{% endif %}</td><td class="small"><a href="/modcp/ipsearch?ip={{ e.ip|urlenc }}">{{ e.ip }}</a></td><td class="small" title="{{ e.useragent }}">{{ e.device }}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty">No events recorded for this account.</td></tr>{% endfor %}
+  </tbody></table>
+  {{ m.pagination(pagination) }}
+</section>
+{% endblock %}

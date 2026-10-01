@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="actions">
+  <a class="btn secondary small" href="/calendar/{{ cal.cid }}?year={{ prev[0] }}&month={{ prev[1] }}">&lsaquo; Previous</a>
+  <h1 style="margin:0 8px;font-size:1.3rem">{{ month_name }}</h1>
+  <a class="btn secondary small" href="/calendar/{{ cal.cid }}?year={{ next[0] }}&month={{ next[1] }}">Next &rsaquo;</a>
+  <span class="spacer"></span>
+  {% if calendars|length > 1 %}<form method="get" action="/calendar" class="js-calpick"><select name="cid" aria-label="Calendar" class="js-calselect">{% for c in calendars %}<option value="{{ c.cid }}"{% if c.cid == cal.cid %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></form>{% endif %}
+  {% if can_add %}<a class="btn small" href="/calendar/{{ cal.cid }}/addevent">Add event</a>{% endif %}
+</div>
+<div class="box" style="overflow-x:auto">
+<table class="calendar">
+  <thead><tr>{% for d in dow %}<th scope="col">{{ d }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for w in weeks %}<tr>{% for d in w %}
+    <td class="{% if d.other %}other{% endif %}{% if d.today %} today{% endif %}">
+      <a class="daynum" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">{{ d.day }}</a>{% if loop.first %} <a class="small faint" href="/calendar/{{ cal.cid }}/week/{{ d.date }}" title="Week view">wk</a>{% endif %}
+      {% for e in d.events %}<a class="event{% if not e.visible %} faint{% endif %}" href="/calendar/event/{{ e.eid }}">{{ e.name }}</a>{% endfor %}
+      {% if d.more %}<a class="event faint" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">+{{ d.more }} more</a>{% endif %}
+      {% if d.birthdays %}<a class="event small muted" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">🎂 {{ d.birthdays }} birthday{{ '' if d.birthdays == 1 else 's' }}</a>{% endif %}
+    </td>{% endfor %}</tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

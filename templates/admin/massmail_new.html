@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/massmail/new" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>New mass mail</h2></div>
+  <div class="form-row"><label for="subject">Subject</label><input id="subject" type="text" name="subject" required></div>
+  <div class="form-row"><label for="message">Message</label><div><textarea id="message" name="message" rows="10" required></textarea><span class="help">Placeholders: {username}, {bbname}, {bburl}. Private messages may use MyCode.</span></div></div>
+  <div class="form-row"><span class="label"><strong>Send as</strong></span><div class="checks" style="flex-direction:row;gap:16px"><label><input type="radio" name="type" value="email" checked> Email</label><label><input type="radio" name="type" value="pm"> Private message</label></div></div>
+  <div class="box-sub">Recipients</div>
+  <div class="form-row"><label for="groups">In groups</label><div><select id="groups" name="groups" multiple size="6">{% for g in groups %}<option value="{{ g[0] }}">{{ g[1] }}</option>{% endfor %}</select><span class="help">None selected = all groups.</span></div></div>
+  <div class="form-row"><label for="minposts">Minimum posts</label><input id="minposts" type="number" name="minposts" value="0" style="width:100px"></div>
+  <div class="form-row"><label for="regdays">Registered at least (days)</label><input id="regdays" type="number" name="regdays" value="0" style="width:100px"></div>
+  <div class="form-row"><span class="label"><strong>Consent</strong></span><label class="check"><input type="checkbox" name="respect" value="1" checked> Only members who accept emails from administrators (always on for email)</label></div>
+  <div class="box-foot"><button class="btn">Queue mailing</button></div>
+</form>
+{% endblock %}

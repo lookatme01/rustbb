@@ -1,0 +1,12 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{{ m.errors_box(errors) }}
+{% if not allowed %}<div class="notice warn">You are not currently allowed to use a signature.</div>{% endif %}
+{% if preview %}<section class="box"><div class="box-head"><h2>Preview</h2></div><div class="box-body post-body">{{ preview|safe }}</div></section>{% endif %}
+<form method="post" action="/usercp/signature" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Signature</h2><span class="desc">Shown below your posts. MyCode {{ 'is' if bb.sigmycode == '1' else 'is not' }} allowed.</span></div>
+  <div class="box-body"><textarea name="signature" rows="6" maxlength="{{ bb.siglength or 5000 }}">{{ signature }}</textarea><p class="small muted">Maximum {{ bb.siglength }} characters{% if bb.maxsiglines != '0' %} and {{ bb.maxsiglines }} lines{% endif %}.</p></div>
+  <div class="box-foot actions" style="margin:0"><button class="btn" type="submit"{% if not allowed %} disabled{% endif %}>Save signature</button><button class="btn secondary" type="submit" name="preview" value="1">Preview</button></div>
+</form>
+{% endblock %}

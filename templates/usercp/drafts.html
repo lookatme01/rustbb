@@ -1,0 +1,11 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/drafts" class="box">{{ m.csrf_field() }}
+<div class="box-head"><h2>Saved drafts</h2></div>
+<table class="grid"><thead><tr><th>Draft</th><th>Saved</th><th></th></tr></thead><tbody>
+{% for d in drafts %}<tr><td><a href="{{ d.url }}"><strong>{{ d.subject }}</strong></a><br><span class="small muted">{{ d.context }}</span></td><td class="small">{{ d.dateline|date }}</td><td class="num"><input type="checkbox" name="ids" value="{{ d.did }}" aria-label="Select"></td></tr>{% else %}<tr><td colspan="3" class="empty">You have no saved drafts.</td></tr>{% endfor %}
+</tbody></table>
+{% if drafts %}<div class="box-foot"><button class="btn secondary small" type="submit">Delete selected</button></div>{% endif %}
+</form>
+{% endblock %}

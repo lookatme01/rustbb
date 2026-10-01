@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/forums/{{ forum.fid }}/permissions/{{ group.gid }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>{{ group.title }} in {{ forum.name }}</h2></div>
+  <div class="box-body"><label class="check"><input type="checkbox" name="inherit" value="1"{% if not custom %} checked{% endif %}> Inherit (no custom permissions for this group here)</label></div>
+  {% set ns = namespace(sec='') %}
+  {% for it in items %}{% if it.section != ns.sec %}{% set ns.sec = it.section %}<div class="box-sub">{{ it.section }}</div>{% endif %}
+  <div class="form-row"><span class="label">{{ it.title }}</span><label class="check"><input type="checkbox" name="{{ it.name }}" value="1"{% if it.value %} checked{% endif %}> Yes</label></div>{% endfor %}
+  <div class="box-foot"><button class="btn">Save</button> <a href="/admin/forums/{{ forum.fid }}/permissions">Back</a></div>
+</form>
+{% endblock %}

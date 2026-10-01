@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box" style="max-width:640px"><div class="box-head"><h2>You have been banned</h2></div><div class="box-body">
+<p>Your account has been banned from {{ bb.bbname }}.</p>
+{% if reason %}<p><strong>Reason:</strong> {{ reason }}</p>{% endif %}
+<p><strong>Ban lifts:</strong> {% if lifted %}{{ lifted|date('datetime') }}{% else %}Never{% endif %}</p>
+<form method="post" action="/member/logout"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary" type="submit">Log out</button></form>
+</div></section>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Promotion log</h2></div>
+<table class="grid"><thead><tr><th>Promotion</th><th>User</th><th>New group</th><th>Date</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.title }}</td><td><a href="/admin/users/{{ r.uid }}">{{ r.username }}</a></td><td>{{ r.new }} ({{ r.kind }})</td><td class="small">{{ r.dateline|date }}</td></tr>{% else %}<tr><td colspan="4" class="empty">No promotions yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<p class="muted">Plugins are <a href="https://rhai.rs/book/" rel="noopener" target="_blank">Rhai</a> scripts placed in <code>{{ dir }}/</code>. Each function named after a hook runs when that event happens, e.g. <code>fn post_created(data) {}</code> or the filter <code>fn parse_message(html) { html }</code>. Restart the server to load new plugins.</p>
+<section class="box"><div class="box-head"><h2>Loaded plugins</h2></div>
+<table class="grid"><thead><tr><th>Plugin</th><th>Hooks</th><th>Info</th></tr></thead><tbody>
+{% for p in list %}<tr><td><strong>{{ p.name }}</strong><br><span class="small muted">{{ p.file }}</span></td><td class="small">{{ p.hooks|join(", ") }}</td><td class="small"><code>{{ p.info }}</code></td></tr>{% else %}<tr><td colspan="3" class="empty">No plugins are installed.</td></tr>{% endfor %}
+</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Available hooks</h2></div><div class="box-body small">
+<code>thread_created(data)</code>, <code>post_created(data)</code>, <code>user_registered(data)</code> — actions receiving a map with ids.<br>
+<code>parse_message(html) → html</code> — filter applied to every parsed message.
+</div></section>
+{% endblock %}

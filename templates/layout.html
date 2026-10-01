@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="{{ _lang or 'en' }}" data-colormode="{{ colormode }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if title and title != bb.bbname %}{{ title }} — {% endif %}{{ bb.bbname }}</title>
+{% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
+<meta name="csrf-token" content="{{ csrf }}">
+<link rel="stylesheet" href="{{ asset('css/rbb.css') }}">
+{% if brand %}<style>:root{--brand:{{ brand }}}</style>{% endif %}
+{% if theme and theme_css %}<link rel="stylesheet" href="/css/theme/{{ theme.tid }}?v={{ stylesheet_version }}">{% endif %}
+<meta name="theme-color" content="{{ brand or '#5b5bf6' }}">
+<link rel="icon" href="{{ asset('images/favicon.svg') }}" type="image/svg+xml">
+{% if bb.enablesyndication == '1' %}<link rel="alternate" type="application/rss+xml" title="{{ bb.bbname }} — latest threads" href="/syndication">{% endif %}
+{% block head %}{% endblock %}
+<script src="{{ asset('js/rbb.js') }}" defer></script>
+</head>
+<body class="{% block bodyclass %}{% endblock %}" data-uid="{{ me.uid if me else 0 }}" style="{% block line %}{% endblock %}">
+<a class="sr-only" href="#content">{{ t("Skip to content") }}</a>
+{% macro tab(href, label, on) %}<a href="{{ href }}"{% if on %} aria-current="page"{% endif %}>{{ label }}</a>{% endmacro %}
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="logo" href="/"><img src="{{ theme.props.logo if theme and theme.props.logo else '/static/images/logo.svg' }}" alt="" width="30" height="30"><span>{{ bb.bbname }}</span></a>
+    <nav class="tabs" aria-label="Main">
+      {{ tab('/', t("Forums"), path == '/' or path.startswith('/forum') or path.startswith('/thread')) }}
+      {% if perms.cansearch %}{{ tab('/search/new' if me else '/search/today', t("What's new"), path.startswith('/search/new') or path.startswith('/search/today')) }}{% endif %}
+      {% if bb.portal == '1' %}{{ tab('/portal', t("Portal"), path.startswith('/portal')) }}{% endif %}
+      {% if perms.canviewmemberlist and bb.enablememberlist == '1' %}{{ tab('/members', t("Members"), path.startswith('/members') or path.startswith('/user/') or path.startswith('/team')) }}{% endif %}
+      {% if perms.canviewcalendar and bb.enablecalendar == '1' %}{{ tab('/calendar', t("Calendar"), path.startswith('/calendar')) }}{% endif %}
+      {% if bb.enablehelp == '1' %}{{ tab('/help', t("Help"), path.startswith('/help')) }}{% endif %}
+    </nav>
+    {% if perms.cansearch %}
+    <form class="quicksearch" action="/search/quick" method="get" role="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
+      <input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}">
+    </form>
+    {% endif %}
+    <div class="account">
+    {% if me %}
+      {% if bb.enablealerts == '1' %}<a class="icon-btn" href="/usercp/alerts" id="alerts-link" title="{{ t('Alerts') }}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a5 5 0 0 0-5 5v2.7L3.5 13.5v1h13v-1L15 10.2V7.5a5 5 0 0 0-5-5zM8 15.5a2 2 0 0 0 4 0z" fill="currentColor"/></svg><span class="sr-only">{{ t("Alerts") }}</span><span class="badge" id="alert-count"{% if not me.unreadalerts %} hidden{% endif %}>{{ me.unreadalerts }}</span></a>{% endif %}
+      {% if bb.enablepms == '1' and perms.canusepms %}<a class="icon-btn" href="/pm" title="{{ t('Messages') }}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm.5 2.1v7.4h13V6.6L10 11 3.5 6.6zM4.7 6 10 9.6 15.3 6z" fill="currentColor"/></svg><span class="sr-only">{{ t("Messages") }}</span>{% if me.unreadpms %}<span class="badge">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
+      <details class="usermenu">
+        <summary>{% if me.avatar and me.showavatars %}<img src="{{ me.avatar }}" alt="" width="30" height="30">{% else %}<span class="avatar-mini" aria-hidden="true">{{ me.username[:1]|upper }}</span>{% endif %}<span class="uname">{{ me.username }}</span>{% if (modqueue_count or report_count) and can_modcp %}<span class="badge">{{ modqueue_count + report_count }}</span>{% endif %}</summary>
+        <div class="menu" role="menu">
+          <a href="{{ url_user(me.uid, me.username) }}">{{ t("Your profile") }}</a>
+          <a href="/usercp">{{ t("User CP") }}</a>
+          <a href="/usercp/activity">{{ t("Account activity") }}</a>
+          <a href="/usercp/subscriptions">{{ t("Subscriptions") }}</a>
+          {% if can_modcp %}<a href="/modcp">{{ t("Mod CP") }}{% if modqueue_count or report_count %} <span class="badge">{{ modqueue_count + report_count }}</span>{% endif %}</a>{% endif %}
+          {% if is_admin %}<a href="/admin">{{ t("Admin CP") }}</a>{% endif %}
+          <form method="post" action="/member/logout"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button type="submit">{{ t("Log Out") }}</button></form>
+        </div>
+      </details>
+    {% else %}
+      <a class="btn ghost small" href="/member/login?return_to={{ current_url|urlenc }}">{{ t("Log in") }}</a>
+      {% if bb.disableregs != '1' %}<a class="btn small" href="/member/register">{{ t("Register") }}</a>{% endif %}
+    {% endif %}
+    </div>
+  </div>
+</header>
+<main id="content" class="wrap">
+  {% if breadcrumb or (title and title != bb.bbname) %}
+  <nav class="navline" aria-label="Breadcrumb">
+    <a href="/">{{ bb.bbname }}</a>
+    {% for crumb in breadcrumb or [] %}<span class="sep">/</span><a href="{{ crumb[1] }}">{{ crumb[0] }}</a>{% endfor %}
+    {% if title and title != bb.bbname and not (breadcrumb and breadcrumb[-1][0] == title) %}<span class="sep">/</span><span class="current">{{ title }}</span>{% endif %}
+  </nav>
+  {% endif %}
+  {% if flash %}<div class="notice ok" role="status">{{ flash }}</div>{% endif %}
+  {% if bb.boardclosed == '1' and perms.canviewboardclosed %}<div class="notice warn">The board is currently closed. Only staff can see it.</div>{% endif %}
+  {% if me and me.usergroup == 5 %}<div class="notice warn">Your account is awaiting activation. <a href="/member/resendactivation">Resend the activation email</a></div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    {% if bb.contact == '1' %}<a href="/contact">{{ t("Contact Us") }}</a>{% endif %}
+    <a href="/rules">{{ t("Rules") }}</a>
+    <a href="/privacy">{{ t("Privacy") }}</a>
+    {% if bb.enablearchive == '1' %}<a href="/archive">{{ t("Lite mode") }}</a>{% endif %}
+    {% if bb.enablesyndication == '1' %}<a href="/syndication">RSS</a>{% endif %}
+    {% if bb.statsenabled == '1' %}<a href="/stats">{{ t("Statistics") }}</a>{% endif %}
+    {% if bb.enableshowteam == '1' %}<a href="/team">{{ t("Forum Team") }}</a>{% endif %}
+    <span class="spacer" style="flex:1"></span>
+    {% if themes|length > 1 %}
+    <form method="post" action="/theme/0" class="js-theme-form"><input type="hidden" name="my_post_key" value="{{ csrf }}">
+      <label class="sr-only" for="theme-select">Theme</label>
+      <select id="theme-select" name="tid" class="js-autosubmit">{% for t_ in themes %}<option value="{{ t_[0] }}"{% if theme and theme.tid == t_[0] %} selected{% endif %}>{{ t_[1] }}</option>{% endfor %}</select>
+    </form>
+    {% endif %}
+    <form method="post" action="/colormode"><input type="hidden" name="my_post_key" value="{{ csrf }}">
+      <label class="sr-only" for="mode-select">Color mode</label>
+      <select id="mode-select" name="mode" class="js-autosubmit">
+        {% for m in [('auto','Auto'),('light','Light'),('dark','Dark')] %}<option value="{{ m[0] }}"{% if colormode == m[0] %} selected{% endif %}>{{ m[1] }}</option>{% endfor %}
+      </select>
+    </form>
+    {% if languages|length > 1 %}
+    <form method="post" action="/lang/x" class="js-lang-form"><input type="hidden" name="my_post_key" value="{{ csrf }}">
+      <label class="sr-only" for="lang-select">Language</label>
+      <select id="lang-select" name="code" class="js-autosubmit">{% for l in languages %}<option value="{{ l[0] }}"{% if (_lang or 'en') == l[0] %} selected{% endif %}>{{ l[1] }}</option>{% endfor %}</select>
+    </form>
+    {% endif %}
+    <span class="powered">Powered by rbb</span>
+  </div>
+</footer>
+{% if perms.cancp %}<!--rbb:debug-->{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

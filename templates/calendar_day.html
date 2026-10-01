@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="actions"><a class="btn secondary small" href="/calendar/{{ cal.cid }}/day/{{ prev }}">&lsaquo; Previous day</a><a class="btn secondary small" href="/calendar/{{ cal.cid }}/day/{{ next }}">Next day &rsaquo;</a><a class="btn secondary small" href="/calendar/{{ cal.cid }}">Month view</a><span class="spacer"></span>{% if can_add %}<a class="btn small" href="/calendar/{{ cal.cid }}/addevent?date={{ date }}">Add event</a>{% endif %}</div>
+{% if birthdays %}<section class="box"><div class="box-head"><h2>Birthdays</h2></div><div class="box-body">{% for b in birthdays %}<a href="{{ url_user(b[0]) }}">{{ b[1]|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></section>{% endif %}
+{% for e in events %}
+<section class="box"><div class="box-head"><h2><a href="/calendar/event/{{ e.eid }}">{{ e.name }}</a></h2>{% if e.usingtime %}<span class="right">{{ e.starttime|date('time') }}{% if e.endtime %} – {{ e.endtime|date('time') }}{% endif %}</span>{% else %}<span class="right">All day</span>{% endif %}</div><div class="box-body post-body">{{ e.html|safe }}</div></section>
+{% else %}<div class="box"><div class="empty">No events on this day.</div></div>{% endfor %}
+{% endblock %}

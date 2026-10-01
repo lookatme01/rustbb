@@ -1,0 +1,5 @@
+{% extends "layout.html" %}
+{% block content %}
+<p><a href="{{ thread_url }}">Back to “{{ thread.subject }}”</a></p>
+{% include "poll.html" %}
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<h1>Register at {{ bb.bbname }}</h1>
+{{ m.errors_box(errors) }}
+<form method="post" action="/member/register" class="box">
+  {{ m.csrf_field() }}<input type="hidden" name="formtoken" value="{{ formtoken }}">
+  <div class="box-head"><h2>Account details</h2></div>
+  <div class="form-row"><label for="username">Username</label><div><input id="username" name="username" type="text" value="{{ form.username }}" maxlength="{{ bb.maxnamelength }}" autocomplete="username" required class="js-checkname"><span class="help js-name-status">{{ bb.minnamelength }}–{{ bb.maxnamelength }} characters.</span></div></div>
+  {% if bb.regtype != 'randompass' %}
+  <div class="form-row"><label for="password">Password</label><div><input id="password" name="password" type="password" autocomplete="new-password" required minlength="{{ bb.minpasswordlength }}"><span class="help">At least {{ bb.minpasswordlength }} characters{% if bb.requirecomplexpasswords == '1' %}, including upper and lower case letters and a number{% endif %}.</span></div></div>
+  <div class="form-row"><label for="password2">Confirm password</label><input id="password2" name="password2" type="password" autocomplete="new-password" required></div>
+  {% endif %}
+  <div class="form-row"><label for="email">Email</label><input id="email" name="email" type="email" value="{{ form.email }}" autocomplete="email" required></div>
+  <div class="form-row"><label for="email2">Confirm email</label><input id="email2" name="email2" type="email" value="{{ form.email2 }}" autocomplete="email" required></div>
+  {% if honeypot %}<div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></div>{% endif %}
+  <div class="form-row"><label for="timezone">Timezone</label><select id="timezone" name="timezone" class="js-tz"><option value="">Board default ({{ bb.timezone }})</option>{% for tz in timezones %}<option value="{{ tz }}"{% if form.timezone == tz %} selected{% endif %}>{{ tz }}</option>{% endfor %}</select></div>
+  {% if usereferrals %}<div class="form-row"><label for="referrer">Referred by</label><div><input id="referrer" name="referrer" type="text" value="{{ form.referrer }}"><span class="help">Optional: the username of the member who referred you.</span></div></div>{% endif %}
+  <div class="form-row"><span class="label"><strong>Privacy</strong></span><div class="checks"><label><input type="checkbox" name="hideemail" value="1"{% if form.hideemail %} checked{% endif %}> Hide my email address from other members</label></div></div>
+  {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
+  {% if question %}<div class="form-row"><label for="answer">{{ question[1] }}</label><div><input type="hidden" name="question_id" value="{{ question[0] }}"><input id="answer" name="answer" type="text" required><span class="help">Answering this question helps us stop spam bots.</span></div></div>{% endif %}
+  {% if captcha %}<div class="form-row"><span class="label"><strong>Verification</strong></span><div>{% include "captcha_field.html" %}</div></div>{% endif %}
+  <div class="form-row"><span class="label"><strong>Forum rules</strong></span><div><div class="post-body" style="max-height:220px;overflow:auto;border:1px solid var(--rule);border-radius:4px;padding:10px;font-size:.95rem">{{ tos|safe }}</div><label class="check" style="margin-top:8px"><input type="checkbox" name="agree" value="1" required> I agree to the forum rules</label></div></div>
+  <div class="box-foot"><button class="btn" type="submit">Create account</button></div>
+</form>
+{% endblock %}

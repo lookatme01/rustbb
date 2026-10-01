@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div style="max-width:520px">
+{{ m.errors_box(errors) }}
+<form method="post" action="/member/login/2fa" class="box">
+  {{ m.csrf_field() }}<input type="hidden" name="pending" value="{{ pending }}"><input type="hidden" name="return_to" value="{{ return_to }}">
+  <div class="box-head"><h2>Two-factor authentication</h2></div>
+  <div class="form-row"><label for="code">Authentication code</label><div><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus><span class="help">Enter the 6-digit code from your authenticator app.</span></div></div>
+  <div class="box-foot"><button class="btn" type="submit">Verify</button></div>
+</form>
+</div>
+{% endblock %}

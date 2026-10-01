@@ -1,0 +1,11 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Database backup</h2></div>
+<div class="box-body">
+{% if available %}<p>Download a full backup of the database in PostgreSQL custom format. Restore it with <code>pg_restore --clean -d &lt;database&gt; backup.dump</code>.</p>
+<form method="post" action="/admin/tools/backup">{{ m.csrf_field() }}<button class="btn">Download backup</button></form>
+{% else %}<p><code>pg_dump</code> was not found on this server. Install the PostgreSQL client tools or set <code>RBB_PG_DUMP</code> to its path. For large boards, prefer scheduled backups with <code>pg_dump</code> or continuous archiving (WAL) on the database server.</p>{% endif %}
+<p class="small muted">Uploaded files live in the upload directory and should be backed up separately.</p>
+</div></section>
+{% endblock %}

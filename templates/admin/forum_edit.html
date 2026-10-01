@@ -1,0 +1,40 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% macro yn(name, label, val) %}<label class="check"><input type="checkbox" name="{{ name }}" value="1"{% if val %} checked{% endif %}> {{ label }}</label>{% endmacro %}
+{% block acp %}
+{% set f = forum %}
+<form method="post" action="/admin/forums/edit" class="box">{{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ f.fid if f else 0 }}">
+  <div class="box-head"><h2>{{ title }}</h2></div>
+  <div class="form-row"><label for="name">Name</label><input id="name" type="text" name="name" value="{{ f.name if f else '' }}" required></div>
+  <div class="form-row"><label for="description">Description</label><div><textarea id="description" name="description" rows="2">{{ f.description if f else '' }}</textarea><span class="help">HTML allowed.</span></div></div>
+  <div class="form-row"><label for="type">Type</label><select id="type" name="type"><option value="f"{% if (f and f.type == 'f') or (not f and kind == 'f') %} selected{% endif %}>Forum</option><option value="c"{% if (f and f.type == 'c') or (not f and kind == 'c') %} selected{% endif %}>Category</option></select></div>
+  <div class="form-row"><label for="pid">Parent</label><select id="pid" name="pid"><option value="0">None (top level)</option>{% for p in parents %}<option value="{{ p[0] }}"{% if (f and f.pid == p[0]) or (not f and pid == p[0]) %} selected{% endif %}>{{ "— " * p[2] }}{{ p[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="disporder">Display order</label><input id="disporder" type="number" name="disporder" value="{{ f.disporder if f else 1 }}" style="width:100px"></div>
+  <div class="form-row"><label for="linkto">Redirect link</label><div><input id="linkto" type="url" name="linkto" value="{{ f.linkto if f else '' }}"><span class="help">Makes this a link to another site instead of a forum.</span></div></div>
+  <div class="form-row"><span class="label"><strong>Access</strong></span><div class="checks">{{ yn('active', 'Active (visible)', not f or f.active) }}{{ yn('open', 'Open for new posts', not f or f.open) }}{{ yn('showinjump', 'Show in forum jump', not f or f.showinjump) }}</div></div>
+  <div class="form-row"><label for="password">Forum password</label><div><input id="password" type="text" name="password" placeholder="{{ '(set — leave empty to keep)' if password_set else 'None' }}">{% if password_set %}<label class="check"><input type="checkbox" name="clearpassword" value="1"> Remove password</label>{% endif %}</div></div>
+  <div class="form-row"><span class="label"><strong>Posting</strong></span><div class="checks">
+    {{ yn('allowmycode', 'Allow MyCode', not f or f.allowmycode) }}{{ yn('allowsmilies', 'Allow smilies', not f or f.allowsmilies) }}{{ yn('allowimgcode', 'Allow [img]', not f or f.allowimgcode) }}
+    {{ yn('allowvideocode', 'Allow [video]', not f or f.allowvideocode) }}{{ yn('allowhtml', 'Allow HTML (sanitized)', f and f.allowhtml) }}{{ yn('allowpicons', 'Allow post icons', not f or f.allowpicons) }}
+    {{ yn('allowtratings', 'Allow thread ratings', not f or f.allowtratings) }}{{ yn('usepostcounts', 'Posts count towards post count', not f or f.usepostcounts) }}{{ yn('usethreadcounts', 'Threads count towards thread count', not f or f.usethreadcounts) }}
+    {{ yn('requireprefix', 'Require a thread prefix', f and f.requireprefix) }}
+  </div></div>
+  <div class="form-row"><label for="style">Theme</label><div><select id="style" name="style"><option value="0">Use default / user choice</option>{% for t in all_themes %}<option value="{{ t.tid }}"{% if f and f.style == t.tid %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>{{ yn('overridestyle', "Override users' theme choice", f and f.overridestyle) }}</div></div>
+  <div class="form-row"><span class="label"><strong>Thread listing defaults</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap">
+    <select name="defaultsortby" aria-label="Sort by">{% for o in [('','Last post'),('started','Start date'),('subject','Subject'),('replies','Replies'),('views','Views')] %}<option value="{{ o[0] }}"{% if f and f.defaultsortby == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+    <select name="defaultsortorder" aria-label="Order"><option value="">Default</option><option value="desc"{% if f and f.defaultsortorder == 'desc' %} selected{% endif %}>Descending</option><option value="asc"{% if f and f.defaultsortorder == 'asc' %} selected{% endif %}>Ascending</option></select>
+    <select name="defaultdatecut" aria-label="Date cut">{% for d in [(0,'All threads'),(1,'Last day'),(7,'Last week'),(30,'Last month'),(365,'Last year')] %}<option value="{{ d[0] }}"{% if f and f.defaultdatecut == d[0] %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}</select>
+  </div></div>
+  <div class="form-row"><span class="label"><strong>Forum rules</strong></span><div style="display:grid;gap:6px">
+    <select name="rulestype" aria-label="Rules display">{% for o in [(0,"Don't show"),(1,'Show above threads'),(2,'Show as a collapsed link')] %}<option value="{{ o[0] }}"{% if f and f.rulestype == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+    <input type="text" name="rulestitle" value="{{ f.rulestitle if f else '' }}" placeholder="Rules title">
+    <textarea name="rules" rows="4" placeholder="Rules (MyCode)">{{ f.rules if f else '' }}</textarea>
+  </div></div>
+  <div class="box-foot actions" style="margin:0"><button class="btn" type="submit">Save forum</button></div>
+</form>
+{% if f %}
+<form method="post" action="/admin/forums/delete" class="box js-confirm" data-confirm="Delete this forum, all subforums and ALL their threads and posts? This cannot be undone.">{{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ f.fid }}">
+  <div class="box-head"><h2>Delete forum</h2></div><div class="box-body actions" style="margin:0"><span class="small muted">Deletes this forum, its subforums and all of their content.</span><button class="btn danger small">Delete forum</button></div>
+</form>
+{% endif %}
+{% endblock %}

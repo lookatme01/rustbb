@@ -1,0 +1,24 @@
+[Unit]
+Description=rbb forum server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rbb
+Group=rbb
+WorkingDirectory=/opt/rbb
+EnvironmentFile=/opt/rbb/.env
+ExecStart=/opt/rbb/rbb serve
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/rbb/uploads
+
+[Install]
+WantedBy=multi-user.target

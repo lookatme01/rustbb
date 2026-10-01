@@ -1,0 +1,20 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/crud/{{ slug }}/save" class="box">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ id }}">
+  <div class="box-head"><h2>{{ title }}</h2><a class="right" href="/admin/crud/{{ slug }}">Back to {{ table_title }}</a></div>
+  {% for f in fields %}
+  <div class="form-row"><label for="f_{{ f.name }}">{{ f.label }}</label><div>
+    {% if f.kind == 'textarea' or f.kind == 'json' %}<textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="{{ 8 if f.kind == 'json' else 4 }}"{% if f.kind == 'json' %} style="font-family:var(--font-code);font-size:.85rem"{% endif %}>{{ f.value }}</textarea>
+    {% elif f.kind == 'bool' %}<label class="check"><input type="checkbox" id="f_{{ f.name }}" name="{{ f.name }}" value="1"{% if f.value == '1' %} checked{% endif %}> Yes</label>
+    {% elif f.kind == 'int' %}<input id="f_{{ f.name }}" type="number" name="{{ f.name }}" value="{{ f.value or 0 }}" style="width:140px">
+    {% elif f.kind == 'select' %}<select id="f_{{ f.name }}" name="{{ f.name }}">{% for o in f.options %}<option value="{{ o[0] }}"{% if f.value == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+    {% elif f.kind == 'groups' %}<select id="f_{{ f.name }}" name="{{ f.name }}" multiple size="6">{% for g in groups %}<option value="{{ g[0] }}"{% if g[0] in f.selected %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
+    {% elif f.kind == 'forums' %}<select id="f_{{ f.name }}" name="{{ f.name }}" multiple size="8">{% for fo in forums %}<option value="{{ fo[0] }}"{% if fo[0] in f.selected %} selected{% endif %}>{{ "— " * fo[2] }}{{ fo[1] }}</option>{% endfor %}</select>
+    {% else %}<input id="f_{{ f.name }}" type="text" name="{{ f.name }}" value="{{ f.value }}">{% endif %}
+    {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
+  </div></div>
+  {% endfor %}
+  <div class="box-foot"><button class="btn" type="submit">Save</button></div>
+</form>
+{% endblock %}

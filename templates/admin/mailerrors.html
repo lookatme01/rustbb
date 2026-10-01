@@ -1,0 +1,13 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="notice {{ 'warn' if handler == 'log' else 'ok' }}">Mail handler: <strong>{{ handler }}</strong>{% if handler == 'log' %} — emails are written to the server log instead of being sent. Configure SMTP in <a href="/admin/settings/mail">Mail Settings</a>.{% endif %}</div>
+<form method="post" action="/admin/tools/testmail" class="actions">{{ m.csrf_field() }}<input type="email" name="to" placeholder="Send a test email to…" aria-label="Test recipient"><button class="btn secondary small">Send test email</button></form>
+<form method="post" action="/admin/tools/mailerrors" class="box">{{ m.csrf_field() }}
+<div class="box-head"><h2>Queued &amp; failed mail</h2></div>
+<table class="grid"><thead><tr><th>To</th><th>Subject</th><th>Queued</th><th class="num">Attempts</th><th>Last error</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="small">{{ r[1] }}</td><td>{{ r[2] }}</td><td class="small">{{ r[3]|date }}</td><td class="num">{{ r[4] }}</td><td class="small muted">{{ r[5]|truncate_chars(80) }}</td></tr>{% else %}<tr><td colspan="5" class="empty">The mail queue is empty.</td></tr>{% endfor %}
+</tbody></table>
+{% if rows %}<div class="box-foot actions" style="margin:0"><button class="btn secondary small" name="action" value="retry">Retry failed</button><button class="btn secondary small" name="action" value="clear">Delete failed</button></div>{% endif %}
+</form>
+{% endblock %}

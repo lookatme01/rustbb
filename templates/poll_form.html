@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="/thread/{{ thread.tid }}/poll/{{ 'edit' if edit else 'new' }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>{{ title }}: {{ thread.subject }}</h2></div>
+  <div class="form-row"><label for="question">Question</label><input id="question" type="text" name="question" value="{{ question }}" maxlength="250" required></div>
+  <div class="form-row"><label for="options">Options</label><div><textarea id="options" name="options" rows="8" required>{{ options }}</textarea><span class="help">One option per line.{% if edit %} Changing an option's text resets its votes.{% endif %}</span></div></div>
+  <div class="form-row"><span class="label"><strong>Settings</strong></span><div class="checks">
+    <label><input type="checkbox" name="multiple" value="1"{% if multiple %} checked{% endif %}> Multiple choice, up to <input type="number" name="maxoptions" value="{{ maxoptions or 0 }}" min="0" style="width:70px"> options (0 = any)</label>
+    <label><input type="checkbox" name="public" value="1"{% if public %} checked{% endif %}> Public (show who voted)</label>
+    {% if edit %}<label><input type="checkbox" name="closed" value="1"{% if closed %} checked{% endif %}> Closed</label>{% endif %}
+    <label>Close in <input type="number" name="timeout" value="{{ timeout }}" min="0" style="width:70px"> days (0 = never)</label>
+  </div></div>
+  <div class="box-foot"><button class="btn" type="submit">Save poll</button></div>
+</form>
+{% endblock %}

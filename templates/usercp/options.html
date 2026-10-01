@@ -1,0 +1,33 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/options" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Options</h2></div>
+  <div class="form-row"><span class="label"><strong>Privacy</strong></span><div class="checks">
+    {% if can_invisible %}<label><input type="checkbox" name="invisible" value="1"{% if user.invisible %} checked{% endif %}> Hide me from the Who's Online list</label>{% endif %}
+    <label><input type="checkbox" name="hideemail" value="1"{% if user.hideemail %} checked{% endif %}> Hide my email address from other members</label>
+    <label><input type="checkbox" name="allownotices" value="1"{% if user.allownotices %} checked{% endif %}> Receive emails from the administrators</label>
+  </div></div>
+  <div class="form-row"><span class="label"><strong>Messaging</strong></span><div class="checks">
+    <label><input type="checkbox" name="receivepms" value="1"{% if user.receivepms %} checked{% endif %}> Receive private messages</label>
+    <label><input type="checkbox" name="receivefrombuddy" value="1"{% if user.receivefrombuddy %} checked{% endif %}> Only from people on my friends list</label>
+    <label><input type="checkbox" name="pmnotice" value="1"{% if user.pmnotice %} checked{% endif %}> Show a notice when I have new messages</label>
+    <label><input type="checkbox" name="pmnotify" value="1"{% if user.pmnotify %} checked{% endif %}> Email me when I receive a new message</label>
+  </div></div>
+  <div class="form-row"><label for="subscriptionmethod">Default thread subscription</label><select id="subscriptionmethod" name="subscriptionmethod">{% for o in [(0,"Don't subscribe"),(1,'Subscribe without notification'),(2,'Instant email notification'),(3,'Private message notification')] %}<option value="{{ o[0] }}"{% if user.subscriptionmethod == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><span class="label"><strong>Display</strong></span><div class="checks">
+    <label><input type="checkbox" name="showsigs" value="1"{% if user.showsigs %} checked{% endif %}> Show signatures</label>
+    <label><input type="checkbox" name="showavatars" value="1"{% if user.showavatars %} checked{% endif %}> Show avatars</label>
+    <label><input type="checkbox" name="showimages" value="1"{% if user.showimages %} checked{% endif %}> Show images in posts</label>
+    <label><input type="checkbox" name="showvideos" value="1"{% if user.showvideos %} checked{% endif %}> Show embedded videos</label>
+    <label><input type="checkbox" name="showquickreply" value="1"{% if user.showquickreply %} checked{% endif %}> Show the quick reply box</label>
+  </div></div>
+  <div class="form-row"><label for="colormode">Color mode</label><select id="colormode" name="colormode">{% for o in [('auto','Follow my device'),('light','Light'),('dark','Dark')] %}<option value="{{ o[0] }}"{% if user.colormode == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="tpp">Threads per page</label><select id="tpp" name="tpp"><option value="0">Board default</option>{% for n in tpp_options %}<option value="{{ n }}"{% if user.tpp == n %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="ppp">Posts per page</label><select id="ppp" name="ppp"><option value="0">Board default</option>{% for n in ppp_options %}<option value="{{ n }}"{% if user.ppp == n %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="timezone">Timezone</label><select id="timezone" name="timezone"><option value="">Board default ({{ bb.timezone }})</option>{% for tz in timezones %}<option value="{{ tz }}"{% if user.timezone == tz %} selected{% endif %}>{{ tz }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="dateformat">Date format</label><div><input id="dateformat" type="text" name="dateformat" value="{{ user.dateformat }}" placeholder="{{ bb.dateformat }}" maxlength="40"><span class="help">strftime format, e.g. <code>%d/%m/%Y</code> or <code>%B %-d, %Y</code>. Leave empty for the board default.</span></div></div>
+  <div class="form-row"><label for="timeformat">Time format</label><input id="timeformat" type="text" name="timeformat" value="{{ user.timeformat }}" placeholder="{{ bb.timeformat }}" maxlength="40"></div>
+  <div class="box-foot"><button class="btn" type="submit">Save options</button></div>
+</form>
+{% endblock %}

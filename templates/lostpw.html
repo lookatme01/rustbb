@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<form method="post" action="/member/lostpw" class="box" style="max-width:520px">
+  <input type="hidden" name="my_post_key" value="{{ csrf }}">
+  <div class="box-head"><h2>Reset your password</h2></div>
+  <div class="box-body"><p>Enter the email address of your account and we'll send you a link to choose a new password.</p><input type="email" name="email" required aria-label="Email address" style="width:100%"></div>
+  <div class="box-foot"><button class="btn" type="submit">Send reset link</button></div>
+</form>
+{% endblock %}

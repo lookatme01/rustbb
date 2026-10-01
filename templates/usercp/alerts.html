@@ -1,0 +1,8 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<section class="box"><div class="box-head"><h2>Alerts</h2>{% if alerts %}<form method="post" action="/usercp/alerts/read" class="right">{{ m.csrf_field() }}<button class="btn secondary small" type="submit">Clear all</button></form>{% endif %}</div>
+{% for a in alerts %}<div class="alert-item{% if a.unread %} unread{% endif %}"><a href="{{ a.url }}">{{ a.text }}</a><span class="when">{{ a.dateline|date }}</span></div>{% else %}<div class="empty">You have no alerts. You'll be alerted when someone quotes or mentions you, replies to your subscriptions, or reacts to your posts.</div>{% endfor %}
+</section>
+{{ m.pagination(pagination) }}
+{% endblock %}

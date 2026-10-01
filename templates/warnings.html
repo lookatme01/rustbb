@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Warnings for <a href="{{ url_user(user.uid, user.username) }}">{{ user.username }}</a></h2><span class="right">Warning level {{ level }}%</span></div>
+<div class="box-body"><div class="meter warnlevel"><span style="width:{{ level }}%"></span></div>{% if can_warn %}<p><a class="btn small" href="/warnings/{{ user.uid }}/warn">Warn {{ user.username }}</a></p>{% endif %}</div>
+<table class="grid"><thead><tr><th>Warning</th><th class="num">Points</th><th>Issued</th><th>By</th><th>Expires</th></tr></thead><tbody>
+{% for w in warnings %}<tr><td><a href="/warning/{{ w[0] }}">{{ w[1] }}</a>{% if w[7] and w[9] %}<br><span class="small muted">for a post in <a href="/post/{{ w[7] }}">{{ w[9] }}</a></span>{% endif %}</td><td class="num">{{ w[2] }}</td><td class="small">{{ w[3]|date('date') }}</td><td>{{ w[8] }}</td><td class="small">{% if w[6] %}Revoked{% elif w[5] %}Expired{% elif w[4] %}{{ w[4]|date('date') }}{% else %}Never{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="empty">This user has no warnings.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,27 @@
+{# textarea named "message" with toolbar; value from form.message #}
+<div class="editor js-editor">
+  <div class="editor-toolbar" role="toolbar" aria-label="Formatting">
+    <button type="button" data-tag="b" title="Bold"><strong>B</strong></button>
+    <button type="button" data-tag="i" title="Italic"><em>I</em></button>
+    <button type="button" data-tag="u" title="Underline"><u>U</u></button>
+    <button type="button" data-tag="s" title="Strikethrough"><s>S</s></button>
+    <span class="sep"></span>
+    <button type="button" data-tag="url" data-prompt="Link URL" title="Link">Link</button>
+    <button type="button" data-tag="img" title="Image">Img</button>
+    <button type="button" data-tag="video" data-arg="youtube" title="Video">Video</button>
+    <button type="button" data-tag="quote" title="Quote">“ ”</button>
+    <button type="button" data-tag="code" title="Code">&lt;/&gt;</button>
+    <button type="button" data-tag="spoiler" title="Spoiler">Spoiler</button>
+    <button type="button" data-tag="list" data-list="1" title="List">• List</button>
+    <span class="sep"></span>
+    <select data-tag="size" aria-label="Font size"><option value="">Size</option><option value="small">Small</option><option value="large">Large</option><option value="x-large">X-Large</option></select>
+    <select data-tag="color" aria-label="Color"><option value="">Color</option><option value="red">Red</option><option value="green">Green</option><option value="blue">Blue</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="gray">Gray</option></select>
+    <select data-tag="align" aria-label="Alignment"><option value="">Align</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+    <button type="button" class="tab js-tab-write active">Write</button>
+    <button type="button" class="js-tab-preview">Preview</button>
+  </div>
+  <textarea name="message" id="message" rows="12" aria-label="Message" required>{{ form.message if form is defined and form else (draft[1] if draft else '') }}</textarea>
+  <div class="live-preview post-body" aria-live="polite"></div>
+  {% if smilies %}<div class="smilie-picker">{% for s in smilies %}<button type="button" class="js-smilie" data-code="{{ s.find }}" title="{{ s.name }}"><img class="smilie" src="{{ s.image }}" alt="{{ s.find }}"></button>{% endfor %}</div>{% endif %}
+  <div class="editor-status"><span class="js-charcount"></span><span class="js-draft-status"></span></div>
+</div>

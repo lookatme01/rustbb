@@ -1,0 +1,11 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/delete" class="box js-confirm" data-confirm="Delete your account permanently? This cannot be undone.">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Delete your account</h2></div>
+  <div class="box-body"><p>Your profile, private messages and settings will be removed permanently. You can <a href="/usercp/export">download your data</a> first.</p>
+    <label class="check"><input type="checkbox" name="deleteposts" value="1"> Also delete all of my posts and threads</label></div>
+  <div class="form-row"><label for="pw">Password</label><input id="pw" type="password" name="password" required></div>
+  <div class="box-foot"><button class="btn danger" type="submit">Delete my account</button></div>
+</form>
+{% endblock %}

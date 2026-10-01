@@ -1,0 +1,9 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<section class="box"><div class="box-head"><h2>Scheduled moderation</h2></div>
+<table class="grid"><thead><tr><th>Action</th><th>Threads</th><th>Runs</th><th>Scheduled by</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r[1] }}</td><td>{% for t in r[3] %}<a href="/thread/{{ t }}">#{{ t }}</a> {% endfor %}</td><td class="small">{{ r[2]|date('datetime') }}</td><td>{{ r[4] }}</td><td class="num"><form method="post" action="/moderation/delayed/cancel">{{ m.csrf_field() }}<input type="hidden" name="did" value="{{ r[0] }}"><button class="btn secondary small">Cancel</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="empty">Nothing is scheduled.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

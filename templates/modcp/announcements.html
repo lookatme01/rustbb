@@ -1,0 +1,11 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<div class="actions"><a class="btn small" href="/modcp/announcements/edit">New announcement</a></div>
+<section class="box"><div class="box-head"><h2>Announcements</h2></div>
+<table class="grid"><thead><tr><th>Subject</th><th>Forum</th><th>Starts</th><th>Ends</th><th></th></tr></thead><tbody>
+{% for a in list %}<tr><td><a href="/announcement/{{ a.aid }}">{{ a.subject }}</a>{% if not a.active %} <span class="tag">inactive</span>{% endif %}</td><td>{{ a.forum or 'All forums' }}</td><td class="small">{{ a.startdate|date('date') }}</td><td class="small">{% if a.enddate %}{{ a.enddate|date('date') }}{% else %}Never{% endif %}</td>
+<td class="num"><a class="btn secondary small" href="/modcp/announcements/edit?aid={{ a.aid }}">Edit</a> <form method="post" action="/modcp/announcements/delete" style="display:inline" class="js-confirm" data-confirm="Delete this announcement?">{{ m.csrf_field() }}<input type="hidden" name="aid" value="{{ a.aid }}"><button class="btn secondary small">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="empty">No announcements.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

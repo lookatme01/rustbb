@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Mail log</h2><span class="right small">Emails sent between members and through the contact form</span></div>
+<table class="grid"><thead><tr><th>Subject</th><th>From</th><th>To</th><th>Date</th><th>IP</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r[1] }} <span class="tag">{{ ['','member','thread','contact'][r[6]] }}</span></td><td class="small">{{ r[3] }}</td><td class="small">{{ r[4] }}</td><td class="small">{{ r[2]|date }}</td><td class="small">{{ r[5] }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No emails logged.</td></tr>{% endfor %}
+</tbody></table></section>
+{{ m.pagination(pagination) }}
+{% endblock %}

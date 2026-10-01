@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<p class="muted">Configuration is cached in memory on every app node. Changes made through the Admin CP reload the cache everywhere automatically; use this only after editing the database directly. Parser revision: {{ parser_rev }}.</p>
+<section class="box"><div class="box-head"><h2>Cache</h2><form method="post" action="/admin/tools/cache" class="right">{{ m.csrf_field() }}<input type="hidden" name="part" value="all"><button class="btn secondary small">Reload everything</button></form></div>
+<table class="grid"><tbody>{% for p in parts %}<tr><td><code>{{ p[0] }}</code></td><td class="num">{{ p[1] }} entries</td><td class="num"><form method="post" action="/admin/tools/cache">{{ m.csrf_field() }}<input type="hidden" name="part" value="{{ p[0] }}"><button class="btn secondary small">Reload</button></form></td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

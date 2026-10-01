@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block content %}
+<p><a href="/post/{{ post.pid }}">Back to the post</a> in <a href="{{ thread_url }}">{{ thread.subject }}</a></p>
+{% for e in edits %}
+<section class="box"><div class="box-head"><h3>Version before edit by {{ e.username or 'unknown' }} — {{ e.dateline|date('datetime') }}</h3>{% if e.reason %}<span class="right">{{ e.reason }}</span>{% endif %}</div>
+<div class="box-body"><details><summary>Rendered</summary><div class="post-body">{{ e.html|safe }}</div></details><details><summary>Source</summary><pre style="white-space:pre-wrap">{{ e.raw }}</pre></details></div></section>
+{% else %}<div class="box"><div class="empty">This post has not been edited.</div></div>{% endfor %}
+{% endblock %}

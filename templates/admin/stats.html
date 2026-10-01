@@ -1,0 +1,10 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Posting activity by hour (UTC, last 30 days)</h2></div>
+<div class="box-body">{% for a in activity %}<div style="display:grid;grid-template-columns:40px 1fr 70px;gap:8px;align-items:center;font-size:.82rem"><span>{{ "%02d"|format(a[0]) }}:00</span><div class="meter"><span style="width:{{ a[1] * 100 // max_act }}%"></span></div><span class="num">{{ a[1]|num }}</span></div>{% else %}<p class="muted">No posts in the last 30 days.</p>{% endfor %}</div></section>
+<div class="two-col">
+<section class="box"><div class="box-head"><h2>Daily totals</h2></div><table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for r in rows %}<tr><td class="small">{{ r[0]|date('date') }}</td><td class="num">{{ r[1]|num }}</td><td class="num">{{ r[2]|num }}</td><td class="num">{{ r[3]|num }}</td></tr>{% else %}<tr><td colspan="4" class="empty">Statistics are recorded daily by a scheduled task.</td></tr>{% endfor %}</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Busiest forums</h2></div><table class="grid"><tbody>{% for f in top_forums %}<tr><td>{{ f[0] }}</td><td class="num">{{ f[1]|num }} threads</td><td class="num">{{ f[2]|num }} posts</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endblock %}

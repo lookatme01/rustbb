@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<p class="muted">Groups without custom permissions inherit from the parent forum, or from the group's own permissions. Tick “Custom” to override. Use “Edit all” for every permission.</p>
+<form method="post" action="/admin/forums/{{ forum.fid }}/permissions" class="box" style="overflow-x:auto">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Permissions for {{ forum.name }}</h2></div>
+  <table class="grid"><thead><tr><th>Group</th><th class="center">Custom</th>{% for q in quick %}<th class="center small">{{ q[1] }}</th>{% endfor %}<th></th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><strong>{{ r.title }}</strong></td><td class="center"><input type="checkbox" name="custom_{{ r.gid }}" value="1"{% if r.custom %} checked{% endif %} aria-label="Custom permissions for {{ r.title }}"></td>
+    {% for v in r.vals %}<td class="center"><input type="checkbox" name="p_{{ r.gid }}_{{ v[0] }}" value="1"{% if v[1] %} checked{% endif %} aria-label="{{ v[0] }}"></td>{% endfor %}
+    <td class="num"><a class="btn secondary small" href="/admin/forums/{{ forum.fid }}/permissions/{{ r.gid }}">Edit all</a></td></tr>{% endfor %}
+  </tbody></table>
+  <div class="box-foot"><button class="btn small">Save permissions</button></div>
+</form>
+{% endblock %}

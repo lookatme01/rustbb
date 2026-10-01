@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/settings/{{ group.name }}" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>{{ group.title }}</h2><a class="right" href="/admin/settings">All settings</a></div>
+  {% for s in items %}
+  <div class="form-row"><label for="s_{{ s.name }}">{{ s.title }}{% if s.description %}<span class="help">{{ s.description }}</span>{% endif %}</label><div>
+    {% if s.kind == 'yesno' %}<div class="checks" style="flex-direction:row;gap:16px"><label><input type="radio" name="{{ s.name }}" value="1"{% if s.value == '1' %} checked{% endif %}> Yes</label><label><input type="radio" name="{{ s.name }}" value="0"{% if s.value != '1' %} checked{% endif %}> No</label></div>
+    {% elif s.kind == 'textarea' %}<textarea id="s_{{ s.name }}" name="{{ s.name }}" rows="5">{{ s.value }}</textarea>
+    {% elif s.kind == 'select' %}<select id="s_{{ s.name }}" name="{{ s.name }}">{% for o in s.options %}<option value="{{ o[0] }}"{% if s.value == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+    {% elif s.kind == 'numeric' %}<input id="s_{{ s.name }}" type="number" name="{{ s.name }}" value="{{ s.value }}" style="width:160px">
+    {% elif s.kind == 'password' %}<input id="s_{{ s.name }}" type="password" name="{{ s.name }}" placeholder="(unchanged)" autocomplete="new-password">
+    {% else %}<input id="s_{{ s.name }}" type="text" name="{{ s.name }}" value="{{ s.value }}">{% endif %}
+    <span class="help faint">Default: {{ s.default|truncate_chars(60) if s.kind != 'yesno' else ('Yes' if s.default == '1' else 'No') }}</span>
+  </div></div>
+  {% endfor %}
+  <div class="box-foot"><button class="btn" type="submit">Save settings</button></div>
+</form>
+{% endblock %}

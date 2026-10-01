@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box" style="max-width:640px">
+  <div class="box-head"><h2>{{ bb.bbname }}</h2></div>
+  <div class="box-body">
+    <p>{{ message }}</p>
+    {% if show_login and not me %}<p><a class="btn" href="/member/login?return_to={{ return_to|urlenc }}">Log in</a> {% if bb.disableregs != '1' %}<a class="btn secondary" href="/member/register">Register</a>{% endif %}</p>{% endif %}
+    <p class="small"><a href="/">Return to the board index</a></p>
+  </div>
+</section>
+{% endblock %}

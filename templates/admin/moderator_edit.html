@@ -1,0 +1,11 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/forums/moderators/{{ mo.mid }}" class="box"><input type="hidden" name="my_post_key" value="{{ csrf }}">
+  <div class="box-head"><h2>Moderator permissions{% if forum %} in {{ forum.name }}{% endif %}</h2></div>
+  {% set ns = namespace(sec='') %}
+  {% for it in items %}{% if it.section != ns.sec %}{% set ns.sec = it.section %}<div class="box-sub">{{ it.section }}</div>{% endif %}
+  <div class="form-row"><span class="label">{{ it.title }}</span><label class="check"><input type="checkbox" name="{{ it.name }}" value="1"{% if it.value %} checked{% endif %}> Yes</label></div>{% endfor %}
+  <div class="box-foot"><button class="btn">Save</button></div>
+</form>
+{% endblock %}

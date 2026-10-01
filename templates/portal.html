@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="portal-grid">
+  <aside>
+    {% if bb.portal_showwelcome == '1' %}
+    <section class="box"><div class="box-head"><h3>{% if me %}Welcome back, {{ me.username }}{% else %}Welcome, guest{% endif %}</h3></div>
+      <div class="box-body small">{% if me %}You last visited {{ me.lastvisit|date }}.<br><a href="/search/new">View new posts</a> · <a href="/usercp">User CP</a>{% else %}<a href="/member/login">Log in</a> or <a href="/member/register">register</a> to join the discussion.{% endif %}</div></section>
+    {% endif %}
+    {% if me and bb.portal_showpms == '1' and bb.enablepms == '1' %}<section class="box"><div class="box-head"><h3>Private messages</h3></div><div class="box-body small">You have <a href="/pm">{{ me.unreadpms }} unread message{{ '' if me.unreadpms == 1 else 's' }}</a>.</div></section>{% endif %}
+    {% if bb.portal_showsearch == '1' and perms.cansearch %}<section class="box"><div class="box-head"><h3>Search</h3></div><form class="box-body" action="/search/quick" method="get"><input type="search" name="q" style="width:100%" aria-label="Search"><p class="small" style="margin:6px 0 0"><a href="/search">Advanced search</a></p></form></section>{% endif %}
+    {% if stats %}<section class="box"><div class="box-head"><h3>Statistics</h3></div><div class="kv small"><div>Members</div><div>{{ stats.users|num }}</div><div>Threads</div><div>{{ stats.threads|num }}</div><div>Posts</div><div>{{ stats.posts|num }}</div></div></section>{% endif %}
+    {% if online %}<section class="box"><div class="box-head"><h3><a href="/online">Online now</a></h3></div><div class="box-body small">{{ online.num_members }} members, {{ online.num_guests }} guests<br>{% for u in online.members %}<a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></section>{% endif %}
+    {% if latest %}<section class="box"><div class="box-head"><h3>Latest threads</h3></div>{% for l in latest %}<div class="box-body small" style="border-bottom:1px solid var(--rule);padding:8px 14px"><a href="/thread/{{ l[0] }}/lastpost"><strong>{{ l[1] }}</strong></a><br><span class="muted">{{ l[2]|date }} by {{ l[3] }} · {{ l[5] }} replies</span></div>{% endfor %}</section>{% endif %}
+  </aside>
+  <div>
+    {% for a in announcements %}
+    <article class="box">
+      <div class="box-head"><h2><a href="{{ a.url }}">{{ a.subject }}</a></h2></div>
+      <div class="box-sub" style="display:flex;gap:8px">{{ m.userlink(a.uid, a.username) }} · {{ a.dateline|date }}{% if a.forum %} · {{ a.forum }}{% endif %}</div>
+      <div class="box-body post-body">{{ a.html|safe }}</div>
+      <div class="box-foot"><a href="{{ a.url }}">{{ a.replies }} repl{{ 'y' if a.replies == 1 else 'ies' }}</a> · {{ a.views }} views</div>
+    </article>
+    {% else %}<div class="box"><div class="empty">No announcements to show.</div></div>{% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+{% set g = group %}
+<form method="post" action="/admin/groups/edit" class="box">{{ m.csrf_field() }}<input type="hidden" name="gid" value="{{ g.gid if g else 0 }}">
+  <div class="box-head"><h2>{{ title }}</h2></div>
+  <div class="form-row"><label for="title_">Title</label><input id="title_" type="text" name="title" value="{{ g.title if g else '' }}" required></div>
+  <div class="form-row"><label for="description">Description</label><input id="description" type="text" name="description" value="{{ g.description if g else '' }}"></div>
+  <div class="form-row"><label for="namestyle">Username style</label><div><input id="namestyle" type="text" name="namestyle" value="{{ g.namestyle if g else '{username}' }}"><span class="help">HTML with {username}, e.g. &lt;span style="color:#c00"&gt;{username}&lt;/span&gt;</span></div></div>
+  <div class="form-row"><label for="usertitle">Default user title</label><div><input id="usertitle" type="text" name="usertitle" value="{{ g.usertitle if g else '' }}"><span class="help">Empty = use post-count based user titles.</span></div></div>
+  <div class="form-row"><label for="stars">Stars</label><div style="display:flex;gap:6px"><input id="stars" type="number" name="stars" value="{{ g.stars if g else 0 }}" style="width:80px"><input type="text" name="starimage" value="{{ g.starimage if g else '/static/images/star.svg' }}" aria-label="Star image"></div></div>
+  <div class="form-row"><label for="image">Group image</label><input id="image" type="text" name="image" value="{{ g.image if g else '' }}" placeholder="Image URL shown under usernames"></div>
+  <div class="form-row"><label for="disporder">Display order</label><input id="disporder" type="number" name="disporder" value="{{ g.disporder if g else 10 }}" style="width:80px"></div>
+  {% if not g or g.type != 1 %}<div class="form-row"><label for="type">Joining</label><select id="type" name="type">{% for o in [(2,'Closed (admins add members)'),(3,'Public — anyone can join'),(4,'Public — members request to join')] %}<option value="{{ o[0] }}"{% if g and g.type == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select></div>{% endif %}
+  <div class="form-row"><span class="label"><strong>Banned group</strong></span><label class="check"><input type="checkbox" name="isbannedgroup" value="1"{% if g and g.isbannedgroup %} checked{% endif %}> Users moved here are banned</label></div>
+  {% for sec in sections %}
+  <div class="box-sub">{{ sec }}</div>
+  {% for it in items %}{% if it.section == sec %}
+  <div class="form-row"><span class="label">{{ it.title }}</span><div>{% if it.is_bool %}<div class="checks" style="flex-direction:row;gap:14px"><label><input type="radio" name="{{ it.name }}" value="1"{% if it.value == 'true' %} checked{% endif %}> Yes</label><label><input type="radio" name="{{ it.name }}" value="0"{% if it.value != 'true' %} checked{% endif %}> No</label></div>{% else %}<input type="number" name="{{ it.name }}" value="{{ it.value }}" style="width:120px" aria-label="{{ it.title }}">{% endif %}</div></div>
+  {% endif %}{% endfor %}
+  {% endfor %}
+  <div class="box-foot"><button class="btn">Save group</button></div>
+</form>
+{% endblock %}

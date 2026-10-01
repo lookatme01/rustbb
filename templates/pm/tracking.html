@@ -1,0 +1,13 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block pm %}
+{% for group in [('Read messages', read, 'stop'), ('Unread messages', unread, 'cancel')] %}
+<form method="post" action="/pm/tracking" class="box">{{ m.csrf_field() }}<input type="hidden" name="action" value="{{ group[2] }}">
+  <div class="box-head"><h2>{{ group[0] }}</h2></div>
+  <table class="grid"><thead><tr><th>Subject</th><th>Recipient</th><th>{{ 'Read' if group[2] == 'stop' else 'Sent' }}</th><th></th></tr></thead><tbody>
+  {% for r in group[1] %}<tr><td>{{ r[1] }}</td><td>{% if r[5] %}<a href="{{ url_user(r[6]) }}">{{ r[5] }}</a>{% endif %}</td><td class="small">{{ (r[4] if group[2] == 'stop' else r[2])|date }}</td><td><input type="checkbox" name="pmids" value="{{ r[0] }}" aria-label="Select"></td></tr>{% else %}<tr><td colspan="4" class="empty">Nothing here.</td></tr>{% endfor %}
+  </tbody></table>
+  {% if group[1] %}<div class="box-foot"><button class="btn secondary small" type="submit">{{ 'Stop tracking selected' if group[2] == 'stop' else 'Cancel selected (unsend)' }}</button></div>{% endif %}
+</form>
+{% endfor %}
+{% endblock %}

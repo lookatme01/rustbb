@@ -1,0 +1,28 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<section class="box"><div class="box-head"><h2>Your avatar</h2></div>
+  <div class="box-body" style="display:flex;gap:18px;align-items:center">
+    {{ m.avatar(user.avatar, user.username) }}
+    <div class="small muted">Avatars are shown at up to {{ maxdims }} pixels. Larger uploads are resized automatically.</div>
+  </div>
+</section>
+{% if can_upload %}
+<form method="post" action="/usercp/avatar" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}<input type="hidden" name="action" value="upload">
+  <div class="box-head"><h2>Upload an image</h2></div>
+  <div class="box-body"><input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required><p class="small muted">PNG, JPEG, GIF or WebP, up to {{ maxsize }} KB.</p></div>
+  <div class="box-foot"><button class="btn" type="submit">Upload avatar</button></div>
+</form>
+{% endif %}
+{% if remote %}
+<form method="post" action="/usercp/avatar" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}<input type="hidden" name="action" value="remote">
+  <div class="box-head"><h2>Use an image from the web</h2></div>
+  <div class="box-body"><input type="url" name="url" placeholder="https://example.com/me.png" style="width:100%" required></div>
+  <div class="box-foot"><button class="btn" type="submit">Use this image</button></div>
+</form>
+{% endif %}
+<div class="actions">
+{% if gravatar %}<form method="post" action="/usercp/avatar" enctype="multipart/form-data">{{ m.csrf_field() }}<input type="hidden" name="action" value="gravatar"><button class="btn secondary" type="submit">Use my Gravatar</button></form>{% endif %}
+{% if user.avatar %}<form method="post" action="/usercp/avatar" enctype="multipart/form-data">{{ m.csrf_field() }}<input type="hidden" name="action" value="remove"><button class="btn secondary" type="submit">Remove avatar</button></form>{% endif %}
+</div>
+{% endblock %}

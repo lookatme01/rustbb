@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="/moderation/merge" class="box">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ thread.tid }}">
+  <div class="box-head"><h2>Merge “{{ thread.subject }}” with another thread</h2></div>
+  <div class="form-row"><label for="target">Other thread</label><div><input id="target" type="text" name="target" required placeholder="Thread URL or ID"><span class="help">Paste the address of the thread. Posts are combined in date order into the older thread.</span></div></div>
+  <div class="form-row"><label for="subject">New subject</label><input id="subject" type="text" name="subject" value="{{ thread.subject }}"></div>
+  <div class="box-foot"><button class="btn" type="submit">Merge threads</button> <a href="{{ thread_url }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+{% for s in sections %}
+<section class="box"><div class="box-head"><h2>{{ s.title }}</h2></div>
+<table class="grid"><tbody>{% for u in s.members %}<tr><td><a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a></td><td class="small muted">{% if u.lastactive %}Last active {{ u.lastactive|date }}{% endif %}</td><td class="num"><a href="/pm/send?uid={{ u.uid }}">Message</a></td></tr>{% endfor %}</tbody></table></section>
+{% endfor %}
+{% if moderators %}
+<section class="box"><div class="box-head"><h2>Forum moderators</h2></div>
+<table class="grid"><tbody>{% for mo in moderators %}<tr><td><a href="{{ url_user(mo.uid) }}">{{ mo.formatted|safe }}</a></td><td><a href="/forum/{{ mo.fid }}">{{ mo.forum }}</a></td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
+{% endblock %}

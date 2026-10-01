@@ -1,0 +1,119 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block line %}--line: var(--line-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}){% endblock %}
+{% block content %}
+<header class="thread-head">
+  <div class="grow">
+    <h1>{{ prefix_html|safe }}{{ thread.subject }}</h1>
+    <div class="meta">
+      <a class="chip" href="{{ url_forum(forum.fid, forum.name) }}">{{ forum.name }}</a>
+      <span>Started by {{ m.userlink(thread.uid, thread.username) }} · {{ thread.dateline|date }}</span>
+      <span>{{ thread.replies|num }} repl{{ 'y' if thread.replies == 1 else 'ies' }} · {{ thread.views|num }} views</span>
+      {% if thread.numratings and forum.allowtratings %}<span>★ {{ "%.1f"|format(rating) }} ({{ thread.numratings }})</span>{% endif %}
+    </div>
+  </div>
+  <div class="actions">
+    {% if can_reply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ m.icon('reply') }}{{ t("New Reply") }}</a>{% elif thread.closed == '1' %}<span class="flag closed">Thread closed</span>{% endif %}
+  </div>
+</header>
+{% if thread.visible == 0 %}<div class="notice warn">This thread is awaiting moderator approval.</div>{% elif thread.visible == -1 %}<div class="notice bad">This thread has been deleted.</div>{% endif %}
+
+{% if poll %}{% include "poll.html" %}{% endif %}
+
+{% if pagination.pages > 1 %}<div class="actions">{{ m.pagination(pagination) }}</div>{% endif %}
+
+<div id="posts" class="postlist" data-tid="{{ thread.tid }}" data-last-pid="{{ last_pid }}" data-live="{{ 1 if live and pagination.page == pagination.pages else 0 }}">
+{% for p in posts %}{% include "postbit.html" %}{% endfor %}
+</div>
+<div class="live-banner" id="live-banner" hidden><button class="btn js-load-new" type="button">New replies — show them</button></div>
+
+<div class="actions">
+  {{ m.pagination(pagination) }}
+  <span class="spacer"></span>
+  <a class="btn secondary small" href="/thread/{{ thread.tid }}/print">Print view</a>
+  <a class="btn secondary small" href="/thread/{{ thread.tid }}/whoposted">Who posted?</a>
+  {% if me and me.uid > 0 and perms.cansendemail %}<a class="btn secondary small" href="/thread/{{ thread.tid }}/send">Send to a friend</a>{% endif %}
+  {% if me %}
+  <form method="post" action="/thread/{{ thread.tid }}/subscribe" style="display:flex;gap:6px;align-items:center">{{ m.csrf_field() }}
+    {% if subscription is none %}
+      <select name="notification" aria-label="Notification type"><option value="0">No notification</option><option value="1">Instant email</option><option value="2">Private message</option></select>
+      <button class="btn secondary small" type="submit">Subscribe</button>
+    {% else %}
+      <input type="hidden" name="unsubscribe" value="1"><button class="btn secondary small" type="submit">Unsubscribe</button>
+    {% endif %}
+  </form>
+  {% endif %}
+  {% if can_reply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ t("New Reply") }}</a>{% endif %}
+</div>
+
+{% if can_rate %}
+<form method="post" action="/thread/{{ thread.tid }}/rate" class="actions small">{{ m.csrf_field() }}
+  <span>Rate this thread:</span>
+  {% for r in range(1, 6) %}<button class="btn secondary small" name="rating" value="{{ r }}" type="submit" title="{{ r }} star{{ '' if r == 1 else 's' }}">{{ "★" * r }}</button>{% endfor %}
+</form>
+{% endif %}
+
+{% if is_mod %}
+<form id="inlinemod-posts" method="post" action="/moderation/posts" class="actions">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ thread.tid }}">
+  <label for="postmod" class="small">Selected posts (<span class="js-selcount">0</span>):</label>
+  <select name="action" id="postmod">
+    {% if modperms.canapproveunapproveposts %}<option value="approve">Approve</option><option value="unapprove">Unapprove</option>{% endif %}
+    {% if modperms.cansoftdeleteposts %}<option value="softdelete">Soft delete</option>{% endif %}
+    {% if modperms.canrestoreposts %}<option value="restore">Restore</option>{% endif %}
+    {% if modperms.candeleteposts %}<option value="delete">Delete permanently</option>{% endif %}
+    {% if modperms.canmanagethreads %}<option value="merge">Merge posts</option><option value="split">Split into new thread…</option><option value="moveposts">Move to another thread…</option>{% endif %}
+    {% for ct in custom_tools %}{% if ct[2] == 'p' %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endif %}{% endfor %}
+  </select>
+  <button class="btn secondary small" type="submit">Go</button>
+</form>
+<form method="post" action="/moderation/thread/{{ thread.tid }}" class="actions">{{ m.csrf_field() }}
+  <label for="threadmod" class="small">Thread tools:</label>
+  <select name="action" id="threadmod">
+    {% if modperms.canopenclosethreads %}<option value="{{ 'open' if thread.closed == '1' else 'close' }}">{{ 'Open' if thread.closed == '1' else 'Close' }} thread</option>{% endif %}
+    {% if modperms.canstickunstickthreads %}<option value="{{ 'unstick' if thread.sticky else 'stick' }}">{{ 'Unstick' if thread.sticky else 'Stick' }} thread</option>{% endif %}
+    {% if modperms.canapproveunapprovethreads %}<option value="{{ 'unapprove' if thread.visible == 1 else 'approve' }}">{{ 'Unapprove' if thread.visible == 1 else 'Approve' }} thread</option>{% endif %}
+    {% if modperms.canmanagethreads %}<option value="move">Move / copy…</option><option value="merge">Merge with another thread…</option><option value="edit">Edit subject / notes…</option>{% endif %}
+    {% if modperms.canmanagepolls and thread.poll %}<option value="editpoll">Edit poll</option><option value="deletepoll">Delete poll</option>{% endif %}
+    {% if thread.visible == -1 and modperms.canrestorethreads %}<option value="restore">Restore thread</option>{% elif modperms.cansoftdeletethreads %}<option value="softdelete">Soft delete thread</option>{% endif %}
+    {% if modperms.candeletethreads %}<option value="delete">Delete thread permanently</option>{% endif %}
+    <option value="log">View moderator log</option>
+    {% for ct in custom_tools %}{% if ct[2] == 't' %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endif %}{% endfor %}
+  </select>
+  <button class="btn secondary small" type="submit">Go</button>
+</form>
+{% if thread.notes %}<div class="notice warn small"><strong>Moderator notes:</strong> {{ thread.notes }}</div>{% endif %}
+{% endif %}
+
+{% if can_reply and quickreply %}
+<section class="box quickreply" id="quickreply">
+  <form method="post" action="/newreply/{{ thread.tid }}" class="composer js-editor-form" data-fid="{{ forum.fid }}" data-tid="{{ thread.tid }}">
+    {{ m.face(me.avatar if me else '', me.username if me else 'Guest', me.uid if me else 0, 44) }}
+    <div>
+    {{ m.csrf_field() }}
+    <input type="hidden" name="quickreply" value="1">
+    <input type="hidden" name="subject" value="RE: {{ thread.subject }}">
+    <input type="hidden" name="did" value="{{ draft[0] if draft else 0 }}">
+    {% if not me %}<p><label for="qr-username">Your name</label><br><input id="qr-username" type="text" name="username" maxlength="30"></p>{% endif %}
+    {% include "editor_widget.html" %}
+    {% if captcha %}{% include "captcha_field.html" %}{% endif %}
+    <div class="actions">
+      <button class="btn" type="submit">{{ t("Post Reply") }}</button>
+      <button class="btn secondary" type="submit" name="preview" value="1" formaction="/newreply/{{ thread.tid }}">{{ t("Preview") }}</button>
+      <span class="spacer"></span>
+      <a class="btn ghost small" href="/newreply/{{ thread.tid }}">Full editor</a>
+    </div>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if similar %}
+<section class="box">
+  <div class="box-head"><h2>Similar threads</h2></div>
+  <table class="grid"><thead><tr><th>Thread</th><th>Forum</th><th class="num">Replies</th><th>Last post</th></tr></thead><tbody>
+  {% for s in similar %}<tr><td><a href="{{ s.url }}">{{ s.subject }}</a></td><td><a href="{{ s.forum_url }}">{{ s.forum_name }}</a></td><td class="num">{{ s.replies }}</td><td class="small">{{ s.lastpost|date }} by {{ s.lastposter }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+{% include "forumjump.html" %}
+{% endblock %}

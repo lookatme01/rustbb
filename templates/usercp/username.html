@@ -1,0 +1,11 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{{ m.errors_box(errors) }}
+<form method="post" action="/usercp/username" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Change username</h2><span class="desc">Current: {{ username }}</span></div>
+  <div class="form-row"><label for="username">New username</label><input id="username" type="text" name="username" required maxlength="{{ bb.maxnamelength }}"></div>
+  <div class="form-row"><label for="password">Password</label><input id="password" type="password" name="password" required></div>
+  <div class="box-foot"><button class="btn" type="submit">Change username</button></div>
+</form>
+{% endblock %}

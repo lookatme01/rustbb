@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn small" href="/admin/promotions/edit">Add promotion</a><a class="btn secondary small" href="/admin/promotions/logs">Promotion log</a></div>
+<section class="box"><div class="box-head"><h2>Group promotions</h2></div>
+<table class="grid"><tbody>{% for p in list %}<tr><td><strong>{{ p.title }}</strong>{% if not p.enabled %} <span class="tag">disabled</span>{% endif %}<br><span class="small muted">{{ p.description }}</span></td><td>→ {{ p.newgroup }}</td><td class="small muted">{% if p.lastrun %}Ran {{ p.lastrun|date }}{% else %}Never run{% endif %}</td>
+<td class="num"><a class="btn secondary small" href="/admin/promotions/edit?pid={{ p.pid }}">Edit</a> <form method="post" action="/admin/promotions/delete" style="display:inline" class="js-confirm" data-confirm="Delete this promotion?">{{ m.csrf_field() }}<input type="hidden" name="pid" value="{{ p.pid }}"><button class="btn secondary small">Delete</button></form></td></tr>{% else %}<tr><td class="empty">No promotions. Promotions move members to other groups automatically, e.g. after 100 posts.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

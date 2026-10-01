@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn small" href="/admin/groups/edit">Add group</a></div>
+<section class="box"><div class="box-head"><h2>User groups</h2></div>
+<table class="grid"><thead><tr><th>Group</th><th class="num">Primary</th><th class="num">Secondary</th><th></th></tr></thead><tbody>
+{% for g in groups %}<tr><td>{{ g.styled|safe }}{% if g.kind == 1 %} <span class="tag">default</span>{% elif g.kind == 3 %} <span class="tag">public</span>{% elif g.kind == 4 %} <span class="tag">public (by request)</span>{% endif %}<br><span class="small muted">{{ g.description }}</span></td>
+<td class="num"><a href="/admin/users?gid={{ g.gid }}">{{ g.primary|num }}</a></td><td class="num">{{ g.secondary|num }}</td>
+<td class="num" style="white-space:nowrap"><a class="btn secondary small" href="/admin/groups/edit?gid={{ g.gid }}">Edit</a> <a class="btn secondary small" href="/admin/groups/{{ g.gid }}/leaders">Leaders</a> <a class="btn secondary small" href="/admin/groups/edit?copy={{ g.gid }}">Copy</a>
+{% if g.kind != 1 %}<form method="post" action="/admin/groups/delete" style="display:inline" class="js-confirm" data-confirm="Delete this group?">{{ m.csrf_field() }}<input type="hidden" name="gid" value="{{ g.gid }}"><button class="btn secondary small">Delete</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

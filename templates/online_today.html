@@ -1,0 +1,5 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>{{ total }} member{{ '' if total == 1 else 's' }} active in the past 24 hours</h2></div>
+<table class="grid"><tbody>{% for u in list %}<tr><td><a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% if u.invisible %}*{% endif %}</td><td class="small muted">{{ u.lastactive|date }}</td></tr>{% else %}<tr><td class="empty">Nobody has been active today.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

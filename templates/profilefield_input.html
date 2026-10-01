@@ -1,0 +1,14 @@
+{# f: ProfileField, value: current value (optional) #}
+{% set fname = "profile_fields[" ~ f.fid ~ "]" %}
+{% set val = (values[f.fid|string] if values is defined and values and values[f.fid|string] is defined else '') %}
+<div class="form-row"><label for="pf{{ f.fid }}">{{ f.name }}{% if f.required %} *{% endif %}</label>
+  <div>
+  {% if f.type == 'textarea' %}<textarea id="pf{{ f.fid }}" name="{{ fname }}" rows="4" maxlength="{{ f.maxlength or 1000 }}"{% if f.required %} required{% endif %}>{{ val }}</textarea>
+  {% elif f.type == 'select' %}<select id="pf{{ f.fid }}" name="{{ fname }}">{% for o in f.options.split("\n") %}<option{% if val == o.strip() %} selected{% endif %}>{{ o.strip() }}</option>{% endfor %}</select>
+  {% elif f.type == 'multiselect' %}<select id="pf{{ f.fid }}" name="{{ fname }}" multiple>{% for o in f.options.split("\n") %}<option{% if o.strip() in val.split("\n") %} selected{% endif %}>{{ o.strip() }}</option>{% endfor %}</select>
+  {% elif f.type == 'radio' %}<div class="checks">{% for o in f.options.split("\n") %}<label><input type="radio" name="{{ fname }}" value="{{ o.strip() }}"{% if val == o.strip() %} checked{% endif %}> {{ o.strip() }}</label>{% endfor %}</div>
+  {% elif f.type == 'checkbox' %}<div class="checks">{% for o in f.options.split("\n") %}<label><input type="checkbox" name="{{ fname }}" value="{{ o.strip() }}"{% if o.strip() in val.split("\n") %} checked{% endif %}> {{ o.strip() }}</label>{% endfor %}</div>
+  {% else %}<input id="pf{{ f.fid }}" type="text" name="{{ fname }}" value="{{ val }}" maxlength="{{ f.maxlength or 255 }}"{% if f.required %} required{% endif %}>{% endif %}
+  {% if f.description %}<span class="help">{{ f.description }}</span>{% endif %}
+  </div>
+</div>

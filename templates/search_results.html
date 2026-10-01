@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="actions"><span>{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</span><span class="spacer"></span><a class="btn secondary small" href="/search">New search</a></div>
+{{ m.pagination(pagination) }}
+{% if kind == 'threads' %}
+<section class="box"><div class="box-head"><h2>Threads</h2></div>
+{% for t in threads %}{{ m.thread_row(t, true) }}{% endfor %}
+</section>
+{% else %}
+{% for p in posts %}
+<section class="box">
+  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><a href="{{ p.forum_url }}">{{ p.forum_name }}</a><span>/</span><a href="{{ p.thread_url }}{{ p.hl }}"><strong>{{ p.thread_subject }}</strong></a><span class="spacer" style="flex:1"></span><span>{{ p.replies }} replies · {{ p.views }} views</span></div>
+  <div class="box-body"><div class="small muted" style="margin-bottom:6px">{{ m.userlink(p.uid, p.username) }} · <a href="/post/{{ p.pid }}">{{ p.dateline|date }}</a></div><div class="post-body" style="padding:0">{{ p.snippet|safe }}</div></div>
+</section>
+{% endfor %}
+{% endif %}
+{{ m.pagination(pagination) }}
+{% endblock %}

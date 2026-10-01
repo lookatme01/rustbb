@@ -1,0 +1,30 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block head %}{% if pgp %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endif %}{% endblock %}
+{% block pm %}
+{% if pgp %}<script type="application/json" id="pgp-data">{{ pgp|tojson }}</script>{% endif %}
+<article class="post stacked"{% if pgp %} data-pgp-read data-pgp-board="{{ board }}"{% endif %}>
+  <aside class="post-author">
+    <div class="post-author-inner">
+    {% if author %}{{ m.face(author.avatar, author.username, author.uid, 88, '', author.online) }}<div class="name"><a href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a></div>{% if author.usertitle %}<span class="role">{{ author.usertitle }}</span>{% endif %}
+    {% else %}{{ m.face('', system_name, 0, 88) }}<div class="name">{{ system_name }}</div><span class="role">System message</span>{% endif %}
+    </div>
+  </aside>
+  <div class="post-main">
+    <header class="post-head"><strong>{{ pm.subject }}</strong><span>{{ pm.dateline|date('datetime') }}</span>{% if to %}<span class="small">To: {% for t_ in to %}<a href="{{ url_user(t_[0]) }}">{{ t_[1] }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}</header>
+    {% if pgp %}<div class="pgp-msg-seal" aria-live="polite"><noscript><span class="pgp-seal is-pending"><span class="pgp-seal-text"><strong>{{ 'Encrypted message' if pgp.level == 2 else 'Signed message' }}</strong><small>Enable JavaScript to check the signature{{ ' and read it' if pgp.level == 2 else '' }}.</small></span></span></noscript></div>
+    {% elif sender_has_key and pm.folder != 2 %}<div class="pgp-msg-seal"><span class="pgp-seal is-off" title="{{ author.username if author else '' }} has an identity key but didn't sign this message"><span class="pgp-seal-text"><small>Not signed</small></span></span></div>{% endif %}
+    {% if from_system and pm.folder != 2 %}<p class="notice small system-notice">This is an automated message from the System account, so replies aren't read.{% if can_contact %} If you need help, <a href="/contact">contact the staff</a>.{% endif %}</p>{% endif %}
+    <div class="post-body js-pm-body">{{ html|safe }}</div>
+    {% if author and author.signature and pm.includesig and not pgp %}<div class="signature">{{ author.signature|safe }}</div>{% endif %}
+    <footer class="post-foot">
+      {% if pm.fromid and pm.fromid != me.uid and not from_system %}<a class="btn ghost small" href="/pm/verify/{{ pm.fromid }}">Verify identity</a>{% endif %}
+      <span class="spacer"></span>
+      {% if pm.fromid and pm.folder != 2 and not from_system %}<a class="btn small" href="/pm/send?pmid={{ pm.pmid }}">Reply</a><a class="btn secondary small" href="/pm/send?pmid={{ pm.pmid }}&mode=replyall">Reply to all</a>{% endif %}
+      <a class="btn secondary small" href="/pm/send?pmid={{ pm.pmid }}&mode=forward">Forward</a>
+      {% if pm.fromid and pm.folder != 2 and not from_system %}<a class="btn secondary small" href="/report?type=pm&id={{ pm.pmid }}">Report</a>{% endif %}
+      <form method="post" action="/pm/action">{{ m.csrf_field() }}<input type="hidden" name="pmids" value="{{ pm.pmid }}"><input type="hidden" name="folder" value="{{ pm.folder }}"><button class="btn secondary small" name="action" value="delete">Delete</button></form>
+    </footer>
+  </div>
+</article>
+{% endblock %}

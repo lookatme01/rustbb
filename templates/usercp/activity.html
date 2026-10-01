@@ -1,0 +1,28 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{% if failed_week > 0 %}<div class="notice warn">There {{ 'was' if failed_week == 1 else 'were' }} {{ failed_week }} failed sign-in attempt{{ '' if failed_week == 1 else 's' }} on your account in the past week. If that wasn't you, <a href="/usercp/password">change your password</a> and <a href="/usercp/security">turn on two-factor authentication</a>.</div>{% endif %}
+<section class="box">
+  <div class="box-head"><h2>Account activity</h2>
+    <nav class="seg right" aria-label="Filter events">
+      {% for k in [('', 'All'), ('security', 'Sign-ins & security'), ('account', 'Account changes'), ('staff', 'Staff actions')] %}<a href="/usercp/activity?kind={{ k[0] }}"{% if kind == k[0] %} aria-current="true"{% endif %}>{{ k[1] }}</a>{% endfor %}
+    </nav>
+  </div>
+  <ol class="timeline">
+  {% for e in events %}
+    <li class="tl-item tl-{{ e.category }}{% if e.action in ['login_failed','login_locked','login_2fa_failed'] %} tl-alert{% endif %}">
+      <div class="tl-main"><strong>{{ e.label }}</strong>
+        {% if e.actor_name %}<span class="small muted">by <a href="{{ url_user(e.actor) }}">{{ e.actor_name }}</a></span>{% endif %}
+        {% if e.details.reason %}<div class="small">Reason: {{ e.details.reason }}</div>{% endif %}
+        {% if e.details.points %}<div class="small">{{ e.details.points }} warning point{{ '' if e.details.points == 1 else 's' }}</div>{% endif %}
+      </div>
+      <div class="tl-meta small muted"><time datetime="{{ e.dateline }}">{{ e.dateline|date }}</time><span title="{{ e.useragent }}">{{ e.device }}</span><span>{{ e.ip }}</span></div>
+    </li>
+  {% else %}
+    <li class="empty">No account activity recorded yet.</li>
+  {% endfor %}
+  </ol>
+  {{ m.pagination(pagination) }}
+  <p class="box-foot small muted">Events are kept for a year. Sign-in locations are shown as the IP address the board saw.</p>
+</section>
+{% endblock %}

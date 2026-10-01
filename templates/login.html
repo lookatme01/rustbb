@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="auth">
+  <div class="auth-card">
+    <img class="auth-logo" src="{{ theme.props.logo if theme and theme.props.logo else asset('images/logo.svg') }}" alt="" width="48" height="48">
+    <h1>Welcome back</h1>
+    <p class="muted">Log in to {{ bb.bbname }}</p>
+    {{ m.errors_box(errors) }}
+    <form method="post" action="/member/login" class="auth-form">
+      {{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+      <label class="auth-field"><span>{{ 'Email' if bb.usernamemethod == '1' else ('Username or email' if bb.usernamemethod == '2' else 'Username') }}</span><input id="username" name="username" type="text" value="{{ username }}" autocomplete="username" required autofocus></label>
+      <label class="auth-field"><span>Password <a class="right" href="/member/lostpw">Forgot?</a></span><input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <label class="check"><input type="checkbox" name="remember" value="1" checked> Keep me logged in</label>
+      <button class="btn block" type="submit">Log in</button>
+    </form>
+    {% if bb.disableregs != '1' %}<p class="auth-alt">New here? <a href="/member/register">Create an account</a></p>{% endif %}
+  </div>
+</div>
+{% endblock %}

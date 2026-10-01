@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn small" href="/admin/massmail/new">New mass mail</a></div>
+<section class="box"><div class="box-head"><h2>Mass mailings</h2></div>
+<table class="grid"><thead><tr><th>Subject</th><th>Type</th><th>Created</th><th>Progress</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r[1] }}</td><td>{{ 'Private message' if r[2] == 1 else 'Email' }}</td><td class="small">{{ r[3]|date }}</td><td class="small">{{ ['Draft','Queued','Sending','Done'][r[4]] }} — {{ r[5] }}/{{ r[6] }}</td><td class="num">{% if r[4] in [1, 2] %}<form method="post" action="/admin/massmail/cancel">{{ m.csrf_field() }}<input type="hidden" name="mid" value="{{ r[0] }}"><button class="btn secondary small">Stop</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="empty">No mass mailings yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

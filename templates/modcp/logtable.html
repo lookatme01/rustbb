@@ -1,0 +1,5 @@
+<table class="grid"><thead><tr><th>Moderator</th><th>Date</th><th>Action</th><th>Information</th><th>IP</th></tr></thead><tbody>
+{% for l in logs %}<tr><td>{% if l.username %}<a href="{{ url_user(l.uid) }}">{{ l.username }}</a>{% endif %}</td><td class="small">{{ l.dateline|date }}</td><td>{{ l.action }}</td>
+<td class="small">{% if l.tid %}<a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% elif l.subject %}{{ l.subject }}{% endif %}{% if l.forum %} in {{ l.forum }}{% endif %}</td><td class="small">{{ l.ip }}</td></tr>
+{% else %}<tr><td colspan="5" class="empty">No moderator actions have been logged.</td></tr>{% endfor %}
+</tbody></table>

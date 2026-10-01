@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block content %}
+{% for s in sections %}
+<section class="box"><div class="box-head"><h2>{{ s.name }}</h2><span class="desc">{{ s.description }}</span></div>
+<table class="grid"><tbody>{% for d in s.docs %}<tr><td><a href="/help/{{ d.hid }}"><strong>{{ d.name }}</strong></a><br><span class="small muted">{{ d.description }}</span></td></tr>{% endfor %}</tbody></table></section>
+{% else %}<div class="box"><div class="empty">No help documents are available.</div></div>{% endfor %}
+{% endblock %}

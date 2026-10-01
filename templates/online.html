@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block content %}
+<p class="muted">{{ summary.total }} users active in the past {{ summary.cutoff }} minutes ({{ summary.num_members }} members, {{ summary.num_guests }} guests, {{ summary.num_bots }} search engines). <a href="/online/today">Who was online today</a></p>
+<section class="box"><div class="box-head"><h2>Who's Online</h2></div>
+<table class="grid"><thead><tr><th>User</th><th>Last active</th><th>Location</th>{% if perms.canviewonlineips %}<th>IP</th>{% endif %}</tr></thead><tbody>
+{% for r in list %}<tr><td>{{ r.who|safe }}</td><td class="small">{{ r.time|date }}</td><td>{{ r.location|safe }}</td>{% if perms.canviewonlineips %}<td class="small">{{ r.ip }}</td>{% endif %}</tr>{% else %}<tr><td colspan="4" class="empty">Nobody is online.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

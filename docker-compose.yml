@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: rbb
+      POSTGRES_PASSWORD: rbb
+      POSTGRES_DB: rbb
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "synchronous_commit=off", "-c", "max_connections=200"]
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rbb"]
+      interval: 5s
+  app:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://rbb:rbb@db:5432/rbb
+      RBB_SECRET: ${RBB_SECRET:?set RBB_SECRET to a random value of 32+ characters, e.g. openssl rand -hex 32}
+      RBB_TRUST_PROXY: "false"
+    ports: ["8080:8080"]
+    volumes: [uploads:/app/uploads, ./plugins:/app/plugins:ro]
+    # Scale horizontally with: docker compose up --scale app=3 (behind a load balancer)
+volumes:
+  dbdata:
+  uploads:

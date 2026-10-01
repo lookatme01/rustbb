@@ -1,0 +1,13 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<form method="post" action="/modcp/ban" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Ban a user</h2></div>
+  <div class="form-row"><label for="username">Username</label><input id="username" type="text" name="username" value="{{ user.username if user else '' }}" required></div>
+  <div class="form-row"><label for="reason">Reason</label><input id="reason" type="text" name="reason" maxlength="255"></div>
+  <div class="form-row"><label for="days">Length</label><div><select id="days" name="days">{% for d in [(1,'1 day'),(3,'3 days'),(7,'1 week'),(14,'2 weeks'),(30,'1 month'),(90,'3 months'),(180,'6 months'),(365,'1 year'),(0,'Permanent')] %}<option value="{{ d[0] }}"{% if d[0] == 7 %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}</select></div></div>
+  <div class="form-row"><label for="gid">Move to group</label><select id="gid" name="gid">{% for g in groups %}<option value="{{ g[0] }}">{{ g[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><span class="label"><strong>Content</strong></span><label class="check"><input type="checkbox" name="deleteposts" value="1"> Delete all of this user's threads and posts (spammers)</label></div>
+  <div class="box-foot"><button class="btn danger" type="submit">Ban user</button></div>
+</form>
+{% endblock %}

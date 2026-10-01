@@ -1,0 +1,15 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<div class="two-col">
+  <section class="box"><div class="box-head"><h2>Awaiting moderation</h2></div><div class="kv">
+    <div>Threads</div><div><a href="/modcp/modqueue?kind=threads">{{ uthreads }}</a></div>
+    <div>Posts</div><div><a href="/modcp/modqueue?kind=posts">{{ uposts }}</a></div>
+    <div>Attachments</div><div><a href="/modcp/modqueue?kind=attachments">View</a></div>
+  </div></section>
+  <section class="box"><div class="box-head"><h2>Reports</h2></div><div class="box-body"><p><strong>{{ reports }}</strong> unread report{{ '' if reports == 1 else 's' }}.</p><a class="btn small" href="/modcp/reports">Review reports</a></div></section>
+</div>
+<section class="box"><div class="box-head"><h2>Latest moderator actions</h2><a class="right" href="/modcp/modlogs">All logs</a></div>
+{% include "modcp/logtable.html" %}
+</section>
+{% endblock %}

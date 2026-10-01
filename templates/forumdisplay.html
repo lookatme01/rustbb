@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block line %}--line: var(--line-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}){% endblock %}
+{% block content %}
+<header class="page-head forum-head">
+  <span class="forum-icon big" aria-hidden="true">{{ m.icon('chat') }}</span>
+  <div class="grow">
+    <h1>{{ forum.name }}</h1>
+    {% if forum.description %}<p class="lede">{{ forum.description|safe }}</p>{% endif %}
+  </div>
+  <div class="actions">
+    {% if me %}
+    <form method="post" action="/forum/{{ forum.fid }}/subscribe">{{ m.csrf_field() }}<button class="btn secondary small" type="submit">{{ m.icon('bell') }}{{ 'Unsubscribe' if subscribed else 'Follow' }}</button></form>
+    <form method="post" action="/forum/{{ forum.fid }}/markread">{{ m.csrf_field() }}<button class="btn ghost small" type="submit">{{ m.icon('check') }}Mark read</button></form>
+    {% endif %}
+    {% if can_post %}<a class="btn" href="/newthread/{{ forum.fid }}">{{ m.icon('plus') }}{{ t("New Thread") }}</a>{% endif %}
+  </div>
+</header>
+
+{% if rules_html %}
+<section class="box">
+  <div class="box-head"><h2>{{ forum.rulestitle or 'Forum Rules' }}</h2></div>
+  <div class="box-body">{% if forum.rulestype == 1 %}{{ rules_html|safe }}{% else %}<details><summary>Read the rules</summary>{{ rules_html|safe }}</details>{% endif %}</div>
+</section>
+{% endif %}
+
+{% if subforums %}
+<section class="cat">
+  <header class="cat-head"><h2>Sub forums</h2></header>
+  <div class="forum-list">{% for f in subforums %}{{ m.forum_row(f) }}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if not forum.is_category and not fperms.canviewthreads %}
+<div class="box"><div class="empty">You can see this forum but you do not have permission to read its threads.{% if not me %} <a href="/member/login?return_to={{ current_url|urlenc }}">Log in</a> to see more.{% endif %}</div></div>
+{% endif %}
+{% if not forum.is_category and fperms.canviewthreads %}
+<div class="actions toolbar">
+  {{ m.pagination(pagination) }}
+  <span class="spacer"></span>
+  <form method="get" action="{{ forum_url }}" class="filters">
+    {% if prefixes %}<select name="prefix" aria-label="Prefix"><option value="0">Any prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
+    <select name="sortby" aria-label="Sort by">
+      {% for s in [('lastpost','Last post'),('started','Start date'),('subject','Subject'),('starter','Author'),('replies','Replies'),('views','Views'),('rating','Rating')] %}<option value="{{ s[0] }}"{% if sortby == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}
+    </select>
+    <select name="order" aria-label="Order"><option value="desc"{% if order == 'desc' %} selected{% endif %}>Descending</option><option value="asc"{% if order == 'asc' %} selected{% endif %}>Ascending</option></select>
+    <select name="datecut" aria-label="From">
+      {% for d in [(0,'Any time'),(1,'Today'),(7,'Last week'),(30,'Last month'),(90,'Last 3 months'),(365,'Last year')] %}<option value="{{ d[0] }}"{% if datecut == d[0] %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}
+    </select>
+    <button class="btn secondary small" type="submit">Apply</button>
+  </form>
+</div>
+
+<section class="thread-list">
+  <div class="box-head"><h2>Threads</h2><span class="right">{{ total|num }} thread{{ '' if total == 1 else 's' }}</span></div>
+  {% for a in announcements %}
+  <div class="thread-row sticky">
+    <span class="face" style="--size:40px">📣</span>
+    <div><div class="thread-title"><span class="flag sticky">Announcement</span> <a href="/announcement/{{ a.aid }}">{{ a.subject }}</a></div><div class="thread-meta"><span>{{ a.startdate|date }}</span></div></div>
+    <div class="thread-stats"></div><div></div>{% if is_mod %}<div></div>{% endif %}
+  </div>
+  {% endfor %}
+  {% for t in threads %}{{ m.thread_row(t, false, is_mod) }}{% else %}
+  <div class="empty">There are no threads in this forum yet.{% if can_post %} <a href="/newthread/{{ forum.fid }}">Start the first one.</a>{% endif %}</div>
+  {% endfor %}
+</section>
+
+<div class="actions">
+  {{ m.pagination(pagination) }}
+  <span class="spacer"></span>
+  {% if can_post %}<a class="btn" href="/newthread/{{ forum.fid }}">{{ t("New Thread") }}</a>{% endif %}
+</div>
+
+{% if is_mod %}
+<form id="inlinemod" method="post" action="/moderation/threads" class="actions">
+  {{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ forum.fid }}">
+  <label for="modaction" class="small">Inline moderation (<span class="js-selcount">0</span> selected):</label>
+  <select name="action" id="modaction">
+    {% if modperms.canopenclosethreads %}<option value="close">Close threads</option><option value="open">Open threads</option>{% endif %}
+    {% if modperms.canstickunstickthreads %}<option value="stick">Stick threads</option><option value="unstick">Unstick threads</option>{% endif %}
+    {% if modperms.canapproveunapprovethreads %}<option value="approve">Approve threads</option><option value="unapprove">Unapprove threads</option>{% endif %}
+    {% if modperms.cansoftdeletethreads %}<option value="softdelete">Soft delete threads</option>{% endif %}
+    {% if modperms.canrestorethreads %}<option value="restore">Restore threads</option>{% endif %}
+    {% if modperms.candeletethreads %}<option value="delete">Delete threads permanently</option>{% endif %}
+    {% if modperms.canmanagethreads %}<option value="move">Move / copy threads…</option><option value="merge">Merge threads…</option>{% endif %}
+    {% for ct in custom_tools %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endfor %}
+  </select>
+  <button class="btn secondary small" type="submit">Go</button>
+  <button class="btn secondary small js-check-all" type="button">Select all</button>
+</form>
+{% endif %}
+{% endif %}
+
+{% if browsing %}
+<p class="small muted">Users browsing this forum: {% for u in browsing.users %}<a href="{{ url_user(u[0]) }}">{{ u[1]|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if browsing.users and browsing.guests %}, {% endif %}{% if browsing.guests %}{{ browsing.guests }} guest(s){% endif %}</p>
+{% endif %}
+{% include "forumjump.html" %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>System automated moderation</h2></div>
+<div class="box-body">
+<p>System evaluates new and edited posts every 30 seconds. Observation records matches; quarantine sends them to the moderation queue. Existing content is preserved. Staff and System are exempt.</p>
+<p>{{ queued }} posts queued · {{ pending }} quarantine actions awaiting review · Policy revision {{ revision }}</p>
+<form method="post" action="/admin/automod">
+{{ m.csrf_field() }}<input type="hidden" name="revision" value="{{ revision }}">
+<p><label>Mode <select name="mode">{% for mode in ['off','observe','quarantine'] %}<option value="{{ mode }}"{% if policy.mode == mode %} selected{% endif %}>{{ mode|capitalize }}</option>{% endfor %}</select></label></p>
+<p><label>Link threshold (0 disables) <input type="number" name="max_links" min="0" max="100" value="{{ policy.max_links }}" required></label></p>
+<p><label>Apply link/repetition rules below this visible post count <input type="number" name="new_user_posts" min="0" max="1000" value="{{ policy.new_user_posts }}" required></label></p>
+<p><label>Repeated-message threshold in 10 minutes <input type="number" name="duplicate_limit" min="2" max="20" value="{{ policy.duplicate_limit }}" required></label></p>
+<p><label>Blocked phrases, one per line (case-insensitive literal matches for all non-staff members)<br><textarea name="phrases" rows="6">{{ phrases }}</textarea></label></p>
+<button class="btn">Save policy</button>
+</form>
+<form method="post" action="/admin/automod/rollback" class="js-confirm" data-confirm="Disable automation and undo all unchanged quarantine actions?">
+{{ m.csrf_field() }}<input type="hidden" name="revision" value="{{ revision }}"><p><button class="btn secondary">Disable and undo all quarantines</button></p>
+</form>
+<p class="small muted">Undo refuses to overwrite later edits, moves or moderation. Restored posts remain exempt from future automation. Mode Off drains the queue without evaluating it. Observe and Off leave current quarantines in place.</p>
+</div></section>
+<section class="box"><div class="box-head"><h2>Latest 100 decisions</h2></div>
+<table class="grid"><thead><tr><th>Action</th><th>Content</th><th>Reason</th><th>State</th><th>Review</th></tr></thead><tbody>
+{% for a in list %}<tr><td>#{{ a.id }}<br>{{ a.dateline|date }}<br>Policy {{ a.policy_revision }}</td><td><a href="/thread/{{ a.tid }}?pid={{ a.pid }}#pid{{ a.pid }}">Post {{ a.pid }}</a><br>{% if a.is_first %}Whole thread{% else %}Reply{% endif %}</td><td>{% for reason in a.reasons %}{{ reason }}<br>{% endfor %}</td><td>{{ a.status }}{% if a.undone_by %}<br>Restored by user {{ a.undone_by }}{% endif %}</td><td>{% if a.status == 'quarantined' %}<form method="post" action="/admin/automod/undo">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ a.id }}"><button class="btn secondary small">Undo</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5">No matches recorded.</td></tr>{% endfor %}
+</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Latest 20 policy changes</h2></div><table class="grid"><tbody>
+{% for h in history %}<tr><td>#{{ h.id }} · {{ h.dateline|date }} · User {{ h.uid }}</td><td>{{ h.before_policy.mode }} → {{ h.after_policy.mode }}</td><td><form method="post" action="/admin/automod/restore-policy">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ h.id }}"><input type="hidden" name="revision" value="{{ revision }}"><button class="btn secondary small">Restore previous policy</button></form></td></tr>{% else %}<tr><td>No policy changes.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

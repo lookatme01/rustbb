@@ -1,0 +1,9 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<section class="box"><div class="box-head"><h2>Warning logs</h2></div>
+<table class="grid"><thead><tr><th>User</th><th>Warning</th><th class="num">Points</th><th>Issued</th><th>By</th><th>Status</th></tr></thead><tbody>
+{% for w in warnings %}<tr><td><a href="/warnings/{{ w[1] }}">{{ w[2] }}</a></td><td><a href="/warning/{{ w[0] }}">{{ w[3] }}</a></td><td class="num">{{ w[4] }}</td><td class="small">{{ w[5]|date('date') }}</td><td>{{ w[9] }}</td><td class="small">{% if w[8] %}Revoked{% elif w[7] %}Expired{% elif w[6] %}Expires {{ w[6]|date('date') }}{% else %}Permanent{% endif %}</td></tr>
+{% else %}<tr><td colspan="6" class="empty">No warnings have been issued.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

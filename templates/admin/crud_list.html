@@ -1,0 +1,11 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><p class="muted" style="margin:0;flex:1">{{ description }}</p><a class="btn small" href="/admin/crud/{{ slug }}/edit">Add {{ singular }}</a></div>
+<section class="box"><div class="box-head"><h2>{{ table_title }}</h2><span class="right">{{ items|length }}</span></div>
+<table class="grid"><thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}<th></th></tr></thead><tbody>
+{% for it in items %}<tr>{% for c in it.cells %}<td>{% if loop.first and has_image and it.image %}<img src="{{ it.image }}" alt="" width="20" height="20">{% else %}{{ c[1] }}{% endif %}</td>{% endfor %}
+<td class="num" style="white-space:nowrap"><a class="btn secondary small" href="/admin/crud/{{ slug }}/edit?id={{ it.id }}">Edit</a> <form method="post" action="/admin/crud/{{ slug }}/delete" style="display:inline" class="js-confirm" data-confirm="Delete this {{ singular }}?">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ it.id }}"><button class="btn secondary small">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="{{ headers|length + 1 }}" class="empty">Nothing here yet. <a href="/admin/crud/{{ slug }}/edit">Add the first {{ singular }}.</a></td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

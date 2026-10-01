@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/users/awaiting" class="box">{{ m.csrf_field() }}
+<div class="box-head"><h2>Users awaiting activation</h2></div>
+<table class="grid"><thead><tr><th></th><th>User</th><th>Email</th><th>Registered</th><th>IP</th><th>Waiting for</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><input type="checkbox" name="uids" value="{{ r[0] }}" aria-label="Select"></td><td><a href="/admin/users/{{ r[0] }}">{{ r[1] }}</a></td><td class="small">{{ r[2] }}</td><td class="small">{{ r[3]|date }}</td><td class="small">{{ r[4] }}</td><td class="small">{{ 'Admin approval' if r[5] == 'b' else 'Email confirmation' }}</td></tr>
+{% else %}<tr><td colspan="6" class="empty">Nobody is waiting.</td></tr>{% endfor %}
+</tbody></table>
+{% if rows %}<div class="box-foot actions" style="margin:0"><button class="btn small" name="action" value="activate">Activate selected</button><button class="btn danger small" name="action" value="delete">Delete selected</button></div>{% endif %}
+</form>
+{% endblock %}

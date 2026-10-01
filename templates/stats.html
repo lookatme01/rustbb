@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="box"><div class="box-head"><h2>Board statistics</h2></div>
+<div class="two-col" style="gap:0">
+<div class="kv">
+  <div>Posts</div><div>{{ base.posts|num }} ({{ posts_per_day }} per day)</div>
+  <div>Threads</div><div>{{ base.threads|num }} ({{ threads_per_day }} per day)</div>
+  <div>Members</div><div>{{ base.users|num }} ({{ members_per_day }} per day)</div>
+  <div>Posts per member</div><div>{{ posts_per_member }}</div>
+  <div>Replies per thread</div><div>{{ replies_per_thread }}</div>
+</div>
+<div class="kv">
+  <div>Posts today</div><div>{{ data.posts_today|num }}</div>
+  <div>New members today</div><div>{{ data.users_today|num }}</div>
+  <div>Members who posted</div><div>{{ percent_posted }}%</div>
+  <div>Newest member</div><div>{% if base.lastuid %}<a href="{{ url_user(base.lastuid, base.lastusername) }}">{{ base.lastusername }}</a>{% endif %}</div>
+  {% if data.top_referrer %}<div>Top referrer</div><div><a href="{{ url_user(data.top_referrer.uid) }}">{{ data.top_referrer.username }}</a> ({{ data.top_referrer.referrals }} referrals)</div>{% endif %}
+</div>
+</div></section>
+<div class="two-col">
+  <section class="box"><div class="box-head"><h2>Top posters</h2></div><table class="grid"><tbody>{% for u in data.top_posters %}<tr><td><a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a></td><td class="num">{{ u.postnum|num }}</td></tr>{% endfor %}</tbody></table></section>
+  <section class="box"><div class="box-head"><h2>Most popular forums</h2></div><table class="grid"><tbody>{% for f in data.top_forums %}<tr><td><a href="{{ f.url }}">{{ f.name }}</a></td><td class="num">{{ f.count|num }} posts</td></tr>{% endfor %}</tbody></table></section>
+  <section class="box"><div class="box-head"><h2>Most replied threads</h2></div><table class="grid"><tbody>{% for t in data.top_replied %}<tr><td><a href="{{ t.url }}">{{ t.subject }}</a></td><td class="num">{{ t.count|num }}</td></tr>{% endfor %}</tbody></table></section>
+  <section class="box"><div class="box-head"><h2>Most viewed threads</h2></div><table class="grid"><tbody>{% for t in data.top_viewed %}<tr><td><a href="{{ t.url }}">{{ t.subject }}</a></td><td class="num">{{ t.count|num }}</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% if data.history|length > 1 %}
+<section class="box"><div class="box-head"><h2>Growth (last {{ data.history|length }} days)</h2></div>
+<table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in data.history|reverse %}<tr><td>{{ h.dateline|date('date') }}</td><td class="num">{{ h.users|num }}</td><td class="num">{{ h.threads|num }}</td><td class="num">{{ h.posts|num }}</td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
+{% endblock %}

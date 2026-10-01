@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<form method="post" action="/moderation/moveposts" class="box">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ thread.tid }}">
+  {% for p in pids %}<input type="hidden" name="pids" value="{{ p }}">{% endfor %}
+  <div class="box-head"><h2>Move {{ pids|length }} post{{ '' if pids|length == 1 else 's' }} to another thread</h2></div>
+  <div class="form-row"><label for="target">Destination thread</label><input id="target" type="text" name="target" required placeholder="Thread URL or ID"></div>
+  <div class="box-foot"><button class="btn" type="submit">Move posts</button> <a href="{{ thread_url }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<section class="box"><div class="box-head"><h2>Forum subscriptions</h2></div>
+<table class="grid"><tbody>{% for f in forums %}<tr><td><a href="{{ f.url }}">{{ f.name }}</a></td><td class="num"><form method="post" action="/usercp/forumsubscriptions">{{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ f.fid }}"><button class="btn secondary small" type="submit">Unsubscribe</button></form></td></tr>{% else %}<tr><td class="empty">You aren't subscribed to any forums.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block head %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endblock %}
+{% block pm %}
+<header class="pgp-page-head">
+  {% if them %}{{ m.avatar(them.avatar, them.username, 'avatar pgp-avatar', 56) }}{% endif %}
+  <div>
+    <h1>{{ 'Your identity key' if self_view else 'Verify ' ~ (them.username if them else 'member') }}</h1>
+    <p class="pgp-muted">{% if self_view %}Share your fingerprint so others can verify you.{% else %}Make sure you're really talking to {{ them.username if them else 'them' }}, and that nobody is in between.{% endif %}</p>
+  </div>
+  {% if them and not self_view %}<a class="btn secondary small" href="/pm/send?uid={{ them_uid }}">Message</a>{% endif %}
+</header>
+<div data-pgp-verify data-uid="{{ them_uid }}" data-pgp-board="{{ board }}">
+  <div class="pgp-loading"><span class="pgp-spinner"></span>Loading keys…</div>
+  <noscript><div class="notice warn">Verifying identities needs JavaScript: the comparison happens in your browser so the board can't fake it.</div></noscript>
+</div>
+{% endblock %}

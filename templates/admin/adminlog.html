@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Admin log</h2></div>
+<table class="grid"><thead><tr><th>Admin</th><th>Module</th><th>Action</th><th>Details</th><th>Date</th><th>IP</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r[6] or 'system' }}</td><td class="small">{{ r[1] }}</td><td>{{ r[2] }}</td><td class="small muted"><code>{{ r[5]|truncate_chars(80) }}</code></td><td class="small">{{ r[4]|date }}</td><td class="small">{{ r[3] }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Nothing logged.</td></tr>{% endfor %}
+</tbody></table></section>
+{{ m.pagination(pagination) }}
+{% endblock %}

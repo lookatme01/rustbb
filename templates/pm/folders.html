@@ -1,0 +1,10 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block pm %}
+<form method="post" action="/pm/folders" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Custom folders</h2><span class="desc">Clear a name to delete that folder (its messages move to your inbox).</span></div>
+  {% for f in custom %}<div class="form-row"><label for="f{{ f[0] }}">Folder</label><input id="f{{ f[0] }}" type="text" name="folder_{{ f[0] }}" value="{{ f[1] }}" maxlength="40"></div>{% endfor %}
+  <div class="form-row"><label for="newfolder">New folder</label><input id="newfolder" type="text" name="newfolder" maxlength="40" placeholder="Folder name"></div>
+  <div class="box-foot"><button class="btn" type="submit">Save folders</button></div>
+</form>
+{% endblock %}

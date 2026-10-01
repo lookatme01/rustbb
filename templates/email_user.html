@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block content %}
+<form method="post" action="/user/{{ uid }}/email" class="box" style="max-width:720px">
+  <input type="hidden" name="my_post_key" value="{{ csrf }}">
+  <div class="box-head"><h2>Send email to {{ username }}</h2></div>
+  <div class="form-row"><label for="subject">Subject</label><input id="subject" name="subject" type="text" required maxlength="200"></div>
+  <div class="form-row"><label for="message">Message</label><textarea id="message" name="message" rows="10" required></textarea></div>
+  <div class="box-foot"><button class="btn" type="submit">Send email</button> <span class="small muted">Your email address is not revealed; replies go through the board.</span></div>
+</form>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+{% if displaygroups|length > 1 %}
+<form method="post" action="/usercp/usergroups" class="box">{{ m.csrf_field() }}<input type="hidden" name="action" value="display">
+  <div class="box-head"><h2>Display group</h2></div>
+  <div class="box-body actions" style="margin:0"><select name="gid">{% for g in displaygroups %}<option value="{{ g[0] }}"{% if g[0] == displaygroup %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select><button class="btn small" type="submit">Set display group</button></div>
+</form>
+{% endif %}
+<section class="box"><div class="box-head"><h2>Groups you can join</h2></div>
+<table class="grid"><tbody>
+{% for g in joinable %}<tr><td><strong>{{ g.title }}</strong><br><span class="small muted">{{ g.description }}</span></td><td class="num">
+  {% if g.member %}{% if not g.primary %}<form method="post" action="/usercp/usergroups">{{ m.csrf_field() }}<input type="hidden" name="action" value="leave"><input type="hidden" name="gid" value="{{ g.gid }}"><button class="btn secondary small" type="submit">Leave</button></form>{% else %}<span class="tag">Primary group</span>{% endif %}
+  {% elif g.gid in pending %}<span class="tag">Request pending</span>
+  {% else %}<form method="post" action="/usercp/usergroups" class="actions" style="margin:0;justify-content:flex-end">{{ m.csrf_field() }}<input type="hidden" name="action" value="join"><input type="hidden" name="gid" value="{{ g.gid }}">{% if g.kind == 4 %}<input type="text" name="reason" placeholder="Why do you want to join?" maxlength="250">{% endif %}<button class="btn small" type="submit">{{ 'Request to join' if g.kind == 4 else 'Join' }}</button></form>{% endif %}
+</td></tr>{% else %}<tr><td class="empty">There are no public groups.</td></tr>{% endfor %}
+</tbody></table></section>
+{% for g in leading %}
+<section class="box"><div class="box-head"><h2>Manage {{ g.title }}</h2></div>
+  {% if g.can_requests and g.requests %}<table class="grid"><thead><tr><th>Join request</th><th>Reason</th><th></th></tr></thead><tbody>{% for r in g.requests %}<tr><td><a href="{{ url_user(r[1]) }}">{{ r[2] }}</a></td><td>{{ r[3] }}</td><td class="num"><form method="post" action="/usercp/usergroups" style="display:inline">{{ m.csrf_field() }}<input type="hidden" name="gid" value="{{ g.gid }}"><input type="hidden" name="rid" value="{{ r[0] }}"><button class="btn small" name="action" value="accept">Accept</button> <button class="btn secondary small" name="action" value="decline">Decline</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
+  <table class="grid"><thead><tr><th>Members ({{ g.members|length }})</th><th></th></tr></thead><tbody>{% for mem in g.members %}<tr><td><a href="{{ url_user(mem[0]) }}">{{ mem[1] }}</a></td><td class="num">{% if g.can_members %}<form method="post" action="/usercp/usergroups">{{ m.csrf_field() }}<input type="hidden" name="action" value="kick"><input type="hidden" name="gid" value="{{ g.gid }}"><input type="hidden" name="uid" value="{{ mem[0] }}"><button class="btn secondary small" type="submit">Remove</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>
+  {% if g.can_members %}<form method="post" action="/usercp/usergroups" class="box-foot actions" style="margin:0">{{ m.csrf_field() }}<input type="hidden" name="action" value="add"><input type="hidden" name="gid" value="{{ g.gid }}"><input type="text" name="username" placeholder="Username" required><button class="btn small" type="submit">Add member</button></form>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

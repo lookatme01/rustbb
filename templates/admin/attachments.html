@@ -1,0 +1,10 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Attachments</h2></div><div class="kv">
+  <div>Files</div><div>{{ stats[0]|num }}</div><div>Total size</div><div>{{ stats[1]|bytes }}</div><div>Downloads</div><div>{{ stats[3]|num }}</div>
+  <div>Orphaned uploads</div><div>{{ stats[2] }} (uploaded over a day ago but never attached to a post) <form method="post" action="/admin/tools/attachments" style="display:inline">{{ m.csrf_field() }}<button class="btn secondary small">Remove orphans</button></form></div>
+</div></section>
+<section class="box"><div class="box-head"><h2>Largest files</h2></div>
+<table class="grid"><thead><tr><th>File</th><th>Uploader</th><th class="num">Size</th><th class="num">Downloads</th></tr></thead><tbody>{% for a in biggest %}<tr><td><a href="/attachment/{{ a[0] }}">{{ a[1] }}</a>{% if a[4] %} · <a href="/post/{{ a[4] }}">post</a>{% endif %}</td><td>{{ a[5] }}</td><td class="num">{{ a[2]|bytes }}</td><td class="num">{{ a[3] }}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}
