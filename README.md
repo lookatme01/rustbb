@@ -177,6 +177,10 @@ cargo build --release
 
 Open <http://127.0.0.1:8080>, sign in, and visit the **Admin CP** at `/admin`.
 
+Something not working? `rbb doctor` checks the whole setup (secret, upload folder, database
+connection and authentication, required extensions, migrations, connection limits, mail) and
+says how to fix each problem.
+
 If you start `rbb serve` on an empty database it installs itself with an `admin` account and a
 random password, printed once in the server log. Change it after signing in.
 
@@ -220,6 +224,7 @@ Admin CP and stored in the database.
 | `rbb seed --users N --threads N --posts N` | Generate a synthetic board for load testing. |
 | `rbb recount` | Rebuild all denormalized counters. |
 | `rbb check` | Compare denormalized counters with freshly computed values and report differences. |
+| `rbb doctor [--strict]` | Check configuration, database, board and plugins, and explain how to fix each problem. Exits 1 on failures (or on warnings with `--strict`). Read-only. |
 | `rbb import-mybb --mysql-url … --yes` | Import a MyBB 1.8 board from its MySQL database. |
 
 ## Architecture
@@ -361,6 +366,10 @@ large boards, add PgBouncer and read replicas as usual.
 * **Docker:** the multi-stage `Dockerfile` builds a small Debian image that runs as a non-root user,
   with a health check on the listening port.
 * **Backups:** Admin CP → Tools → Database backup runs `pg_dump`; back up the upload directory too.
+* **Preflight:** run `rbb doctor --strict` on each node before starting it (for example as a
+  systemd `ExecStartPre=` or a deploy step). It fails fast on misconfiguration, such as PostgreSQL
+  rejecting the password with `ident` authentication or the `pg_trgm` extension missing (install
+  the distribution's PostgreSQL contrib package).
 
 ## Migrating from MyBB
 
@@ -424,6 +433,7 @@ second argument where applicable):
 | `tests/system.sh` | System account protections |
 | `tests/system_features.sh` | System sender, staff posting as System, automation, profile, ban notice |
 | `tests/deleted_visibility.sh` | soft-deleted content hidden from members, guests and the API |
+| `tests/doctor.sh` | `rbb doctor` against the dev setup and deliberately broken ones |
 | `tests/pgp_e2e.mjs` | end-to-end PGP flows with the shipped browser module |
 | `tests/load.sh` | load test against a seeded board |
 | `tests/simulate.mjs` | realistic traffic simulation with optional ramp-up |

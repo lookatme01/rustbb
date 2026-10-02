@@ -21,8 +21,15 @@ pub struct Config {
     pub page_cache_mb: u64,
 }
 
+pub const DEFAULT_DATABASE_URL: &str = "postgres://rbb@127.0.0.1:5433/rbb";
+pub const DEFAULT_LISTEN: &str = "127.0.0.1:8080";
+pub const DEFAULT_DB_MAX_CONNECTIONS: &str = "32";
+pub const DEFAULT_UPLOAD_DIR: &str = "uploads";
+pub const DEFAULT_PLUGINS_DIR: &str = "plugins";
+pub const DEFAULT_PAGE_CACHE_MB: &str = "64";
+
 /// Placeholder secrets from the docs and examples.
-const KNOWN_SECRETS: &[&str] = &[
+pub const KNOWN_SECRETS: &[&str] = &[
     "change-me-to-a-long-random-string",
     "insecure-development-secret-change-me",
 ];
@@ -40,17 +47,17 @@ impl Config {
             );
         }
         Ok(Config {
-            database_url: get("DATABASE_URL", "postgres://rbb@127.0.0.1:5433/rbb"),
-            listen: get("RBB_LISTEN", "127.0.0.1:8080").parse()?,
+            database_url: get("DATABASE_URL", DEFAULT_DATABASE_URL),
+            listen: get("RBB_LISTEN", DEFAULT_LISTEN).parse()?,
             secret,
-            db_max_connections: get("RBB_DB_MAX_CONNECTIONS", "32").parse()?,
-            upload_dir: get("RBB_UPLOAD_DIR", "uploads"),
+            db_max_connections: get("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS).parse()?,
+            upload_dir: get("RBB_UPLOAD_DIR", DEFAULT_UPLOAD_DIR),
             trust_proxy: get("RBB_TRUST_PROXY", "false") == "true",
             secure_cookies: get("RBB_SECURE_COOKIES", "false") == "true",
             run_tasks: get("RBB_RUN_TASKS", "true") == "true",
-            plugins_dir: get("RBB_PLUGINS_DIR", "plugins"),
+            plugins_dir: get("RBB_PLUGINS_DIR", DEFAULT_PLUGINS_DIR),
             dev_templates: std::env::var("RBB_DEV_TEMPLATES").ok(),
-            page_cache_mb: get("RBB_PAGE_CACHE_MB", "64").parse()?,
+            page_cache_mb: get("RBB_PAGE_CACHE_MB", DEFAULT_PAGE_CACHE_MB).parse()?,
         })
     }
 }

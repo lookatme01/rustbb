@@ -89,6 +89,21 @@ impl Plugins {
         }
     }
 
+    /// Compile every plugin script in `dir` without running it: (file, error if it doesn't compile).
+    pub fn check_dir(dir: &str) -> Vec<(String, Option<String>)> {
+        let e = engine();
+        let mut out: Vec<(String, Option<String>)> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|d| d.path())
+            .filter(|p| p.extension().map(|x| x == "rhai").unwrap_or(false))
+            .map(|p| (p.display().to_string(), e.compile_file(p).err().map(|err| err.to_string())))
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Fire-and-forget action hook.
     pub fn run_hook(&self, hook: &str, data: serde_json::Value) {
         let Some(e) = &self.engine else { return };

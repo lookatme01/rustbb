@@ -10,6 +10,7 @@ mod cache;
 mod config;
 mod ctx;
 mod debugbar;
+mod doctor;
 mod error;
 mod i18n;
 mod import;
@@ -80,6 +81,12 @@ enum Cmd {
         threads: i64,
         #[arg(long, default_value_t = 1_000_000)]
         posts: i64,
+    },
+    /// Check configuration, database, board and plugins, and explain how to fix problems.
+    Doctor {
+        /// Treat warnings as failures (non-zero exit code).
+        #[arg(long)]
+        strict: bool,
     },
     /// Recount all denormalized counters.
     Recount,
@@ -160,11 +167,12 @@ async fn connect(cfg: &config::Config) -> anyhow::Result<sqlx::PgPool> {
         .test_before_acquire(false)
         .max_lifetime(Duration::from_secs(1800))
         .connect(&cfg.database_url)
-        .await?)
+        .await
+        .map_err(|e| doctor::hinted(e.into()))?)
 }
 
 async fn migrate(db: &sqlx::PgPool) -> anyhow::Result<()> {
-    sqlx::migrate!("./migrations").run(db).await?;
+    sqlx::migrate!("./migrations").run(db).await.map_err(|e| doctor::hinted(e.into()))?;
     Ok(())
 }
 
@@ -336,6 +344,10 @@ async fn main() -> anyhow::Result<()> {
         .with(debugbar::QueryLayer.with_filter(debugbar::filter()))
         .init();
     let cli = Cli::parse();
+    // Before loading the configuration: doctor reports configuration problems instead of exiting.
+    if let Some(Cmd::Doctor { strict }) = cli.cmd {
+        std::process::exit(doctor::run(strict).await);
+    }
     let cfg = config::Config::from_env()?;
     match cli.cmd.unwrap_or(Cmd::Serve) {
         Cmd::Serve => serve(cfg).await,
@@ -384,6 +396,7 @@ async fn main() -> anyhow::Result<()> {
             println!("counters rebuilt");
             Ok(())
         }
+        Cmd::Doctor { .. } => unreachable!("handled before the configuration is loaded"),
         Cmd::Check => {
             let db = connect(&cfg).await?;
             let problems = ops::check_counters(&db).await?;

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: `rbb doctor` (2026-10-02)
+- New `rbb doctor [--strict]` command checks the setup and explains how to fix each problem:
+  the secret, listen address, upload folder, plugins, database connection and authentication,
+  PostgreSQL version, the `pg_trgm` extension, table privileges, migrations (pending, from a newer
+  release, edited or failed), connection limits across nodes, installation, the System account,
+  the board URL against cookie and proxy settings, and mail. It never changes anything.
+- When `rbb serve` or `rbb migrate` fails on a known database problem, the error now says how to
+  fix it (for example `ident` authentication in pg_hba.conf, or the missing contrib package).
+
 ### Added: System account features (2026-10-01)
 - **System sends the board's automated messages.** Warning notices, subscription and moderation
   notices and mass-mail PMs come from the System account instead of an anonymous "(system)"
