@@ -1,3 +1,5 @@
+# One unit per role on bigger boards: copy this file to rbb-worker.service and
+# rbb-scheduler.service with ExecStart=/opt/rbb/rbb worker / scheduler.
 [Unit]
 Description=rbb forum server
 After=network-online.target postgresql.service
@@ -10,6 +12,10 @@ Group=rbb
 WorkingDirectory=/opt/rbb
 EnvironmentFile=/opt/rbb/.env
 ExecStart=/opt/rbb/rbb serve
+# SIGTERM starts a graceful shutdown: readiness turns off, in-flight requests and background
+# batches finish, buffers are flushed.
+KillSignal=SIGTERM
+TimeoutStopSec=60
 Restart=always
 RestartSec=2
 LimitNOFILE=65536

@@ -335,7 +335,13 @@ impl AppState {
             *e = (0, t + window_secs);
         }
         e.0 += 1;
-        e.0 <= limit
+        let ok = e.0 <= limit;
+        if !ok {
+            // The key's prefix names the limit (`login:…`, `req:…`); the rest is never a label.
+            let name = key.split(':').next().unwrap_or("other");
+            crate::infra::metrics::counter_with("rbb_ratelimited_total", &[("limit", name)], 1);
+        }
+        ok
     }
 }
 

@@ -105,29 +105,48 @@ struct ViewerInfo<'a> {
     away: bool,
 }
 
-pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>, trust_proxy: bool) -> String {
-    if trust_proxy {
-        // The trusted proxy appends the address it saw to the end of X-Forwarded-For; anything
-        // before it was supplied by the client and can be forged. Use the last entry.
-        let xff: Vec<&str> = headers
+/// The client's address. Forwarding headers are believed only when the connection comes from a
+/// trusted proxy (`RBB_TRUSTED_PROXIES`, or loopback when only `RBB_TRUST_PROXY=true` is set):
+/// `X-Forwarded-For` is read right to left, skipping trusted proxies, and the first other address
+/// is the client. Anything to its left was written by the client and could be forged.
+pub fn client_ip(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trusted: &[crate::config::Cidr],
+) -> String {
+    let is_trusted = |ip: std::net::IpAddr| trusted.iter().any(|t| t.contains(ip));
+    let from_proxy = peer.is_some_and(|p| is_trusted(p.ip()));
+    let peer_ip = peer.map(|p| p.ip().to_canonical().to_string());
+    if from_proxy {
+        let hops: Vec<String> = headers
             .get_all("x-forwarded-for")
             .iter()
             .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .map(|h| h.trim().to_string())
             .collect();
-        if let Some(last) = xff.last().and_then(|v| v.rsplit(',').next()) {
-            let ip = last.trim();
-            if ip.parse::<std::net::IpAddr>().is_ok() {
-                return ip.to_string();
+        let mut leftmost = None;
+        for h in hops.iter().rev() {
+            let Ok(ip) = h.parse::<std::net::IpAddr>() else {
+                // Garbage in the chain: stop trusting anything further left.
+                break;
+            };
+            if !is_trusted(ip) {
+                return ip.to_canonical().to_string();
             }
+            leftmost = Some(ip.to_canonical().to_string());
         }
-        if let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok())
-            && v.parse::<std::net::IpAddr>().is_ok()
+        if hops.is_empty()
+            && let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok())
+            && let Ok(ip) = v.trim().parse::<std::net::IpAddr>()
         {
-            return v.to_string();
+            return ip.to_canonical().to_string();
+        }
+        if let Some(ip) = leftmost {
+            return ip;
         }
     }
-    peer.map(|p| p.ip().to_string())
-        .unwrap_or_else(|| "0.0.0.0".into())
+    peer_ip.unwrap_or_else(|| "0.0.0.0".into())
 }
 
 pub fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -545,7 +564,7 @@ pub async fn context_middleware(
         .get::<ConnectInfo<SocketAddr>>()
         .map(|c| c.0);
     let headers = req.headers().clone();
-    let ip = client_ip(&headers, peer, app.cfg.trust_proxy);
+    let ip = client_ip(&headers, peer, &app.cfg.trusted_proxies);
     let cache = app.cache();
     let path = req.uri().path().to_string();
     let query = req.uri().query().unwrap_or("").to_string();
@@ -1154,13 +1173,29 @@ mod tests {
 
     #[test]
     fn client_ip_uses_proxy_appended_address() {
+        let trusted: Vec<crate::config::Cidr> =
+            vec!["10.0.0.0/8".parse().unwrap(), "127.0.0.1".parse().unwrap()];
         let mut h = HeaderMap::new();
         h.insert(
             "x-forwarded-for",
             HeaderValue::from_static("6.6.6.6, 203.0.113.9"),
         );
-        let peer: SocketAddr = "10.0.0.1:5000".parse().unwrap();
-        assert_eq!(client_ip(&h, Some(peer), true), "203.0.113.9");
-        assert_eq!(client_ip(&h, Some(peer), false), "10.0.0.1");
+        let proxy: SocketAddr = "10.0.0.1:5000".parse().unwrap();
+        assert_eq!(client_ip(&h, Some(proxy), &trusted), "203.0.113.9");
+        // Not behind a configured proxy: headers are ignored.
+        assert_eq!(client_ip(&h, Some(proxy), &[]), "10.0.0.1");
+        // A client talking to the app port directly cannot spoof its address.
+        let direct: SocketAddr = "198.51.100.7:4000".parse().unwrap();
+        assert_eq!(client_ip(&h, Some(direct), &trusted), "198.51.100.7");
+        // Several proxies (CDN → nginx): trusted hops are skipped.
+        let mut h2 = HeaderMap::new();
+        h2.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("6.6.6.6, 203.0.113.9, 10.1.2.3"),
+        );
+        assert_eq!(client_ip(&h2, Some(proxy), &trusted), "203.0.113.9");
+        // IPv4-mapped IPv6 peers count as their IPv4 address.
+        let mapped: SocketAddr = "[::ffff:127.0.0.1]:80".parse().unwrap();
+        assert_eq!(client_ip(&h, Some(mapped), &trusted), "203.0.113.9");
     }
 }

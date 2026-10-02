@@ -1,26 +1,75 @@
+# Production-shaped example: one database, a migration step, and separately scaled web, worker
+# and scheduler processes from the same image. Secrets come from the environment (or an .env
+# file next to this one); nothing here has a default password.
+#
+#   export POSTGRES_PASSWORD=$(openssl rand -hex 24) RBB_SECRET=$(openssl rand -hex 32)
+#   docker compose run --rm migrate
+#   docker compose run --rm -e RBB_ADMIN_PASSWORD='choose-a-long-one' web \
+#       /app/rbb install --admin-user admin --admin-email you@example.com --board-url https://forum.example.com
+#   docker compose up -d --scale web=2
+x-rbb: &rbb
+  build: .
+  restart: unless-stopped
+  environment: &rbb-env
+    DATABASE_URL: postgres://rbb:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/rbb
+    RBB_SECRET: ${RBB_SECRET:?set RBB_SECRET to a random value of 32+ characters, e.g. openssl rand -hex 32}
+    # Migrations run once per deploy (the migrate service), not by every node at start.
+    RBB_MIGRATE_ON_START: "false"
+  volumes: [uploads:/app/uploads, ./plugins:/app/plugins:ro]
+  depends_on:
+    db: { condition: service_healthy }
+
 services:
   db:
     image: postgres:17
+    restart: unless-stopped
     environment:
       POSTGRES_USER: rbb
-      POSTGRES_PASSWORD: rbb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: rbb
-    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "synchronous_commit=off", "-c", "max_connections=200"]
+    # Durable defaults: synchronous_commit stays on. Size shared_buffers to ~25% of the RAM.
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=200"]
     volumes: [dbdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rbb"]
       interval: 5s
-  app:
-    build: .
-    depends_on:
-      db: { condition: service_healthy }
+
+  migrate:
+    <<: *rbb
+    restart: "no"
+    command: ["/app/rbb", "migrate"]
+    profiles: [tools]
+
+  web:
+    <<: *rbb
     environment:
-      DATABASE_URL: postgres://rbb:rbb@db:5432/rbb
-      RBB_SECRET: ${RBB_SECRET:?set RBB_SECRET to a random value of 32+ characters, e.g. openssl rand -hex 32}
-      RBB_TRUST_PROXY: "false"
-    ports: ["8080:8080"]
-    volumes: [uploads:/app/uploads, ./plugins:/app/plugins:ro]
-    # Scale horizontally with: docker compose up --scale app=3 (behind a load balancer)
+      <<: *rbb-env
+      RBB_ROLE: web
+      # Behind the reverse proxy below; only its forwarding headers are believed.
+      RBB_TRUST_PROXY: "true"
+      RBB_TRUSTED_PROXIES: 172.16.0.0/12
+      RBB_SECURE_COOKIES: "true"
+    expose: ["8080"]
+
+  worker:
+    <<: *rbb
+    environment:
+      <<: *rbb-env
+      RBB_ROLE: worker
+
+  scheduler:
+    <<: *rbb
+    environment:
+      <<: *rbb-env
+      RBB_ROLE: scheduler
+
+  proxy:
+    image: nginx:1.27
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ["80:80"]
+    volumes: [./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro]
+
 volumes:
   dbdata:
   uploads:

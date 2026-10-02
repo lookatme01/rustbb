@@ -45,6 +45,50 @@ impl Roles {
     }
 }
 
+/// An address block such as `10.0.0.0/8` or a single address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cidr {
+    net: std::net::IpAddr,
+    bits: u8,
+}
+
+impl std::str::FromStr for Cidr {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Cidr, ()> {
+        let (net, bits) = match s.split_once('/') {
+            Some((n, b)) => (n, Some(b)),
+            None => (s, None),
+        };
+        let net: std::net::IpAddr = net.trim().parse().map_err(|_| ())?;
+        let net = net.to_canonical();
+        let max = if net.is_ipv4() { 32 } else { 128 };
+        let bits = match bits {
+            Some(b) => b.trim().parse::<u8>().map_err(|_| ())?,
+            None => max,
+        };
+        if bits > max {
+            return Err(());
+        }
+        Ok(Cidr { net, bits })
+    }
+}
+
+impl Cidr {
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        match (self.net, ip.to_canonical()) {
+            (std::net::IpAddr::V4(n), std::net::IpAddr::V4(i)) => {
+                let mask = u32::MAX.checked_shl(32 - self.bits as u32).unwrap_or(0);
+                u32::from(n) & mask == u32::from(i) & mask
+            }
+            (std::net::IpAddr::V6(n), std::net::IpAddr::V6(i)) => {
+                let mask = u128::MAX.checked_shl(128 - self.bits as u32).unwrap_or(0);
+                u128::from(n) & mask == u128::from(i) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub database_url: String,
@@ -55,6 +99,9 @@ pub struct Config {
     pub upload_dir: String,
     /// Trust `X-Forwarded-For` / `X-Real-IP` (enable only behind a reverse proxy).
     pub trust_proxy: bool,
+    /// Addresses/CIDRs of the reverse proxies whose forwarding headers are believed
+    /// (`RBB_TRUSTED_PROXIES`, comma-separated; default loopback when `RBB_TRUST_PROXY=true`).
+    pub trusted_proxies: Vec<Cidr>,
     /// Serve cookies with the `Secure` attribute.
     pub secure_cookies: bool,
     pub run_tasks: bool,
@@ -106,6 +153,7 @@ impl Config {
                 .to_string_lossy()
                 .into_owned(),
             trust_proxy: false,
+            trusted_proxies: vec![],
             secure_cookies: false,
             run_tasks: false,
             plugins_dir: "/nonexistent-rbb-test-plugins".into(),
@@ -144,6 +192,21 @@ impl Config {
                 .parse()?,
             upload_dir: get("RBB_UPLOAD_DIR", DEFAULT_UPLOAD_DIR),
             trust_proxy: get("RBB_TRUST_PROXY", "false") == "true",
+            trusted_proxies: {
+                let mut list = get("RBB_TRUSTED_PROXIES", "");
+                if list.trim().is_empty() && get("RBB_TRUST_PROXY", "false") == "true" {
+                    list = "127.0.0.0/8,::1/128".into();
+                }
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|p| {
+                        p.parse::<Cidr>().map_err(|_| {
+                            anyhow::anyhow!("RBB_TRUSTED_PROXIES: {p:?} is not an address or CIDR")
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?
+            },
             secure_cookies: get("RBB_SECURE_COOKIES", "false") == "true",
             // Deprecated: use RBB_ROLE without `scheduler` instead.
             run_tasks: get("RBB_RUN_TASKS", "true") == "true",
@@ -169,6 +232,21 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cidr_contains() {
+        let c: Cidr = "10.0.0.0/8".parse().unwrap();
+        assert!(c.contains("10.200.1.1".parse().unwrap()));
+        assert!(!c.contains("11.0.0.1".parse().unwrap()));
+        let one: Cidr = "127.0.0.1".parse().unwrap();
+        assert!(one.contains("::ffff:127.0.0.1".parse().unwrap()));
+        let all: Cidr = "0.0.0.0/0".parse().unwrap();
+        assert!(all.contains("8.8.8.8".parse().unwrap()));
+        let v6: Cidr = "2001:db8::/32".parse().unwrap();
+        assert!(v6.contains("2001:db8:1::5".parse().unwrap()));
+        assert!("10.0.0.0/33".parse::<Cidr>().is_err());
+        assert!("nonsense".parse::<Cidr>().is_err());
+    }
 
     #[test]
     fn roles_parse() {

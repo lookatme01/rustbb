@@ -1,0 +1,61 @@
+# Prometheus alerting rules for rbb (scrape each process's admin listener, RBB_ADMIN_LISTEN).
+groups:
+  - name: rbb
+    rules:
+      - alert: RbbNotReady
+        expr: up{job="rbb"} == 0
+        for: 2m
+        annotations:
+          summary: "rbb process {{ $labels.instance }} is down or not scraped"
+
+      - alert: RbbHighErrorRate
+        expr: |
+          sum(rate(rbb_http_requests_total{status="5xx"}[5m]))
+            / clamp_min(sum(rate(rbb_http_requests_total[5m])), 1) > 0.02
+        for: 5m
+        annotations:
+          summary: "More than 2% of requests fail with 5xx"
+
+      - alert: RbbSlowRequests
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(rbb_http_request_seconds_bucket{route!~"/live|/attachment/upload"}[5m]))) > 1
+        for: 10m
+        annotations:
+          summary: "p99 request latency above 1 s"
+
+      - alert: RbbDatabasePoolSaturated
+        expr: |
+          histogram_quantile(0.9, sum by (le, instance) (rate(rbb_db_pool_acquire_seconds_bucket[10m]))) > 0.1
+          or (rbb_db_pool_idle == 0 and rbb_db_pool_connections > 0)
+        for: 5m
+        annotations:
+          summary: "Requests wait for database connections on {{ $labels.instance }}"
+
+      - alert: RbbRuntimeLag
+        expr: rbb_runtime_lag_seconds > 0.25
+        for: 5m
+        annotations:
+          summary: "Async runtime on {{ $labels.instance }} is saturated (tasks wait > 250 ms)"
+
+      - alert: RbbOutboxBacklog
+        expr: max(rbb_outbox_oldest_seconds) > 300
+        for: 5m
+        annotations:
+          summary: "Outbox jobs are waiting more than 5 minutes (are workers running?)"
+
+      - alert: RbbMailBacklog
+        expr: max(rbb_mail_oldest_seconds) > 900
+        for: 10m
+        annotations:
+          summary: "Emails are waiting more than 15 minutes"
+
+      - alert: RbbFailedJobs
+        expr: max(rbb_outbox_dead) > 0 or max(rbb_mail_dead) > 0
+        for: 15m
+        annotations:
+          summary: "Background jobs or emails failed permanently; see the Admin CP mail queue and the outbox table"
+
+      - alert: RbbPluginBreakerOpen
+        expr: increase(rbb_plugin_breaker_open_total[15m]) > 0
+        annotations:
+          summary: "Plugin {{ $labels.plugin }} keeps failing and was switched off temporarily"
