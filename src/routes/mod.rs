@@ -13,6 +13,7 @@ pub mod memberlist;
 pub mod misc;
 pub mod modcp;
 pub mod modnotes;
+pub mod modreports;
 pub mod moderation;
 pub mod online;
 pub mod pgp;
@@ -144,6 +145,7 @@ pub fn router() -> Router<App> {
         .merge(pgp::router())
         .merge(modcp::router())
         .merge(modnotes::router())
+        .merge(modreports::router())
         .merge(moderation::router())
         .route("/search", get(search::search_form).post(search::do_search))
         .route("/search/results/{sid}", get(search::results))

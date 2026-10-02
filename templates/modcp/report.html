@@ -1,0 +1,36 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<section class="box">
+  <div class="box-head"><h2>Report #{{ report.rid }} · {{ report.what }}</h2><span class="right small">{{ 'Open' if report.open else 'Resolved' }}</span></div>
+  <div class="kv">
+    <div>Reported</div><div>{% if report.link %}<a href="{{ report.link }}">{{ report.what }}</a>{% else %}{{ report.what }}{% endif %}{% if target.uid %} by <a href="{{ url_user(target.uid) }}">{{ target.username }}</a> · <a href="/modcp/member/{{ target.uid }}">moderation history</a>{% endif %}</div>
+    <div>Reason</div><div>{{ report.reason_title }}{% if report.comment %}: {{ report.comment }}{% endif %}</div>
+    <div>Reported by</div><div>{% for r in reporters %}<a href="{{ url_user(r[0]) }}">{{ r[1] }}</a>{% if not loop.last %}, {% endif %}{% endfor %} ({{ report.reports }} report{{ '' if report.reports == 1 else 's' }}, first {{ report.dateline|date }}, last {{ report.lastreport|date }})</div>
+    {% if latest_note %}<div>Latest note</div><div class="small">{{ latest_note }}</div>{% endif %}
+    <div>Handling</div><div>{% if report.claimed %}Claimed by {{ report.claimed_by }} {{ report.claimed_at|date }}{% else %}Nobody has claimed it{% endif %}</div>
+    {% if not report.open %}<div>Resolution</div><div>Resolved by {{ report.resolved_by }} {{ report.resolved_at|date }}{% if report.resolution %}: {{ report.resolution }}{% endif %}</div>{% endif %}
+  </div>
+  <div class="box-foot actions" style="margin:0">
+    {% if report.open %}
+      {% if not report.claimed %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn small" name="action" value="claim">Claim</button></form>
+      {% elif report.claimed_by_me %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn secondary small" name="action" value="release">Release</button></form>
+      {% else %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn secondary small" name="action" value="takeover">Take over</button></form>{% endif %}
+    {% else %}
+      <form method="post" action="/modcp/reports/{{ report.rid }}/reopen">{{ m.csrf_field() }}<button class="btn secondary small">Reopen</button></form>
+    {% endif %}
+  </div>
+</section>
+{% if report.open %}
+<form method="post" action="/modcp/reports/{{ report.rid }}/resolve" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Resolve</h2></div>
+  <div class="box-body"><textarea name="resolution" rows="2" maxlength="1000" placeholder="What was done (optional, visible to staff)" aria-label="Resolution"></textarea></div>
+  <div class="box-foot actions" style="margin:0"><button class="btn small" type="submit">Mark as resolved</button></div>
+</form>
+{% endif %}
+<section class="box"><div class="box-head"><h2>History</h2></div>
+<table class="grid"><tbody>
+<tr><td class="small">{{ report.dateline|date }}</td><td>Reported</td><td class="small"></td></tr>
+{% for e in events %}<tr><td class="small">{{ e.when|date }}</td><td>{{ e.label }}{% if e.note %}: {{ e.note }}{% endif %}</td><td class="small">{{ e.who or '' }}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

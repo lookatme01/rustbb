@@ -94,10 +94,7 @@ pub struct ReportsQuery {
 }
 
 pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Response> {
-    require_modcp(&ctx)?;
-    if !ctx.perms.canmanagereportedcontent && !ctx.is_any_mod() {
-        return Err(AppError::no_perm());
-    }
+    crate::routes::modreports::require_reports(&ctx)?;
     let fids = mod_fids(&ctx);
     let all = fids.is_none();
     let f = fids.unwrap_or_default();
@@ -114,9 +111,11 @@ pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Respo
         util::clamp_page(q.page),
         &format!("/modcp/reports?status={status}&page={{page}}"),
     );
-    let rows: Vec<(i32, i32, i32, i32, String, i32, String, i32, i64, i64, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT r.rid, r.id, r.id2, r.id3, r.type, r.reports, r.reason, r.reasonid, r.dateline, r.lastreport, u.username, t.subject, ru.username
+    let rows: Vec<(i32, i32, i32, i32, String, i32, String, i32, i64, i64, Option<String>, Option<String>, Option<String>, Option<String>, i32)> = sqlx::query_as(
+        "SELECT r.rid, r.id, r.id2, r.id3, r.type, r.reports, r.reason, r.reasonid, r.dateline, r.lastreport, u.username, t.subject, ru.username, cu.username,
+                COALESCE(CASE WHEN r.type = 'post' THEN (SELECT uid FROM posts WHERE pid = r.id) ELSE r.id2 END, 0)
          FROM reportedcontent r LEFT JOIN users u ON u.uid = r.uid
+         LEFT JOIN users cu ON cu.uid = r.claimed_by AND r.claimed_by > 0
          LEFT JOIN threads t ON r.type = 'post' AND t.tid = r.id2
          LEFT JOIN users ru ON (r.type IN ('profile', 'reputation') AND ru.uid = r.id2) OR (r.type = 'post' AND ru.uid = (SELECT uid FROM posts WHERE pid = r.id))
          WHERE r.reportstatus = $1 AND ($2 OR r.type <> 'post' OR r.id3 = ANY($3))
@@ -129,9 +128,11 @@ pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Respo
     .fetch_all(&ctx.app.db)
     .await?;
     let reasons = ctx.cache.reportreasons.clone();
+    let target_uids: Vec<i32> = rows.iter().map(|r| r.14).filter(|u| *u > 0).collect();
+    let notes = crate::routes::modnotes::latest_notes(&ctx.app, &target_uids).await?;
     let list: Vec<_> = rows
         .into_iter()
-        .map(|(rid, id, id2, _id3, kind, n, reason, reasonid, dl, last, reporter, subject, target)| {
+        .map(|(rid, id, id2, _id3, kind, n, reason, reasonid, dl, last, reporter, subject, target, claimer, target_uid)| {
             let reason_title = reasons.iter().find(|r| r.rid == reasonid).map(|r| r.title.clone()).unwrap_or_default();
             let link = match kind.as_str() {
                 "post" => format!("/post/{id}"),
@@ -141,7 +142,8 @@ pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Respo
                 _ => "#".to_string(),
             };
             minijinja::context! { rid => rid, kind => kind, reports => n, reason => reason, reason_title => reason_title, dateline => dl, lastreport => last,
-                reporter => reporter, subject => subject, target => target, link => link }
+                reporter => reporter, subject => subject, target => target, link => link, claimer => claimer, target_uid => target_uid,
+                latest_note => notes.get(&target_uid).cloned() }
         })
         .collect();
     page(
@@ -163,16 +165,27 @@ pub struct IdsForm {
 }
 
 pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResult<Response> {
-    require_modcp(&ctx)?;
+    // Same permission as viewing the reports: Mod CP access alone isn't enough.
+    crate::routes::modreports::require_reports(&ctx)?;
     let status: i16 = if f.action == "reopen" { 0 } else { 1 };
     let fids = mod_fids(&ctx);
-    sqlx::query("UPDATE reportedcontent SET reportstatus = $2 WHERE rid = ANY($1) AND ($3 OR type <> 'post' OR id3 = ANY($4))")
-        .bind(&f.ids)
-        .bind(status)
-        .bind(fids.is_none())
-        .bind(fids.unwrap_or_default())
-        .execute(&ctx.app.db)
-        .await?;
+    let changed: Vec<i32> = sqlx::query_scalar(
+        "UPDATE reportedcontent SET reportstatus = $2,
+            resolved_by = CASE WHEN $2 = 1 THEN $5 ELSE 0 END, resolved_at = CASE WHEN $2 = 1 THEN $6 ELSE 0 END,
+            resolution = CASE WHEN $2 = 1 THEN resolution ELSE '' END
+         WHERE rid = ANY($1) AND reportstatus <> $2 AND ($3 OR type <> 'post' OR id3 = ANY($4)) RETURNING rid",
+    )
+    .bind(&f.ids)
+    .bind(status)
+    .bind(fids.is_none())
+    .bind(fids.unwrap_or_default())
+    .bind(ctx.uid())
+    .bind(now())
+    .fetch_all(&ctx.app.db)
+    .await?;
+    for rid in changed {
+        crate::routes::modreports::record_event(&ctx.app.db, rid, ctx.uid(), if status == 1 { "resolved" } else { "reopened" }, "").await?;
+    }
     ctx.app.mod_counts.invalidate_all();
     Ok(ctx.redirect("/modcp/reports", "The selected reports have been updated."))
 }

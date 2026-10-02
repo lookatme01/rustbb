@@ -56,6 +56,7 @@ hasnt "old notes field removed (Admin CP)" 'name="usernotes"'
 echo "# Member history timeline"
 req "$ADMIN" "ban member" 303 --data-urlencode "my_post_key=$TA" --data-urlencode "reason=History test ban $N" --data-urlencode "days=7" "$BASE/admin/users/$MUID/ban"
 req "$ADMIN" "lift ban" 303 --data-urlencode "my_post_key=$TA" --data-urlencode "lift=1" "$BASE/admin/users/$MUID/ban"
+: > "$MEMBER"; login "$MEMBER" "mwmember$N" "secret$N"; TM=$(tok "$MEMBER")   # the ban signed them out
 req "$ADMIN" "report member's profile" 303 --data-urlencode "my_post_key=$T" --data-urlencode "type=profile" --data-urlencode "id=$MUID" --data-urlencode "reason=4" --data-urlencode "comment=Profile report $N" "$BASE/report"
 req "$MOD" "timeline" 200 "$BASE/modcp/member/$MUID"
 has "timeline shows the ban" "History test ban $N"
@@ -65,10 +66,56 @@ has "timeline shows notes" "Old note $N"
 req "$MOD" "timeline filtered to notes" 200 "$BASE/modcp/member/$MUID?type=notes"
 hasnt "filter hides bans" "History test ban $N"
 
-## @@PART2@@
+echo "# Report claiming and resolution"
+sql "INSERT INTO moderators (fid, id, isgroup, perms) VALUES (4, $MODUID, FALSE, '{}')"
+curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" --data-urlencode "part=all" "$BASE/admin/tools/cache"
+# The member posts it themselves, so every counter stays consistent.
+TID=$(curl -s -o /dev/null -D - -b "$MEMBER" -c "$MEMBER" --data-urlencode "my_post_key=$TM" --data-urlencode "subject=Report target $N" --data-urlencode "message=Reported content $N" "$BASE/newthread/4" | tr -d '\r' | sed -n 's|^location: /thread/\([0-9]*\).*|\1|Ip')
+PID=$(sql "SELECT firstpost FROM threads WHERE tid = ${TID:-0}")
+[ -n "$PID" ] && ok "member posted thread $TID" || bad "member posted thread"
+req "$MOD" "note on the reported member" 303 --data-urlencode "my_post_key=$TMOD" --data-urlencode "note=Latest context note $N" "$BASE/modcp/member/$MUID/notes"
+req "$SMOD" "super moderator reports the post" 303 --data-urlencode "my_post_key=$TS" --data-urlencode "type=post" --data-urlencode "id=$PID" --data-urlencode "reason=3" "$BASE/report"
+RID=$(sql "SELECT rid FROM reportedcontent WHERE type = 'post' AND id = ${PID:-0} AND reportstatus = 0")
+[ -n "$RID" ] && ok "report $RID created" || bad "report created"
+req "$MOD" "reports list" 200 "$BASE/modcp/reports"
+has "list links to the report" "/modcp/reports/$RID"
+has "list shows the member's latest note" "Latest context note $N"
+req "$MOD" "moderator claims" 303 --data-urlencode "my_post_key=$TMOD" --data-urlencode "action=claim" "$BASE/modcp/reports/$RID/claim"
+req "$SMOD" "list after claim" 200 "$BASE/modcp/reports"
+has "list shows the claim" "Claimed by mwmod$N"
+req "$SMOD" "claiming someone else's report is refused" 422 --data-urlencode "my_post_key=$TS" --data-urlencode "action=claim" "$BASE/modcp/reports/$RID/claim"
+has "explains who has it" "mwmod$N"
+req "$SMOD" "take over" 303 --data-urlencode "my_post_key=$TS" --data-urlencode "action=takeover" "$BASE/modcp/reports/$RID/claim"
+req "$MOD" "previous claimer can't release it now" 403 --data-urlencode "my_post_key=$TMOD" --data-urlencode "action=release" "$BASE/modcp/reports/$RID/claim"
+req "$SMOD" "resolve with a note" 303 --data-urlencode "my_post_key=$TS" --data-urlencode "resolution=Removed the spam link <b>x</b> $N" "$BASE/modcp/reports/$RID/resolve"
+[ "$(sql "SELECT reportstatus FROM reportedcontent WHERE rid = $RID")" = 1 ] && ok "report closed" || bad "report closed"
+req "$MOD" "report detail" 200 "$BASE/modcp/reports/$RID"
+has "detail shows the resolution, escaped" "Removed the spam link &lt;b&gt;x&lt;"
+has "history: claimed" "Claimed"
+has "history: taken over" "Took over from mwmod$N"
+has "history: resolved" "Resolved"
+has "detail shows the member's latest note" "Latest context note $N"
+req "$MOD" "reopen" 303 --data-urlencode "my_post_key=$TMOD" "$BASE/modcp/reports/$RID/reopen"
+[ "$(sql "SELECT reportstatus FROM reportedcontent WHERE rid = $RID")" = 0 ] && ok "report reopened" || bad "report reopened"
+req "$MEMBER" "members can't see report details" 403 "$BASE/modcp/reports/$RID"
+# Mod CP access alone (no "can manage reported content") must not be enough to close reports.
+NG=$(sql "INSERT INTO usergroups (type, title, description, namestyle, usertitle, stars, starimage, disporder, isbannedgroup, perms)
+  SELECT 2, 'No reports $N', '', '{username}', '', 0, '', 99, FALSE, perms || '{\"canmanagereportedcontent\": false}'::jsonb FROM usergroups WHERE gid = 6 RETURNING gid")
+NG=$(echo "$NG" | head -1)
+curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" --data-urlencode "part=all" "$BASE/admin/tools/cache"
+NRUID=$(mkuser "mwnoreports$N" "$NG"); NR=$(mktemp); login "$NR" "mwnoreports$N" "secret$N"; TN=$(tok "$NR")
+req "$NR" "can't view reports" 403 "$BASE/modcp/reports"
+req "$NR" "can't mark reports handled" 403 --data-urlencode "my_post_key=$TN" --data-urlencode "action=handled" --data-urlencode "ids=$RID" "$BASE/modcp/reports"
+req "$NR" "can't claim" 403 --data-urlencode "my_post_key=$TN" --data-urlencode "action=claim" "$BASE/modcp/reports/$RID/claim"
+[ "$(sql "SELECT reportstatus FROM reportedcontent WHERE rid = $RID")" = 0 ] && ok "report still open" || bad "report still open"
+curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" "$BASE/admin/users/$NRUID/delete"
+sql "DELETE FROM usergroups WHERE gid = $NG"; curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" --data-urlencode "part=all" "$BASE/admin/tools/cache"
+curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$T" --data-urlencode "fid=4" --data-urlencode "action=delete" --data-urlencode "tids=$TID" "$BASE/moderation/threads"
 ## @@PART3@@
 
 echo "# Cleanup"
+sql "DELETE FROM moderators WHERE id = $MODUID AND NOT isgroup"
+curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" --data-urlencode "part=all" "$BASE/admin/tools/cache"
 for u in "$MUID" "$MODUID" "$SMODUID"; do curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" "$BASE/admin/users/$u/delete"; done
 rm -f "$ADMIN" "$MEMBER" "$MOD" "$SMOD" "$BODY"
 [ $fail = 0 ] && echo "ALL OK" || { echo "SOME CHECKS FAILED"; exit 1; }
