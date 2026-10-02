@@ -93,9 +93,16 @@ T=$(csrf "$JAR" /)
 check "close thread" 303 -b "$JAR" --data-urlencode "my_post_key=$T" --data-urlencode "action=close" "$BASE/moderation/thread/$TID"
 check "stick thread" 303 -b "$JAR" --data-urlencode "my_post_key=$T" --data-urlencode "action=stick" "$BASE/moderation/thread/$TID"
 check "api me (cookie)" 200 -b "$JAR" "$BASE/api/v1/me"
-TOK=$(curl -s -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345"}' "$BASE/api/v1/auth/token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+TOK=$(curl -s -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345","scopes":["read","write"],"name":"smoke"}' "$BASE/api/v1/auth/token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 check "api token me" 200 -H "Authorization: Bearer $TOK" "$BASE/api/v1/me"
 check "api reply" 200 -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"message":"reply via API"}' "$BASE/api/v1/threads/1/posts"
+# API tokens are not browser sessions: outside /api/v1 the header is ignored.
+check "api token ignored outside the API" 401 -H "Authorization: Bearer $TOK" "$BASE/usercp"
+RTOK=$(curl -s -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345"}' "$BASE/api/v1/auth/token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+check "read-only token reads" 200 -H "Authorization: Bearer $RTOK" "$BASE/api/v1/me"
+check "read-only token cannot write" 403 -H "Authorization: Bearer $RTOK" -H 'Content-Type: application/json' -d '{"message":"should not post"}' "$BASE/api/v1/threads/1/posts"
+check "revoke token" 200 -X DELETE -H "Authorization: Bearer $RTOK" "$BASE/api/v1/auth/token"
+check "revoked token rejected" 401 -H "Authorization: Bearer $RTOK" "$BASE/api/v1/me"
 check "api thread" 200 "$BASE/api/v1/threads/1"
 rm -f "$JAR" "$JAR2"
 [ $fail = 0 ] && echo "ALL OK" || { echo "SOME CHECKS FAILED"; exit 1; }

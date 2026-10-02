@@ -59,8 +59,8 @@ pub fn router() -> Router<crate::app::App> {
 
 /// Throttle password re-entry on sensitive User CP forms, so a hijacked session can't be used
 /// to guess the account password.
-pub(crate) fn reauth_throttle(ctx: &Ctx, uid: i32) -> AppResult<()> {
-    if ctx.app.rate_check(&format!("reauth:{uid}"), 10, 600) {
+pub(crate) async fn reauth_throttle(ctx: &Ctx, uid: i32) -> AppResult<()> {
+    if ctx.app.throttle(&format!("reauth:{uid}"), 10, 600).await {
         Ok(())
     } else {
         Err(AppError::RateLimited)
@@ -578,7 +578,7 @@ pub async fn email_save(ctx: Ctx, CsrfForm(f): CsrfForm<EmailChange>) -> AppResu
     let me = require_ucp(&ctx).await?;
     let email = f.email.trim().to_string();
     let mut errors = vec![];
-    reauth_throttle(&ctx, me.uid)?;
+    reauth_throttle(&ctx, me.uid).await?;
     if !auth::verify_password(&f.password, &me.password).await {
         errors.push("The password you entered is incorrect.".to_string());
     }
@@ -659,7 +659,7 @@ pub struct PwChange {
 pub async fn password_save(ctx: Ctx, CsrfForm(f): CsrfForm<PwChange>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let mut errors = vec![];
-    reauth_throttle(&ctx, me.uid)?;
+    reauth_throttle(&ctx, me.uid).await?;
     if !auth::verify_password(&f.oldpassword, &me.password).await {
         errors.push("Your current password is incorrect.".to_string());
     }
@@ -685,6 +685,7 @@ pub async fn password_save(ctx: Ctx, CsrfForm(f): CsrfForm<PwChange>) -> AppResu
         .execute(&ctx.app.db)
         .await?;
     auth::destroy_all_logins(&ctx.app, me.uid, ctx.token_hash.as_deref()).await?;
+    auth::rotate_login(&ctx).await?;
     crate::audit::log(&ctx, ctx.uid(), "password_changed", serde_json::Value::Null).await;
     Ok(ctx.redirect(
         "/usercp/password",
@@ -761,7 +762,7 @@ pub async fn username_save(ctx: Ctx, CsrfForm(f): CsrfForm<NameChange>) -> AppRe
     let new = f.username.trim().to_string();
     let s = ctx.settings();
     let mut errors = vec![];
-    reauth_throttle(&ctx, me.uid)?;
+    reauth_throttle(&ctx, me.uid).await?;
     if !auth::verify_password(&f.password, &me.password).await {
         errors.push("Your password is incorrect.".to_string());
     }
@@ -1459,6 +1460,18 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
         .into_iter()
         .map(|(h, c, _l, ip, ua)| minijinja::context! { id => h[..16].to_string(), current => Some(&h) == ctx.token_hash.as_ref(), created => c, ip => ip, useragent => ua })
         .collect();
+    let tokens: Vec<(i64, String, Vec<String>, i64, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT id, name, scopes, EXTRACT(EPOCH FROM created_at)::bigint, EXTRACT(EPOCH FROM last_used_at)::bigint,
+                EXTRACT(EPOCH FROM expires_at)::bigint
+         FROM api_tokens WHERE uid = $1 AND revoked_at IS NULL AND expires_at > now() ORDER BY id DESC",
+    )
+    .bind(me.uid)
+    .fetch_all(&ctx.app.db)
+    .await?;
+    let api_tokens: Vec<_> = tokens
+        .into_iter()
+        .map(|(id, name, scopes, created, last, expires)| minijinja::context! { id => id, name => name, scopes => scopes, created => created, last_used => last, expires => expires })
+        .collect();
     let enabled = !me.totp_secret.is_empty();
     let (secret, qr, uri) = if enabled {
         (String::new(), String::new(), String::new())
@@ -1478,7 +1491,7 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
             .unwrap_or_default();
         (secret, qr, uri)
     };
-    page(&ctx, "usercp/security.html", "security", "Security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions }).await
+    page(&ctx, "usercp/security.html", "security", "Security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions, api_tokens => api_tokens }).await
 }
 
 #[derive(Deserialize)]
@@ -1495,7 +1508,7 @@ pub struct TwoFaForm {
 
 pub async fn twofa_save(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
-    reauth_throttle(&ctx, me.uid)?;
+    reauth_throttle(&ctx, me.uid).await?;
     if !auth::verify_password(&f.password, &me.password).await {
         return Err(AppError::user("Your password is incorrect."));
     }
@@ -1525,6 +1538,7 @@ pub async fn twofa_save(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult
         .execute(&ctx.app.db)
         .await?;
     auth::destroy_all_logins(&ctx.app, me.uid, ctx.token_hash.as_deref()).await?;
+    auth::rotate_login(&ctx).await?;
     crate::audit::log(&ctx, me.uid, "twofa_enabled", serde_json::Value::Null).await;
     Ok(ctx.redirect(
         "/usercp/security",
@@ -1540,7 +1554,16 @@ pub struct RevokeForm {
 
 pub async fn revoke_login(ctx: Ctx, CsrfForm(f): CsrfForm<RevokeForm>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
-    if f.id == "all" {
+    if let Some(id) =
+        f.id.strip_prefix("api:")
+            .and_then(|i| i.parse::<i64>().ok())
+    {
+        sqlx::query("UPDATE api_tokens SET revoked_at = now() WHERE id = $1 AND uid = $2 AND revoked_at IS NULL")
+            .bind(id)
+            .bind(me.uid)
+            .execute(&ctx.app.db)
+            .await?;
+    } else if f.id == "all" {
         auth::destroy_all_logins(&ctx.app, me.uid, ctx.token_hash.as_deref()).await?;
     } else if f.id.len() == 16 && f.id.chars().all(|c| c.is_ascii_hexdigit()) {
         sqlx::query("DELETE FROM logins WHERE uid = $1 AND token_hash LIKE $2 || '%'")
@@ -1888,7 +1911,7 @@ pub async fn delete_account(ctx: Ctx, CsrfForm(f): CsrfForm<DeleteForm>) -> AppR
             "This account cannot be deleted from the User CP.",
         ));
     }
-    reauth_throttle(&ctx, me.uid)?;
+    reauth_throttle(&ctx, me.uid).await?;
     if !auth::verify_password(&f.password, &me.password).await {
         return Err(AppError::user("Your password is incorrect."));
     }

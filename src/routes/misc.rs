@@ -79,7 +79,11 @@ pub async fn forum_password(
     Path(fid): Path<i32>,
     CsrfForm(f): CsrfForm<PasswordForm>,
 ) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("forumpw:{}", ctx.ip), 10, 300) {
+    if !ctx
+        .app
+        .throttle(&format!("forumpw:{}", ctx.ip), 10, 300)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     let forum = ctx
@@ -467,7 +471,11 @@ pub struct ContactForm {
 
 pub async fn contact_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ContactForm>) -> AppResult<Response> {
     contact_allowed(&ctx)?;
-    if !ctx.app.rate_check(&format!("contact:{}", ctx.ip), 3, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("contact:{}", ctx.ip), 3, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     let email = ctx

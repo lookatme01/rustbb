@@ -221,7 +221,11 @@ pub struct PublishForm {
 
 async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Response> {
     let me = require(&ctx)?;
-    if !ctx.app.rate_check(&format!("pgpkey:{}", me.uid), 10, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("pgpkey:{}", me.uid), 10, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     let t = now();
@@ -411,7 +415,7 @@ pub struct RevokeForm {
 
 async fn revoke(ctx: Ctx, CsrfForm(f): CsrfForm<RevokeForm>) -> AppResult<Response> {
     let me = require(&ctx)?;
-    crate::routes::usercp::reauth_throttle(&ctx, me.uid)?;
+    crate::routes::usercp::reauth_throttle(&ctx, me.uid).await?;
     if !crate::auth::verify_password(&f.password, &me.password).await {
         return Err(AppError::user("The password you entered is incorrect."));
     }

@@ -1,12 +1,13 @@
-//! JSON REST API (v1). Authenticate with `Authorization: Bearer <token>` (obtain one from
-//! `POST /api/v1/auth/token`) or with the browser session plus an `X-CSRF-Token` header for writes.
+//! JSON REST API (v1). Authenticate with `Authorization: Bearer <token>` (an API token from
+//! `POST /api/v1/auth/token`, with `read` and/or `write` scope) or with the browser session plus
+//! an `X-CSRF-Token` header for writes. API tokens are accepted on these routes only.
 //! All permission checks are shared with the HTML front end.
 
 use crate::app::App;
 use crate::ctx::Ctx;
 use crate::error::{AppError, AppResult};
 use crate::models::{POST_COLUMNS, Post, Thread};
-use crate::util::{self, now};
+use crate::util;
 use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -51,11 +52,38 @@ pub struct TokenReq {
     pub password: String,
     #[serde(default)]
     pub code: String,
+    /// A label shown in the User CP ("my phone", "backup script"…).
+    #[serde(default)]
+    pub name: String,
+    /// `read` (default) and/or `write`.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// Lifetime in days (default: the board's sign-in length; at most 365).
+    #[serde(default)]
+    pub days: i64,
 }
 
+/// Issue an API token. It is stored hashed, works only on /api/v1 with the requested scopes,
+/// and can be revoked from the User CP or with `DELETE /auth/token`.
 pub async fn token_create(ctx: Ctx, Json(r): Json<TokenReq>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("apilogin:{}", ctx.ip), 10, 300) {
+    if !ctx
+        .app
+        .throttle(&format!("apilogin:{}", ctx.ip), 10, 300)
+        .await
+    {
         return Err(AppError::RateLimited);
+    }
+    let mut scopes: Vec<String> = if r.scopes.is_empty() {
+        vec!["read".into()]
+    } else {
+        r.scopes.clone()
+    };
+    scopes.sort();
+    scopes.dedup();
+    if scopes.iter().any(|s| s != "read" && s != "write") {
+        return Err(AppError::user(
+            "Unknown scope (use \"read\" and/or \"write\").",
+        ));
     }
     // Same checks as the web login: throttling, ban filters, lockout and failed-attempt
     // accounting, constant-time handling of unknown users.
@@ -89,36 +117,53 @@ pub async fn token_create(ctx: Ctx, Json(r): Json<TokenReq>) -> AppResult<Respon
             "A valid two-factor code is required (field \"code\").".into(),
         ));
     }
-    let token = util::random_token(48);
-    let days = ctx.settings().int("loginsessionlength").max(1);
-    sqlx::query("INSERT INTO logins (token_hash, uid, created, lastused, expires, ip, useragent, csrf) VALUES ($1, $2, $3, $3, $4, $5, 'api', $6)")
-        .bind(util::sha256_hex(&token))
-        .bind(user.uid)
-        .bind(now())
-        .bind(now() + days * 86400)
-        .bind(&ctx.ip)
-        .bind(util::random_token(32))
-        .execute(&ctx.app.db)
-        .await?;
-    crate::audit::log(
-        &ctx,
+    let token = format!("rbb_{}", util::random_token(40));
+    let days = if r.days > 0 {
+        r.days.min(365)
+    } else {
+        ctx.settings().int("loginsessionlength").clamp(1, 365)
+    };
+    let name: String = r.name.trim().chars().take(60).collect();
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
+    let expires: chrono::DateTime<chrono::Utc> = sqlx::query_scalar(
+        "INSERT INTO api_tokens (uid, token_hash, name, scopes, expires_at)
+         VALUES ($1, $2, $3, $4, now() + make_interval(days => $5)) RETURNING expires_at",
+    )
+    .bind(user.uid)
+    .bind(util::sha256_hex(&token))
+    .bind(&name)
+    .bind(&scopes)
+    .bind(days as i32)
+    .fetch_one(uow.conn())
+    .await?;
+    let actor = crate::audit::Actor {
+        uid: user.uid,
+        ..crate::audit::Actor::from_ctx(&ctx)
+    };
+    uow.audit(
+        &actor,
         user.uid,
         "api_token",
-        serde_json::json!({"days": days}),
+        serde_json::json!({"days": days, "scopes": scopes, "name": name}),
     )
-    .await;
-    ok(serde_json::json!({"token": token, "uid": user.uid, "expires": now() + days * 86400}))
+    .await?;
+    uow.commit(&ctx.app).await?;
+    ok(
+        serde_json::json!({"token": token, "uid": user.uid, "scopes": scopes, "expires": expires.timestamp()}),
+    )
 }
 
+/// Revoke the API token this request was made with.
 pub async fn token_revoke(ctx: Ctx) -> AppResult<Response> {
-    ctx.require_login()?;
-    ctx.check_csrf("")?;
-    if let Some(h) = &ctx.token_hash {
-        sqlx::query("DELETE FROM logins WHERE token_hash = $1")
-            .bind(h)
-            .execute(&ctx.app.db)
-            .await?;
-    }
+    let Some((id, _)) = &ctx.api_token else {
+        return Err(AppError::user(
+            "Send the token to revoke in the Authorization header.",
+        ));
+    };
+    sqlx::query("UPDATE api_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
+        .bind(id)
+        .execute(&ctx.app.db)
+        .await?;
     ok(serde_json::json!({"ok": true}))
 }
 

@@ -532,7 +532,8 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             && f.savedraft.is_empty()
             && !ctx
                 .app
-                .rate_check(&format!("pmassystem:{}", me.uid), 60, 3600)
+                .throttle(&format!("pmassystem:{}", me.uid), 60, 3600)
+                .await
         {
             return Err(AppError::RateLimited);
         }

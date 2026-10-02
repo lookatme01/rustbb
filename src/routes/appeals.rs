@@ -177,7 +177,11 @@ pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<AppealForm>) -> AppResult<Re
             "Please keep your appeal under {MAX_TEXT_CHARS} characters."
         )));
     }
-    if !ctx.app.rate_check(&format!("appeal:{}", me.uid), 5, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("appeal:{}", me.uid), 5, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     // The unique index allows one pending appeal per member, even with concurrent submissions.

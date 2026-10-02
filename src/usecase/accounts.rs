@@ -367,6 +367,10 @@ pub async fn reset_password(
         .bind(uid)
         .execute(uow.conn())
         .await?;
+    sqlx::query("UPDATE api_tokens SET revoked_at = now() WHERE uid = $1 AND revoked_at IS NULL")
+        .bind(uid)
+        .execute(uow.conn())
+        .await?;
     uow.audit(actor, uid, "password_reset", serde_json::Value::Null)
         .await?;
     uow.commit(app).await

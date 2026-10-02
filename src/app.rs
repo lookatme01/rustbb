@@ -321,7 +321,51 @@ impl AppState {
         self.publish(ev);
     }
 
-    /// Per-node sliding-window-ish limiter. Returns false when the limit is exceeded.
+    /// Cluster-wide limiter for security-sensitive actions (sign-in, password reset, 2FA,
+    /// registration mail, API tokens…): one atomic bucket per key in the shared `ratelimits`
+    /// table, so limits hold across nodes and restarts. The part of the key after the first `:`
+    /// is stored hashed. If the database cannot be reached the per-node limiter decides.
+    /// Returns false when the limit is exceeded.
+    pub async fn throttle(&self, key: &str, limit: u32, window_secs: i64) -> bool {
+        if limit == 0 {
+            return true;
+        }
+        let (name, rest) = key.split_once(':').unwrap_or(("other", key));
+        let stored = format!("{name}:{}", &crate::util::sha256_hex(rest)[..32]);
+        let t = now();
+        let r: Result<i32, _> = sqlx::query_scalar(
+            "INSERT INTO ratelimits (key, hits, reset_at) VALUES ($1, 1, $2 + $3)
+             ON CONFLICT (key) DO UPDATE SET
+                hits = CASE WHEN ratelimits.reset_at <= $2 THEN 1 ELSE ratelimits.hits + 1 END,
+                reset_at = CASE WHEN ratelimits.reset_at <= $2 THEN $2 + $3 ELSE ratelimits.reset_at END
+             RETURNING hits",
+        )
+        .bind(&stored)
+        .bind(t)
+        .bind(window_secs)
+        .fetch_one(&self.db)
+        .await;
+        match r {
+            Ok(hits) => {
+                let ok = hits as u32 <= limit;
+                if !ok {
+                    crate::infra::metrics::counter_with(
+                        "rbb_ratelimited_total",
+                        &[("limit", name)],
+                        1,
+                    );
+                }
+                ok
+            }
+            Err(e) => {
+                tracing::warn!("shared rate limit unavailable ({e}); using the local one");
+                self.rate_check(key, limit, window_secs)
+            }
+        }
+    }
+
+    /// Per-node limiter for load shedding (cheap, approximate). Returns false when the limit
+    /// is exceeded. Security-sensitive limits use [`AppState::throttle`].
     pub fn rate_check(&self, key: &str, limit: u32, window_secs: i64) -> bool {
         if limit == 0 {
             return true;

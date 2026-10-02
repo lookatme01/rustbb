@@ -78,10 +78,14 @@ pub async fn check_credentials(
     password: &str,
 ) -> AppResult<Result<User, String>> {
     let name_key = username.trim().to_lowercase();
-    if !ctx.app.rate_check(&format!("login:{}", ctx.ip), 20, 300)
+    if !ctx
+        .app
+        .throttle(&format!("login:{}", ctx.ip), 20, 300)
+        .await
         || !ctx
             .app
-            .rate_check(&format!("login-name:{name_key}"), 30, 900)
+            .throttle(&format!("login-name:{name_key}"), 30, 900)
+            .await
     {
         return Ok(Err(
             "Too many login attempts. Please wait a few minutes and try again.".into(),
@@ -247,7 +251,7 @@ pub async fn totp_consume(
     secret: &str,
     code: &str,
 ) -> AppResult<bool> {
-    if !app.rate_check(&format!("2fa-uid:{uid}"), 5, 300) {
+    if !app.throttle(&format!("2fa-uid:{uid}"), 5, 300).await {
         return Err(AppError::RateLimited);
     }
     let Some(step) = totp_step(secret, code) else {
@@ -263,7 +267,7 @@ pub async fn totp_consume(
 }
 
 pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("2fa:{}", ctx.ip), 10, 300) {
+    if !ctx.app.throttle(&format!("2fa:{}", ctx.ip), 10, 300).await {
         return Err(AppError::RateLimited);
     }
     let parts: Vec<&str> = f.pending.split('.').collect();
@@ -779,7 +783,11 @@ pub async fn resend_form(ctx: Ctx) -> AppResult<Response> {
 }
 
 pub async fn resend_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("resend:{}", ctx.ip), 3, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("resend:{}", ctx.ip), 3, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     accounts::resend_activation(&ctx.app, f.email.trim()).await?;
@@ -795,7 +803,11 @@ pub async fn lostpw_form(ctx: Ctx) -> AppResult<Response> {
 }
 
 pub async fn lostpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("lostpw:{}", ctx.ip), 5, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("lostpw:{}", ctx.ip), 5, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     accounts::request_password_reset(&ctx.app, &Actor::from_ctx(&ctx), f.email.trim()).await?;
@@ -822,6 +834,17 @@ pub struct ResetForm {
 }
 
 pub async fn resetpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ResetForm>) -> AppResult<Response> {
+    if !ctx
+        .app
+        .throttle(&format!("resetpw:{}", ctx.ip), 10, 3600)
+        .await
+        || !ctx
+            .app
+            .throttle(&format!("resetpw-uid:{}", f.uid), 10, 3600)
+            .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let Some(username) = accounts::reset_code_valid(&ctx.app, f.uid, &f.code).await? else {
         return Err(AppError::user(
             "The password reset link is invalid or has expired. Please request a new one.",
@@ -1203,7 +1226,8 @@ pub async fn email_submit(
     };
     if !ctx
         .app
-        .rate_check(&format!("useremail:{}", me.uid), daily, 86400)
+        .throttle(&format!("useremail:{}", me.uid), daily, 86400)
+        .await
     {
         return Err(AppError::user(format!(
             "You may only send {daily} emails per day."

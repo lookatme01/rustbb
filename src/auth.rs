@@ -178,6 +178,28 @@ pub async fn create_login(ctx: &CtxInner, uid: i32, remember: bool) -> AppResult
     Ok(token)
 }
 
+/// Replace the current sign-in token with a fresh one, keeping the session itself (and its CSRF
+/// token, so forms open in other tabs still work), after a privilege change (password or 2FA
+/// change, Admin CP verification): a token captured before the change stops working.
+pub async fn rotate_login(ctx: &CtxInner) -> AppResult<()> {
+    let Some(old) = &ctx.token_hash else {
+        return Ok(());
+    };
+    let token = util::random_token(48);
+    let expires: Option<i64> = sqlx::query_scalar(
+        "UPDATE logins SET token_hash = $2, lastused = $3 WHERE token_hash = $1 RETURNING expires",
+    )
+    .bind(old)
+    .bind(util::sha256_hex(&token))
+    .bind(now())
+    .fetch_optional(&ctx.app.db)
+    .await?;
+    if let Some(exp) = expires {
+        ctx.add_cookie(AUTH_COOKIE, &token, Some((exp - now()).max(60)), true);
+    }
+    Ok(())
+}
+
 pub async fn destroy_login(ctx: &CtxInner) -> AppResult<()> {
     if let Some(h) = &ctx.token_hash {
         sqlx::query("DELETE FROM logins WHERE token_hash = $1")
@@ -190,10 +212,16 @@ pub async fn destroy_login(ctx: &CtxInner) -> AppResult<()> {
 }
 
 /// Invalidate all logins of a user (password change, ban, etc.), optionally keeping one.
+/// Invalidate all browser sessions of a user (optionally keeping one) and revoke all of their
+/// API tokens: after a password change, 2FA change or "log out everywhere".
 pub async fn destroy_all_logins(app: &App, uid: i32, keep: Option<&str>) -> AppResult<()> {
     sqlx::query("DELETE FROM logins WHERE uid = $1 AND token_hash <> $2")
         .bind(uid)
         .bind(keep.unwrap_or(""))
+        .execute(&app.db)
+        .await?;
+    sqlx::query("UPDATE api_tokens SET revoked_at = now() WHERE uid = $1 AND revoked_at IS NULL")
+        .bind(uid)
         .execute(&app.db)
         .await?;
     Ok(())

@@ -47,8 +47,11 @@ pub struct CtxInner {
     pub useragent: String,
     pub bot: Option<&'static str>,
     pub is_api: bool,
-    /// Authenticated with an `Authorization: Bearer` token (no ambient cookies → CSRF not applicable).
+    /// Authenticated with an API token (`Authorization: Bearer`, /api/v1 only; no ambient
+    /// cookies, so CSRF does not apply).
     pub bearer: bool,
+    /// The API token used (id, scopes), if any.
+    pub api_token: Option<(i64, Vec<String>)>,
     pub flash: Option<String>,
     pub cookies: Mutex<Vec<String>>,
     pub location: (AtomicI32, AtomicI32),
@@ -588,6 +591,37 @@ pub fn avatar_url(avatar: &str, _email: &str, _cache: &Cache) -> String {
     avatar.to_string()
 }
 
+/// The member behind a valid API token, with the token's id and scopes. Records when the token
+/// was last used, at most once a minute (in the background).
+async fn load_api_token(app: &App, hash: &str, ip: &str) -> Option<(User, i64, Vec<String>)> {
+    let row = sqlx::query(
+        "SELECT u.*, t.id AS api_token_id, t.scopes AS api_scopes,
+                (t.last_used_at IS NULL OR t.last_used_at < now() - interval '60 seconds') AS api_touch
+         FROM api_tokens t JOIN users u ON u.uid = t.uid
+         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.expires_at > now() AND t.audience = 'api/v1'",
+    )
+    .bind(hash)
+    .fetch_optional(&app.db)
+    .await
+    .ok()??;
+    let user = User::from_row(&row).ok()?;
+    let id: i64 = row.get("api_token_id");
+    if row.get::<bool, _>("api_touch") {
+        let (db, ip) = (app.db.clone(), ip.to_string());
+        tokio::spawn(async move {
+            let _ = sqlx::query(
+                "UPDATE api_tokens SET last_used_at = now(), last_used_ip = $2::inet WHERE id = $1
+                   AND (last_used_at IS NULL OR last_used_at < now() - interval '60 seconds')",
+            )
+            .bind(id)
+            .bind(ip)
+            .execute(&db)
+            .await;
+        });
+    }
+    Some((user, id, row.get("api_scopes")))
+}
+
 async fn load_user(app: &App, token_hash: &str) -> Option<(User, String, i64)> {
     let row = sqlx::query(
         "SELECT u.*, l.csrf AS login_csrf, l.acp_verified AS login_acp FROM logins l JOIN users u ON u.uid = l.uid
@@ -646,24 +680,55 @@ pub async fn context_middleware(
     let mut token_hash = None;
     let mut acp_verified = 0;
     let mut new_cookies = Vec::new();
-    // API clients may authenticate with a bearer token (same login tokens).
+    // API clients authenticate with an API token (`api_tokens`), and only on /api/v1: a bearer
+    // header anywhere else is ignored, so a token can never act as a browser session. Browser
+    // sessions (the auth cookie) work everywhere and need a CSRF token for every write.
+    let is_api_v1 = path == "/api/v1" || path.starts_with("/api/v1/");
     let bearer_tok = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|s| s.trim().to_string());
+        .map(|s| s.trim().to_string())
+        .filter(|_| is_api_v1);
     let mut bearer = false;
-    if let Some(tok) = bearer_tok
-        .clone()
-        .or_else(|| get_cookie(&headers, AUTH_COOKIE))
-    {
+    let mut api_token: Option<(i64, Vec<String>)> = None;
+    if let Some(tok) = bearer_tok {
+        match load_api_token(&app, &util::sha256_hex(&tok), &ip).await {
+            Some((u, id, scopes)) => {
+                user = Some(u);
+                bearer = true;
+                api_token = Some((id, scopes));
+            }
+            None => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    [(header::WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"")],
+                    axum::Json(serde_json::json!({"error": "The API token is invalid, expired or revoked."})),
+                )
+                    .into_response();
+            }
+        }
+        // Any token may revoke itself.
+        let writes = !matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS")
+            && !(method == "DELETE" && path == "/api/v1/auth/token");
+        if writes
+            && !api_token
+                .as_ref()
+                .is_some_and(|t| t.1.iter().any(|s| s == "write"))
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({"error": "This API token may only read (scope \"write\" is required)."})),
+            )
+                .into_response();
+        }
+    } else if let Some(tok) = get_cookie(&headers, AUTH_COOKIE) {
         let h = util::sha256_hex(&tok);
         if let Some((u, c, acp)) = load_user(&app, &h).await {
             user = Some(u);
             csrf = c;
             acp_verified = acp;
             token_hash = Some(h);
-            bearer = bearer_tok.is_some();
         }
     }
     let had_sid = get_cookie(&headers, SID_COOKIE)
@@ -787,6 +852,7 @@ pub async fn context_middleware(
         bot,
         is_api,
         bearer,
+        api_token,
         flash,
         cookies: Mutex::new(new_cookies),
         location: (AtomicI32::new(0), AtomicI32::new(0)),

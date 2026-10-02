@@ -100,7 +100,11 @@ pub struct ReportForm {
 
 pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<ReportForm>) -> AppResult<Response> {
     let me = ctx.require_login()?.clone();
-    if !ctx.app.rate_check(&format!("report:{}", me.uid), 20, 3600) {
+    if !ctx
+        .app
+        .throttle(&format!("report:{}", me.uid), 20, 3600)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     let (id, id2, id3, _) = target(&ctx, &f.r#type, f.id).await?;

@@ -24,6 +24,13 @@
 <table class="grid"><thead><tr><th>Device</th><th>IP</th><th>Signed in</th><th></th></tr></thead><tbody>
 {% for s in sessions %}<tr><td class="small">{{ s.useragent|truncate_chars(70) }}{% if s.current %} <span class="tag">this device</span>{% endif %}</td><td class="small">{{ s.ip }}</td><td class="small">{{ s.created|date }}</td><td class="num">{% if not s.current %}<form method="post" action="/usercp/security/revoke">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ s.id }}"><button class="btn secondary small" type="submit">Log out</button></form>{% endif %}</td></tr>{% endfor %}
 </tbody></table>
-<form method="post" action="/usercp/security/revoke" class="box-foot">{{ m.csrf_field() }}<input type="hidden" name="id" value="all"><button class="btn secondary small" type="submit">Log out all other devices</button></form>
+<form method="post" action="/usercp/security/revoke" class="box-foot">{{ m.csrf_field() }}<input type="hidden" name="id" value="all"><button class="btn secondary small" type="submit">Log out all other devices (and revoke API tokens)</button></form>
 </section>
+{% if api_tokens %}
+<section class="box"><div class="box-head"><h2>API tokens</h2></div>
+<table class="grid"><thead><tr><th>Name</th><th>Access</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead><tbody>
+{% for t in api_tokens %}<tr><td class="small">{{ t.name or "(unnamed)" }}</td><td class="small">{{ t.scopes|join(", ") }}</td><td class="small">{{ t.created|date }}</td><td class="small">{% if t.last_used %}{{ t.last_used|date }}{% else %}never{% endif %}</td><td class="small">{{ t.expires|date }}</td><td class="num"><form method="post" action="/usercp/security/revoke">{{ m.csrf_field() }}<input type="hidden" name="id" value="api:{{ t.id }}"><button class="btn secondary small" type="submit">Revoke</button></form></td></tr>{% endfor %}
+</tbody></table>
+</section>
+{% endif %}
 {% endblock %}

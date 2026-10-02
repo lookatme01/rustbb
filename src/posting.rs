@@ -135,7 +135,8 @@ pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
         let secs = s.int("postfloodsecs").max(10);
         if !ctx
             .app
-            .rate_check(&format!("guestpost:{}", ctx.ip), 1, secs)
+            .throttle(&format!("guestpost:{}", ctx.ip), 1, secs)
+            .await
         {
             return Err(AppError::user(
                 "You are trying to post too fast. Please wait a moment.",

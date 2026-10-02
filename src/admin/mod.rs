@@ -183,7 +183,8 @@ pub async fn verify_submit(ctx: Ctx, CsrfForm(f): CsrfForm<VerifyForm>) -> AppRe
     }
     if !ctx
         .app
-        .rate_check(&format!("acpverify:{}", me.uid), 10, 600)
+        .throttle(&format!("acpverify:{}", me.uid), 10, 600)
+        .await
     {
         return Err(AppError::RateLimited);
     }
@@ -204,6 +205,7 @@ pub async fn verify_submit(ctx: Ctx, CsrfForm(f): CsrfForm<VerifyForm>) -> AppRe
             .bind(now())
             .execute(&ctx.app.db)
             .await?;
+        crate::auth::rotate_login(&ctx).await?;
     }
     let to = if f.return_to.starts_with("/admin") {
         f.return_to.clone()
