@@ -1,0 +1,13 @@
+{% extends "modcp/base.html" %}
+{% block mcp %}
+<section class="box"><div class="box-head"><h2>Ban appeals</h2><span class="right small">Waiting for a decision</span></div>
+<table class="grid"><thead><tr><th>Member</th><th>Ban reason</th><th>Appeal</th><th>Sent</th></tr></thead><tbody>
+{% for a in pending %}<tr><td><a href="/modcp/appeals/{{ a.id }}">{{ a.username }}</a></td><td class="small">{{ a.ban_reason }}{% if a.banned_by %}<br><span class="muted">by {{ a.banned_by }}</span>{% endif %}</td><td class="small">{{ a.statement|truncate_chars(160) }}</td><td class="small">{{ a.created|date }}</td></tr>
+{% else %}<tr><td colspan="4" class="empty">No appeals are waiting.</td></tr>{% endfor %}
+</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Recently decided</h2></div>
+<table class="grid"><thead><tr><th>Member</th><th>Outcome</th><th>Decided by</th><th>When</th></tr></thead><tbody>
+{% for a in decided %}<tr><td><a href="/modcp/appeals/{{ a.id }}">{{ a.username }}</a></td><td>{{ a.status|capitalize }}</td><td class="small">{{ a.decided_by }}</td><td class="small">{{ a.decided_at|date }}</td></tr>
+{% else %}<tr><td colspan="4" class="empty">No decisions yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

@@ -38,7 +38,7 @@ pub fn router() -> Router<App> {
         .route("/modcp/delayed", get(delayed))
 }
 
-fn require_modcp(ctx: &Ctx) -> AppResult<()> {
+pub(crate) fn require_modcp(ctx: &Ctx) -> AppResult<()> {
     ctx.require_login()?;
     if !(ctx.perms.canmodcp || ctx.is_any_mod()) {
         return Err(AppError::no_perm());
@@ -1003,39 +1003,40 @@ pub async fn lift_ban_for(app: &App, uid: i32) -> AppResult<()> {
     Ok(())
 }
 
+/// Refuse to lift a ban on someone who would outrank the viewer once it's lifted: lifting
+/// restores the groups they had before the ban, so judge them by those.
+pub async fn check_can_lift(ctx: &Ctx, uid: i32) -> AppResult<()> {
+    let old: Option<(i32, Vec<i32>)> =
+        sqlx::query_as("SELECT oldgroup, oldadditionalgroups FROM banned WHERE uid = $1")
+            .bind(uid)
+            .fetch_optional(&ctx.app.db)
+            .await?;
+    if let Some((group, additional)) = old {
+        let mut target = load_user(ctx, uid).await?;
+        target.usergroup = group;
+        target.additionalgroups = additional;
+        if !can_act_on(ctx, &target) {
+            return Err(AppError::user("You cannot lift this ban."));
+        }
+    }
+    Ok(())
+}
+
+/// Lift a ban and record it in the moderator log and the member's audit log.
+pub async fn lift_ban_logged(ctx: &Ctx, uid: i32) -> AppResult<()> {
+    lift_ban_for(&ctx.app, uid).await?;
+    crate::ops::log_moderator_action(&ctx.app, ctx.uid(), &ctx.ip, 0, 0, 0, "Lifted ban", serde_json::json!({"uid": uid})).await;
+    crate::audit::log(ctx, uid, "unbanned", serde_json::Value::Null).await;
+    Ok(())
+}
+
 pub async fn lift_ban(ctx: Ctx, CsrfForm(f): CsrfForm<LiftForm>) -> AppResult<Response> {
     require_modcp(&ctx)?;
     if !ctx.perms.canbanusers {
         return Err(AppError::no_perm());
     }
-    // Judge the user by the groups they had before the ban: lifting it restores them, so a
-    // moderator must not be able to undo a ban on someone who outranks them.
-    let old: Option<(i32, Vec<i32>)> =
-        sqlx::query_as("SELECT oldgroup, oldadditionalgroups FROM banned WHERE uid = $1")
-            .bind(f.uid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
-    if let Some((group, additional)) = old {
-        let mut target = load_user(&ctx, f.uid).await?;
-        target.usergroup = group;
-        target.additionalgroups = additional;
-        if !can_act_on(&ctx, &target) {
-            return Err(AppError::user("You cannot lift this ban."));
-        }
-    }
-    lift_ban_for(&ctx.app, f.uid).await?;
-    crate::ops::log_moderator_action(
-        &ctx.app,
-        ctx.uid(),
-        &ctx.ip,
-        0,
-        0,
-        0,
-        "Lifted ban",
-        serde_json::json!({"uid": f.uid}),
-    )
-    .await;
-    crate::audit::log(&ctx, f.uid, "unbanned", serde_json::Value::Null).await;
+    check_can_lift(&ctx, f.uid).await?;
+    lift_ban_logged(&ctx, f.uid).await?;
     Ok(ctx.redirect("/modcp/banning", "The ban has been lifted."))
 }
 

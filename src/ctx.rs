@@ -386,7 +386,7 @@ impl CtxInner {
     pub async fn base_context(&self) -> Value {
         let s = &self.cache.settings;
         let theme = self.cache.theme(self.theme_id());
-        let (modq, reports, _) = self.mod_notice_counts().await;
+        let (modq, reports, appeals) = self.mod_notice_counts().await;
         let _ = s;
         let bb = self.cache.bb.clone();
         minijinja::context! {
@@ -407,6 +407,7 @@ impl CtxInner {
             can_modcp => self.perms.canmodcp || self.is_any_mod(),
             modqueue_count => modq,
             report_count => reports,
+            appeal_count => appeals,
             path => &self.path,
             current_url => if self.query.is_empty() { self.path.clone() } else { format!("{}?{}", self.path, self.query) },
             flash => &self.flash,
@@ -418,7 +419,7 @@ impl CtxInner {
         }
     }
 
-    /// (unapproved content count, open reports count, unused) shown to moderators in the header.
+    /// (unapproved content count, open reports count, pending ban appeals) shown to moderators.
     async fn mod_notice_counts(&self) -> (i64, i64, i64) {
         let uid = self.uid();
         if uid == 0 || !(self.perms.canmodcp || self.is_any_mod()) {
@@ -445,7 +446,12 @@ impl CtxInner {
             .await
             .unwrap_or((0, 0)),
         };
-        let v = (res.0, res.1, 0);
+        let appeals: i64 = if self.perms.canbanusers {
+            sqlx::query_scalar("SELECT COUNT(*) FROM ban_appeals WHERE status = 0").fetch_one(&self.app.db).await.unwrap_or(0)
+        } else {
+            0
+        };
+        let v = (res.0, res.1, appeals);
         self.app.mod_counts.insert(uid, v);
         v
     }
@@ -754,6 +760,7 @@ pub async fn context_middleware(
         })
         .unwrap_or(false)
         && !path.starts_with("/member/logout")
+        && !path.starts_with("/member/appeal")
         && !path.starts_with("/static")
     {
         banned_page(&ctx).await
@@ -874,11 +881,12 @@ async fn banned_page(ctx: &Ctx) -> Response {
             .ok()
             .flatten();
     let (reason, lifted) = ban.map(|b| (b.0, b.2)).unwrap_or_default();
+    let appeal = crate::routes::appeals::banned_page_context(ctx).await.unwrap_or_default();
     match ctx
         .render_status(
             StatusCode::FORBIDDEN,
             "banned.html",
-            minijinja::context! { reason => reason, lifted => lifted },
+            minijinja::context! { reason => reason, lifted => lifted, appeal => appeal },
         )
         .await
     {

@@ -4,6 +4,23 @@
 <p>Your account has been banned from {{ bb.bbname }}.</p>
 {% if reason %}<p><strong>Reason:</strong> {{ reason }}</p>{% endif %}
 <p><strong>Ban lifts:</strong> {% if lifted %}{{ lifted|date('datetime') }}{% else %}Never{% endif %}</p>
+{% if appeal and appeal.last and appeal.last.rejected and appeal.state != 'pending' %}
+<div class="notice warn"><div><strong>Your last appeal was rejected</strong> on {{ appeal.last.decided_at|date('date') }}.{% if appeal.last.response %}<br>Response from the staff: {{ appeal.last.response }}{% endif %}</div></div>
+{% endif %}
+{% if appeal and appeal.state == 'pending' %}
+<div class="notice"><div><strong>Your appeal is waiting</strong> for the staff to review it (sent {{ appeal.last.created|date('datetime') }}). You'll see the outcome here.</div></div>
+{% elif appeal and appeal.state == 'can' %}
+<form method="post" action="/member/appeal"><input type="hidden" name="my_post_key" value="{{ csrf }}">
+  <h3>Appeal this ban</h3>
+  <p class="small muted">Explain why the ban should be reviewed. A member of staff will read it and decide.</p>
+  <textarea name="statement" rows="5" maxlength="{{ appeal.max }}" required aria-label="Your appeal"></textarea>
+  <p><button class="btn" type="submit">Send appeal</button></p>
+</form>
+{% elif appeal and appeal.state == 'wait' %}
+<p class="small">You can appeal again from {{ appeal.until|date('datetime') }}.</p>
+{% elif appeal and appeal.state == 'closed' %}
+<p class="small">This ban can't be appealed again.</p>
+{% endif %}
 <form method="post" action="/member/logout"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary" type="submit">Log out</button></form>
 </div></section>
 {% endblock %}

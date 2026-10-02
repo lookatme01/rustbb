@@ -41,6 +41,9 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("warned", "Received a warning", "staff"),
     ("warning_revoked", "Warning revoked by staff", "staff"),
     ("staff_edit", "Account edited by staff", "staff"),
+    ("appeal_submitted", "Appealed a ban", "account"),
+    ("appeal_accepted", "Ban appeal accepted by staff", "staff"),
+    ("appeal_rejected", "Ban appeal rejected by staff", "staff"),
 ];
 
 pub fn describe(action: &str) -> (&'static str, &'static str) {

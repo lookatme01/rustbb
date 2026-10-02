@@ -119,12 +119,22 @@ deleted or merged (enforced by database triggers), and admins can rename it and 
 
 ### Moderation (Mod CP)
 
-Reports queue; moderation queue (threads, posts, attachments); inline moderation of threads and
+Reports queue with claiming ("claimed by", take over, release), resolution notes and a full
+history per report; moderation queue (threads, posts, attachments); inline moderation of threads and
 posts (approve, soft delete and restore, delete, open/close, stick, move or copy with optional
 redirects, merge, split, move posts); custom moderator tools; delayed (scheduled) moderation;
 moderator log; announcements; profile editing and restrictions (suspend posting, moderate posts,
 suspend signature); bans with expiry; IP search; warning logs. Soft-deleted content is visible only
 to moderators. Other members see just a "This post was deleted." placeholder for a deleted reply.
+
+* **Moderator notes:** an append-only log of private notes on each member, which only staff can see.
+  The author can retract a note within 15 minutes and an administrator at any time; a retracted
+  note stays visible to staff.
+* **Member moderation history:** one filterable timeline per member covering notes, warnings,
+  bans, reports against them and their content, moderator actions and ban appeals.
+* **Ban appeals:** banned members can appeal from the banned page. Staff with ban rights accept
+  (which lifts the ban, with the same rank checks) or reject with a response. Settings control
+  whether appeals are allowed and how long a member must wait to appeal again.
 
 ### Administration (Admin CP)
 
@@ -434,6 +444,7 @@ second argument where applicable):
 | `tests/system_features.sh` | System sender, staff posting as System, automation, profile, ban notice |
 | `tests/deleted_visibility.sh` | soft-deleted content hidden from members, guests and the API |
 | `tests/doctor.sh` | `rbb doctor` against the dev setup and deliberately broken ones |
+| `tests/mod_workflow.sh` | moderator notes, member history, report claiming, ban appeals |
 | `tests/pgp_e2e.mjs` | end-to-end PGP flows with the shipped browser module |
 | `tests/load.sh` | load test against a seeded board |
 | `tests/simulate.mjs` | realistic traffic simulation with optional ramp-up |

@@ -222,7 +222,7 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         // Staff actions on the account from the audit log ("warned" comes from the warnings table).
         let actions: Vec<&str> = crate::audit::ACTIONS
             .iter()
-            .filter(|a| a.2 == "staff" && a.0 != "warned" && (warnings_visible || a.0 != "warning_revoked"))
+            .filter(|a| a.2 == "staff" && a.0 != "warned" && !a.0.starts_with("appeal_") && (warnings_visible || a.0 != "warning_revoked"))
             .map(|a| a.0)
             .collect();
         let rows: Vec<(String, i64, serde_json::Value, Option<String>)> = sqlx::query_as(
@@ -296,6 +296,32 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
             e.detail = subject.unwrap_or_default();
             e.link = if pid > 0 { Some(format!("/post/{pid}")) } else if tid > 0 { Some(format!("/thread/{tid}")) } else { None };
             events.push(e);
+        }
+    }
+
+    if want("appeals") {
+        let rows: Vec<(i32, String, i16, i64, i64, String, Option<String>)> = sqlx::query_as(
+            "SELECT a.id, a.statement, a.status, a.created, a.decided_at, a.response, d.username
+             FROM ban_appeals a LEFT JOIN users d ON d.uid = a.decided_by WHERE a.uid = $1 ORDER BY a.id DESC LIMIT $2",
+        )
+        .bind(uid)
+        .bind(SOURCE_LIMIT)
+        .fetch_all(db)
+        .await?;
+        for (id, statement, status, created, decided_at, response, decider) in rows {
+            let mut e = Event::new("appeals", created, "Ban appeal submitted");
+            e.detail = statement;
+            e.actor = Some(member.username.clone());
+            e.link = Some(format!("/modcp/appeals/{id}"));
+            events.push(e);
+            if status != crate::routes::appeals::PENDING {
+                let mut d = Event::new("appeals", decided_at,
+                    if status == crate::routes::appeals::ACCEPTED { "Ban appeal accepted" } else { "Ban appeal rejected" });
+                d.detail = response;
+                d.actor = decider;
+                d.link = Some(format!("/modcp/appeals/{id}"));
+                events.push(d);
+            }
         }
     }
 

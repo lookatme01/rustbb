@@ -1,0 +1,26 @@
+{% extends "modcp/base.html" %}
+{% import "macros.html" as m %}
+{% block mcp %}
+<section class="box">
+  <div class="box-head"><h2>Appeal from {{ appeal.username }}</h2><span class="right small">{{ appeal.status|capitalize }}</span></div>
+  <div class="kv">
+    <div>Member</div><div><a href="{{ url_user(appeal.uid) }}">{{ appeal.username }}</a> · <a href="/modcp/member/{{ appeal.uid }}">moderation history</a></div>
+    <div>Ban</div><div>{{ appeal.ban_reason or 'No reason given' }}{% if appeal.banned_by %} (by {{ appeal.banned_by }}){% endif %}, since {{ appeal.ban_dateline|date('date') }}{% if still_banned %} · {% if ban_lifts %}lifts {{ ban_lifts|date }}{% else %}permanent{% endif %}{% else %} · no longer banned{% endif %}</div>
+    <div>Sent</div><div>{{ appeal.created|date }}</div>
+  </div>
+  <div class="box-body"><h3>The member's appeal</h3><p style="white-space:pre-wrap">{{ appeal.statement }}</p></div>
+  {% if appeal.status != 'pending' %}<div class="box-body"><h3>Decision</h3><p>{{ appeal.status|capitalize }} by {{ appeal.decided_by }} on {{ appeal.decided_at|date }}{% if appeal.response %}: {{ appeal.response }}{% endif %}</p></div>{% endif %}
+</section>
+{% if appeal.status == 'pending' %}
+<form method="post" action="/modcp/appeals/{{ appeal.id }}/decide" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Decide</h2></div>
+  <div class="box-body"><textarea name="response" rows="3" maxlength="2000" placeholder="Response to the member (required when rejecting)" aria-label="Response"></textarea></div>
+  <div class="box-foot actions" style="margin:0">
+    <button class="btn small" name="decision" value="accept">Accept and lift the ban</button>
+    <button class="btn secondary small" name="decision" value="reject">Reject</button>
+  </div>
+</form>
+{% endif %}
+{% if earlier %}<section class="box"><div class="box-head"><h2>Earlier appeals</h2></div>
+<table class="grid"><tbody>{% for a in earlier %}<tr><td><a href="/modcp/appeals/{{ a.id }}">{{ a.created|date('date') }}</a></td><td>{{ a.status|capitalize }}</td><td class="small">{{ a.response }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% endblock %}

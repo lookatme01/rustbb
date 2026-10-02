@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Added: moderation workflow (2026-10-02)
+- **Moderator notes:** an append-only, staff-only log of notes per member, replacing the single
+  "Moderator notes" box. Existing notes (also from MyBB imports) are carried over. Authors can
+  retract a note within 15 minutes and administrators at any time; retracted notes stay visible.
+- **Member moderation history** at `/modcp/member/{uid}`: notes, warnings, bans and account
+  actions, reports, moderator actions and ban appeals on one filterable timeline. It's linked from
+  profiles ("History (N notes)"), reports and the user editors.
+- **Report claiming:** claim, release or take over a report; resolve it with a note; reopen it.
+  Each report has a detail page with its reporters and full history, and report rows show the
+  claimer and the member's latest note.
+- **Ban appeals:** banned members can appeal from the banned page. Staff with ban rights see a
+  queue (with a count in the Mod CP menu) and accept or reject with a response; members get the
+  outcome on the banned page and as a System message. New settings: *Allow Ban Appeals* and
+  *Days Before Appealing Again*.
+
+### Security (moderation workflow, 2026-10-02)
+- Resolving or reopening reports now requires the same permission as viewing them. Before,
+  Mod CP access alone was enough to close profile, reputation and private-message reports.
+
 ### Added: `rbb doctor` (2026-10-02)
 - New `rbb doctor [--strict]` command checks the setup and explains how to fix each problem:
   the secret, listen address, upload folder, plugins, database connection and authentication,

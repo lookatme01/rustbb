@@ -12,7 +12,8 @@
     <a href="/modcp/announcements"{% if mcp_active == 'announcements' %} class="active"{% endif %}>Announcements</a>
     <h3>Users</h3>
     <a href="/modcp/finduser"{% if mcp_active == 'finduser' %} class="active"{% endif %}>Find users</a>
-    {% if perms.canbanusers %}<a href="/modcp/banning"{% if mcp_active == 'banning' %} class="active"{% endif %}>Banned users</a>{% endif %}
+    {% if perms.canbanusers %}<a href="/modcp/banning"{% if mcp_active == 'banning' %} class="active"{% endif %}>Banned users</a>
+    <a href="/modcp/appeals"{% if mcp_active == 'appeals' %} class="active"{% endif %}>Ban appeals{% if appeal_count %}<span class="count">{{ appeal_count }}</span>{% endif %}</a>{% endif %}
     {% if perms.canviewwarnlogs %}<a href="/modcp/warninglogs"{% if mcp_active == 'warninglogs' %} class="active"{% endif %}>Warning logs</a>{% endif %}
     {% if perms.canuseipsearch %}<a href="/modcp/ipsearch"{% if mcp_active == 'ipsearch' %} class="active"{% endif %}>IP search</a>{% endif %}
   </nav>

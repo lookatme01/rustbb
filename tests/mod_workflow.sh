@@ -111,7 +111,47 @@ req "$NR" "can't claim" 403 --data-urlencode "my_post_key=$TN" --data-urlencode 
 curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" "$BASE/admin/users/$NRUID/delete"
 sql "DELETE FROM usergroups WHERE gid = $NG"; curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$TA" --data-urlencode "part=all" "$BASE/admin/tools/cache"
 curl -s -o /dev/null -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$T" --data-urlencode "fid=4" --data-urlencode "action=delete" --data-urlencode "tids=$TID" "$BASE/moderation/threads"
-## @@PART3@@
+echo "# Ban appeals"
+req "$ADMIN" "ban member for appeals" 303 --data-urlencode "my_post_key=$TA" --data-urlencode "reason=Appeal test ban $N" --data-urlencode "days=30" "$BASE/admin/users/$MUID/ban"
+: > "$MEMBER"; login "$MEMBER" "mwmember$N" "secret$N"; TM=$(tok "$MEMBER")
+req "$MEMBER" "banned page offers an appeal" 403 "$BASE/"
+has "appeal form shown" 'name="statement"'
+req "$MEMBER" "empty appeal refused" 422 --data-urlencode "my_post_key=$TM" --data-urlencode "statement=  " "$BASE/member/appeal"
+req "$MEMBER" "appeal submitted" 303 --data-urlencode "my_post_key=$TM" --data-urlencode "statement=I'm sorry <script>alert(1)</script>, it won't happen again $N" "$BASE/member/appeal"
+req "$MEMBER" "banned page shows pending appeal" 403 "$BASE/"
+has "pending status shown" "Your appeal is waiting"
+hasnt "no second form while pending" 'name="statement"'
+req "$MEMBER" "second appeal refused" 422 --data-urlencode "my_post_key=$TM" --data-urlencode "statement=Again $N" "$BASE/member/appeal"
+req "$MEMBER" "banned member can't reach the Mod CP" 403 "$BASE/modcp/appeals"
+hasnt "gate shows the banned page" "Ban appeals</h2>"
+AID=$(sql "SELECT id FROM ban_appeals WHERE uid = $MUID AND status = 0")
+[ -n "$AID" ] && ok "appeal $AID stored" || bad "appeal stored"
+req "$MOD" "moderator without ban rights can't see appeals" 403 "$BASE/modcp/appeals"
+req "$SMOD" "appeals queue" 200 "$BASE/modcp/appeals"
+has "queue lists the member" "mwmember$N"
+has "statement escaped" "I&#x27;m sorry &lt;script&gt;" 
+has "nav shows the count" 'Ban appeals<span class="count">'
+req "$SMOD" "appeal detail" 200 "$BASE/modcp/appeals/$AID"
+has "detail shows the ban reason" "Appeal test ban $N"
+req "$SMOD" "rejecting needs a response" 422 --data-urlencode "my_post_key=$TS" --data-urlencode "decision=reject" --data-urlencode "response= " "$BASE/modcp/appeals/$AID/decide"
+req "$SMOD" "reject" 303 --data-urlencode "my_post_key=$TS" --data-urlencode "decision=reject" --data-urlencode "response=Not yet, try again later $N" "$BASE/modcp/appeals/$AID/decide"
+req "$SMOD" "deciding twice is refused" 422 --data-urlencode "my_post_key=$TS" --data-urlencode "decision=accept" --data-urlencode "response=x" "$BASE/modcp/appeals/$AID/decide"
+req "$MEMBER" "banned page after rejection" 403 "$BASE/"
+has "shows the staff response" "Not yet, try again later $N"
+has "shows when to try again" "You can appeal again"
+req "$MEMBER" "appeal during cooldown refused" 422 --data-urlencode "my_post_key=$TM" --data-urlencode "statement=Please $N" "$BASE/member/appeal"
+sql "UPDATE ban_appeals SET decided_at = decided_at - 31 * 86400 WHERE id = $AID"
+req "$MEMBER" "appeal again after the cooldown" 303 --data-urlencode "my_post_key=$TM" --data-urlencode "statement=Second appeal $N" "$BASE/member/appeal"
+AID2=$(sql "SELECT id FROM ban_appeals WHERE uid = $MUID AND status = 0")
+req "$SMOD" "accept" 303 --data-urlencode "my_post_key=$TS" --data-urlencode "decision=accept" --data-urlencode "response=Welcome back $N" "$BASE/modcp/appeals/$AID2/decide"
+[ "$(sql "SELECT count(*) FROM banned WHERE uid = $MUID")" = 0 ] && ok "ban lifted" || bad "ban lifted"
+[ "$(sql "SELECT usergroup FROM users WHERE uid = $MUID")" = 2 ] && ok "group restored" || bad "group restored"
+req "$MEMBER" "member is back" 200 "$BASE/"
+[ "$(sql "SELECT count(*) FROM privatemessages WHERE uid = $MUID AND fromid = (SELECT uid FROM users WHERE is_system) AND subject ILIKE '%appeal%'")" -ge 2 ] && ok "System messages sent for both decisions" || bad "System messages sent for both decisions"
+req "$MOD" "timeline shows appeals" 200 "$BASE/modcp/member/$MUID?type=appeals"
+has "rejected appeal on timeline" "Ban appeal rejected"
+has "accepted appeal on timeline" "Ban appeal accepted"
+[ "$(sql "SELECT count(*) FROM moderatorlog WHERE action = 'Accepted ban appeal' AND data->>'uid' = '$MUID'")" = 1 ] && ok "moderator log records the decision" || bad "moderator log records the decision"
 
 echo "# Cleanup"
 sql "DELETE FROM moderators WHERE id = $MODUID AND NOT isgroup"

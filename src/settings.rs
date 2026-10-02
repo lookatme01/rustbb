@@ -1396,6 +1396,22 @@ pub static DEFS: &[SettingDef] = &[
     ),
     // contact
     s!(
+        "member",
+        "banappeals",
+        "Allow Ban Appeals",
+        "Banned members can ask staff to review their ban from the banned page.",
+        "yesno",
+        "1"
+    ),
+    s!(
+        "member",
+        "banappeal_cooldown_days",
+        "Days Before Appealing Again",
+        "After a rejected appeal, how long a member must wait before appealing the same ban again. 0 allows one appeal per ban.",
+        "numeric",
+        "30"
+    ),
+    s!(
         "contact",
         "contact",
         "Enable Contact Page",

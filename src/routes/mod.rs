@@ -1,6 +1,7 @@
 //! HTTP routes.
 
 pub mod api;
+pub mod appeals;
 pub mod archive;
 pub mod attachments;
 pub mod calendar;
@@ -146,6 +147,7 @@ pub fn router() -> Router<App> {
         .merge(modcp::router())
         .merge(modnotes::router())
         .merge(modreports::router())
+        .merge(appeals::router())
         .merge(moderation::router())
         .route("/search", get(search::search_form).post(search::do_search))
         .route("/search/results/{sid}", get(search::results))
