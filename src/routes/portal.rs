@@ -12,7 +12,7 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
     if !s.bool("portal") {
         return Err(AppError::not_found("page"));
     }
-    let (mut fids, _) = crate::routes::search::searchable_forums(&ctx);
+    let (mut fids, _) = crate::routes::search::readable_forums(&ctx);
     let ann_fids: Vec<i32> = s
         .get("portal_announcementsfid")
         .split(',')

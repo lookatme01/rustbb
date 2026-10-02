@@ -161,7 +161,7 @@ pub async fn showteam(ctx: Ctx) -> AppResult<Response> {
     .await?;
     let moderators: Vec<_> = mods
         .into_iter()
-        .filter(|m| ctx.forum_perms(m.0).canview)
+        .filter(|m| ctx.access().can_see(m.0))
         .map(|(fid, n, uid, g, d)| minijinja::context! { uid => uid, formatted => ctx.cache.format_name(&n, g, d), forum => ctx.cache.forum(fid).map(|f| f.name.clone()), fid => fid })
         .collect();
     ctx.allow_guest_cache(&["board".to_string()]);

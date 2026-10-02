@@ -23,12 +23,10 @@ pub fn router() -> Router<App> {
         .route("/modcp/reports/{rid}/reopen", post(reopen))
 }
 
-/// Mod CP access plus permission to manage reported content (or forum moderator rights).
+/// Access to some kind of report (see `domain::staff::ReportScope`).
 pub fn require_reports(ctx: &Ctx) -> AppResult<()> {
     ctx.require_login()?;
-    if !(ctx.perms.canmodcp || ctx.is_any_mod())
-        || !(ctx.perms.canmanagereportedcontent || ctx.is_any_mod())
-    {
+    if !ctx.can(crate::domain::staff::Cap::ModCp) || !ctx.staff().report_scope().any() {
         return Err(AppError::no_perm());
     }
     Ok(())
@@ -97,10 +95,9 @@ async fn load(ctx: &Ctx, rid: i32) -> AppResult<Report> {
     .fetch_optional(&ctx.app.db)
     .await?
     .ok_or_else(|| AppError::not_found("report"))?;
-    if r.r#type == "post"
-        && let Some(fids) = crate::routes::modcp::mod_fids(ctx)
-        && !fids.contains(&r.id3)
-    {
+    // Reports the viewer may not see do not exist for them (PM reports need their own
+    // capability; post reports must be from a forum they moderate).
+    if !ctx.staff().report_scope().allows(&r.r#type, r.id3) {
         return Err(AppError::not_found("report"));
     }
     Ok(r)

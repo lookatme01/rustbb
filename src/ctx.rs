@@ -63,6 +63,10 @@ pub struct CtxInner {
     pub write_scope: Mutex<Option<Vec<String>>>,
     /// The viewer's forum read markers, loaded at most once per request.
     pub forums_read: tokio::sync::OnceCell<std::collections::HashMap<i32, i64>>,
+    /// What the viewer may see in each forum (computed on first use).
+    pub access: std::sync::OnceLock<Arc<crate::domain::access::ForumAccess>>,
+    /// The viewer's staff capabilities (computed on first use).
+    pub staff: std::sync::OnceLock<crate::domain::staff::Staff>,
 }
 
 #[derive(Clone)]
@@ -202,9 +206,55 @@ impl CtxInner {
     pub fn is_mod(&self, fid: i32) -> bool {
         self.mod_perms(fid).is_some()
     }
-    pub fn is_any_mod(&self) -> bool {
-        self.cache
-            .is_any_moderator(self.uid(), &self.groups, &self.perms)
+    /// The viewer's staff capabilities.
+    pub fn staff(&self) -> &crate::domain::staff::Staff {
+        self.staff.get_or_init(|| {
+            crate::domain::staff::Staff::new(&self.cache, self.uid(), &self.groups, &self.perms)
+        })
+    }
+
+    /// Shorthand for `staff().can(cap)`.
+    pub fn can(&self, cap: crate::domain::staff::Cap) -> bool {
+        self.staff().can(cap)
+    }
+
+    /// What the viewer may see in each forum (see `domain::access`).
+    pub fn access(&self) -> &crate::domain::access::ForumAccess {
+        self.access.get_or_init(|| {
+            let has_unlocks = self
+                .headers
+                .get_all(header::COOKIE)
+                .iter()
+                .filter_map(|v| v.to_str().ok())
+                .any(|c| c.contains("forumpass_"));
+            let unlocked = |fid: i32| self.forum_unlocked(fid);
+            let viewer = crate::domain::access::Viewer {
+                uid: self.uid(),
+                groups: &self.groups,
+                perms: &self.perms,
+                unlocked: &unlocked,
+            };
+            // Viewers without unlock cookies share results per permission set (and per member
+            // only for those with moderator assignments).
+            let memo = (!has_unlocks).then(|| {
+                let mut g = self.groups.clone();
+                g.sort_unstable();
+                let personal = self
+                    .cache
+                    .is_any_moderator(self.uid(), &self.groups, &self.perms);
+                format!("{g:?}|{}", if personal { self.uid() } else { 0 })
+            });
+            self.cache.forum_access(&viewer, memo)
+        })
+    }
+
+    /// Whether the viewer entered the current password of a password-protected forum.
+    pub fn forum_unlocked(&self, fid: i32) -> bool {
+        let Some(f) = self.cache.forum(fid) else {
+            return false;
+        };
+        let cookie = get_cookie(&self.headers, &format!("forumpass_{fid}")).unwrap_or_default();
+        !cookie.is_empty() && util::ct_eq(&cookie, &forum_unlock_token(&self.app.cfg.secret, f))
     }
     pub fn theme_id(&self) -> i32 {
         self.theme.load(Ordering::Relaxed)
@@ -261,34 +311,19 @@ impl CtxInner {
         self.me()
     }
 
-    /// Check the viewer can see a forum (active, permissions, password). Returns its perms.
+    /// Check the viewer can see a forum (see `domain::access`). Returns it and its perms.
     pub fn check_forum(&self, fid: i32) -> AppResult<(&crate::models::Forum, ForumPerms)> {
+        use crate::domain::access::Denied;
         let forum = self
             .cache
             .forum(fid)
             .ok_or_else(|| AppError::not_found("forum"))?;
-        let perms = self.forum_perms(fid);
-        if !perms.canview || (!forum.active && !self.is_mod(fid)) {
-            return Err(AppError::no_perm());
+        match self.access().forum(fid) {
+            Ok(a) => Ok((forum, a.perms.clone())),
+            Err(Denied::NotFound) => Err(AppError::not_found("forum")),
+            Err(Denied::Forbidden) => Err(AppError::no_perm()),
+            Err(Denied::Password(p)) => Err(AppError::User(format!("__forumpass__{p}"))),
         }
-        // Password-protected forums (and their children).
-        for pfid in &forum.parentlist {
-            if let Some(pf) = self.cache.forum(*pfid)
-                && pf.has_password()
-                && !self.is_mod(*pfid)
-            {
-                let cookie =
-                    get_cookie(&self.headers, &format!("forumpass_{pfid}")).unwrap_or_default();
-                let expect = util::hmac_hex(
-                    &self.app.cfg.secret,
-                    &format!("forumpass:{pfid}:{}", pf.password),
-                );
-                if !util::ct_eq(&cookie, &expect) {
-                    return Err(AppError::User(format!("__forumpass__{pfid}")));
-                }
-            }
-        }
-        Ok((forum, perms))
     }
 
     /// Which `visible` states of threads/posts the viewer may *see the content of* in a forum.
@@ -426,8 +461,8 @@ impl CtxInner {
             brand => theme.and_then(|t| self.cache.theme_look.get(&t.tid)).map(|l| l.0.as_str()).filter(|b| !b.is_empty()),
             theme_css => theme.and_then(|t| self.cache.theme_look.get(&t.tid)).map(|l| l.1).unwrap_or(false),
             is_admin => self.perms.cancp,
-            is_mod => self.is_any_mod(),
-            can_modcp => self.perms.canmodcp || self.is_any_mod(),
+            is_mod => self.staff().is_moderator(),
+            can_modcp => self.can(crate::domain::staff::Cap::ModCp),
             modqueue_count => modq,
             report_count => reports,
             appeal_count => appeals,
@@ -442,34 +477,40 @@ impl CtxInner {
         }
     }
 
-    /// (unapproved content count, open reports count, pending ban appeals) shown to moderators.
+    /// (unapproved content count, open reports count, pending ban appeals) shown to staff, each
+    /// limited to what the viewer may act on.
     async fn mod_notice_counts(&self) -> (i64, i64, i64) {
+        use crate::domain::staff::{Cap, ReportScope};
         let uid = self.uid();
-        if uid == 0 || !(self.perms.canmodcp || self.is_any_mod()) {
+        if uid == 0 || !self.can(Cap::ModCp) {
             return (0, 0, 0);
         }
         if let Some(v) = self.app.mod_counts.get(&uid) {
             return v;
         }
-        let forums = self.cache.moderated_forums(uid, &self.groups, &self.perms);
-        let res: (i64, i64) = match &forums {
-            None => sqlx::query_as(
-                "SELECT (SELECT COALESCE(SUM(unapprovedthreads + unapprovedposts), 0)::bigint FROM forums),
-                        (SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0)",
-            )
-            .fetch_one(&self.app.db)
-            .await
-            .unwrap_or((0, 0)),
-            Some(f) => sqlx::query_as(
-                "SELECT (SELECT COALESCE(SUM(unapprovedthreads + unapprovedposts), 0)::bigint FROM forums WHERE fid = ANY($1)),
-                        (SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0 AND (type <> 'post' OR id3 = ANY($1)))",
-            )
-            .bind(f)
-            .fetch_one(&self.app.db)
-            .await
-            .unwrap_or((0, 0)),
+        let staff = self.staff();
+        let (q_all, q_fids) = if staff.can(Cap::ModQueue) {
+            staff.scope(Cap::ModQueue).sql()
+        } else {
+            (false, vec![])
         };
-        let appeals: i64 = if self.perms.canbanusers {
+        let rs = staff.report_scope();
+        let res: (i64, i64) = sqlx::query_as(&format!(
+            "SELECT (SELECT COALESCE(SUM(unapprovedthreads + unapprovedposts), 0)::bigint FROM forums WHERE $1 OR fid = ANY($2)),
+                    (SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0 AND {})",
+            ReportScope::clause("", 3)
+        ))
+        .bind(q_all)
+        .bind(&q_fids)
+        .bind(rs.posts)
+        .bind(rs.posts_all)
+        .bind(&rs.post_forums)
+        .bind(rs.members)
+        .bind(rs.pms)
+        .fetch_one(&self.app.db)
+        .await
+        .unwrap_or((0, 0));
+        let appeals: i64 = if staff.can(Cap::Ban) {
             sqlx::query_scalar("SELECT COUNT(*) FROM ban_appeals WHERE status = 0")
                 .fetch_one(&self.app.db)
                 .await
@@ -520,6 +561,15 @@ impl CtxInner {
             }
         }
     }
+}
+
+/// The unlock cookie value for a password-protected forum. It depends on the forum's password
+/// version, not the password, so it changes (signing everyone out) whenever the password does.
+pub fn forum_unlock_token(secret: &str, f: &crate::models::Forum) -> String {
+    util::hmac_hex(
+        secret,
+        &format!("forumpass:{}:{}", f.fid, f.password_version),
+    )
 }
 
 /// Only allow local redirects (prevents open redirect abuse). Browsers strip tabs and newlines
@@ -746,6 +796,8 @@ pub async fn context_middleware(
         guest_cache_tags: Mutex::new(vec![]),
         write_scope: Mutex::new(None),
         forums_read: tokio::sync::OnceCell::new(),
+        access: std::sync::OnceLock::new(),
+        staff: std::sync::OnceLock::new(),
     }));
     req.extensions_mut().insert(ctx.clone());
     let cache_epoch = app.page_cache.epoch();

@@ -458,7 +458,7 @@ pub async fn do_move(ctx: Ctx, CsrfForm(f): CsrfForm<MoveForm>) -> AppResult<Res
             "You cannot move threads into a category or link forum.",
         ));
     }
-    if !ctx.forum_perms(f.target).canview {
+    if !ctx.access().can_see(f.target) {
         return Err(AppError::no_perm());
     }
     if let Some(mp) = ctx.mod_perms(threads[0].fid)
@@ -622,7 +622,7 @@ pub async fn do_split(ctx: Ctx, CsrfForm(f): CsrfForm<SplitForm>) -> AppResult<R
                 "You cannot split posts into a category or link forum.",
             ));
         }
-        if !ctx.forum_perms(f.fid).canview {
+        if !ctx.access().can_see(f.fid) {
             return Err(AppError::no_perm());
         }
         let can_move_out = ctx
@@ -1039,7 +1039,18 @@ pub struct CancelForm {
 }
 
 pub async fn cancel_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<CancelForm>) -> AppResult<Response> {
-    if !ctx.is_any_mod() {
+    // Only moderators of the forum the action was scheduled in.
+    let fid: Option<i32> = sqlx::query_scalar("SELECT fid FROM delayedmoderation WHERE did = $1")
+        .bind(f.did)
+        .fetch_optional(&ctx.app.db)
+        .await?;
+    let Some(fid) = fid else {
+        return Err(AppError::not_found("scheduled action"));
+    };
+    if !ctx
+        .mod_perms(fid)
+        .is_some_and(|m| m.canmanagethreads || m.canopenclosethreads)
+    {
         return Err(AppError::no_perm());
     }
     sqlx::query("DELETE FROM delayedmoderation WHERE did = $1")

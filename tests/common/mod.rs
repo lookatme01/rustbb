@@ -111,7 +111,9 @@ impl Drop for TestDb {
                 .build()
                 .unwrap();
             rt.block_on(async move {
-                pool.close().await;
+                // Don't wait for checked-out connections (a failed test may leave some held by
+                // tasks of its finished runtime): FORCE ends them.
+                drop(pool);
                 if let Ok(mut c) = admin.connect().await {
                     let _ =
                         sqlx::query(&format!("DROP DATABASE IF EXISTS \"{name}\" WITH (FORCE)"))

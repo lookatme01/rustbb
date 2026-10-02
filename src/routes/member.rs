@@ -950,7 +950,7 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
         .await?;
     let active_forum = active_forum.and_then(|(fid, c)| {
         let f = ctx.cache.forum(fid)?;
-        ctx.forum_perms(fid).canview.then(|| minijinja::context! { fid => fid, name => &f.name, count => c, url => crate::templates::url_forum(fid as i64, Some(&f.name)) })
+        ctx.access().can_see(fid).then(|| minijinja::context! { fid => fid, name => &f.name, count => c, url => crate::templates::url_forum(fid as i64, Some(&f.name)) })
     });
     let online = author.online;
     let is_buddy = ctx
@@ -982,7 +982,7 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
     .bind(uid)
     .fetch_optional(&ctx.app.db)
     .await?;
-    let is_mod_viewer = ctx.is_any_mod();
+    let is_mod_viewer = ctx.staff().is_moderator();
     // Identity key (end-to-end private messages), and whether the viewer has verified it.
     let pgp_key = if ctx.settings().bool("enablepms") {
         crate::routes::pgp::active_key(&ctx, user.uid).await?
@@ -1013,13 +1013,13 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
     .bind(now())
     .fetch_optional(&ctx.app.db)
     .await?;
-    let is_staff =
-        ctx.uid() > 0 && (ctx.is_any_mod() || ctx.perms.canmodcp || ctx.perms.canbanusers);
+    let is_staff = ctx.uid() > 0
+        && (ctx.can(crate::domain::staff::Cap::ModCp) || ctx.can(crate::domain::staff::Cap::Ban));
     let ban = ban.map(|(reason, since, until, by_uid, by)| {
         let by = by.filter(|_| is_staff);
         minijinja::context! { reason => reason, since => since, until => until, by_uid => if by.is_some() { by_uid } else { 0 }, by => by }
     });
-    let history_notes = if ctx.uid() > 0 && (ctx.perms.canmodcp || ctx.is_any_mod()) {
+    let history_notes = if ctx.uid() > 0 && ctx.can(crate::domain::staff::Cap::ReadModNotes) {
         Some(crate::routes::modnotes::note_count(&ctx.app, user.uid).await?)
     } else {
         None
@@ -1094,8 +1094,7 @@ async fn system_activity(ctx: &Ctx, uid: i32) -> AppResult<minijinja::Value> {
     .bind(uid)
     .fetch_one(&ctx.app.db)
     .await?;
-    let can_see_log =
-        ctx.uid() > 0 && (ctx.is_any_mod() || (ctx.perms.canmodcp && ctx.perms.canviewmodlogs));
+    let can_see_log = ctx.uid() > 0 && ctx.can(crate::domain::staff::Cap::ModLog);
     let recent = if can_see_log {
         Some(crate::routes::modcp::load_logs(ctx, uid, 0, 10, 0).await?)
     } else {

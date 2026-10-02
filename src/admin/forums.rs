@@ -173,6 +173,12 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
     }
     let password = s(fl.get("password"));
     let clear_pw = b(fl.get("clearpassword"));
+    // Forum passwords are stored as Argon2id verifiers; hash before the transaction (it is slow).
+    let password_hash = if !clear_pw && !password.is_empty() {
+        Some(crate::auth::hash_password(&password).await?)
+    } else {
+        None
+    };
     let db = &ctx.app.db;
     let mut tx = db.begin().await?;
     let fid = if fid > 0 {
@@ -251,15 +257,16 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
         .fetch_one(&mut *tx)
         .await?
     };
+    // A new or removed password changes the version, which signs everyone out of the forum.
     if clear_pw {
-        sqlx::query("UPDATE forums SET password = '' WHERE fid = $1")
+        sqlx::query("UPDATE forums SET password = '', password_version = password_version + 1 WHERE fid = $1")
             .bind(fid)
             .execute(&mut *tx)
             .await?;
-    } else if !password.is_empty() {
-        sqlx::query("UPDATE forums SET password = $2 WHERE fid = $1")
+    } else if let Some(h) = &password_hash {
+        sqlx::query("UPDATE forums SET password = $2, password_version = password_version + 1 WHERE fid = $1")
             .bind(fid)
-            .bind(&password)
+            .bind(h)
             .execute(&mut *tx)
             .await?;
     }

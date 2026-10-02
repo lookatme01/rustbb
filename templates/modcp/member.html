@@ -16,11 +16,11 @@
   </div>
 </section>
 
-<form method="post" action="/modcp/member/{{ member.uid }}/notes" class="box">{{ m.csrf_field() }}
+{% if can_write_notes %}<form method="post" action="/modcp/member/{{ member.uid }}/notes" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Add a note</h2><span class="right small muted">Only staff can see notes. They can't be edited afterwards.</span></div>
   <div class="box-body"><textarea name="note" rows="3" maxlength="2000" required aria-label="Note"></textarea></div>
   <div class="box-foot actions" style="margin:0"><button class="btn small" type="submit">Add note</button></div>
-</form>
+</form>{% endif %}
 
 <section class="box">
   <div class="box-head"><h2>History</h2>

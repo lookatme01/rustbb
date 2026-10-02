@@ -21,7 +21,7 @@ pub async fn index(ctx: Ctx) -> AppResult<Response> {
         .cache
         .forums
         .iter()
-        .filter(|f| f.active && ctx.forum_perms(f.fid).canview)
+        .filter(|f| ctx.access().can_see(f.fid))
         .map(|f| minijinja::context! { fid => f.fid, name => &f.name, depth => ctx.cache.forum_depth.get(&f.fid).copied().unwrap_or(0), category => f.is_category() })
         .collect();
     ctx.allow_guest_cache(&["board".to_string()]);
@@ -77,7 +77,7 @@ pub async fn forum(
     let subforums: Vec<(i32, String)> = ctx
         .cache
         .children(fid)
-        .filter(|f| f.active && ctx.forum_perms(f.fid).canview)
+        .filter(|f| ctx.access().can_see(f.fid))
         .map(|f| (f.fid, f.name.clone()))
         .collect();
     ctx.allow_guest_cache(&[format!("forum:{fid}")]);

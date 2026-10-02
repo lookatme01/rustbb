@@ -12,29 +12,15 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 /// Forums the viewer may search/list: (all viewable fids, fids restricted to own threads).
+/// Forums the viewer may search: (all threads, only their own threads).
 pub fn searchable_forums(ctx: &Ctx) -> (Vec<i32>, Vec<i32>) {
-    let mut all = vec![];
-    let mut own_only = vec![];
-    for f in ctx.cache.forums.iter() {
-        if f.is_category() || !f.linkto.is_empty() {
-            continue;
-        }
-        let p = ctx.forum_perms(f.fid);
-        if !p.canview
-            || !p.canviewthreads
-            || !p.cansearch
-            || (f.has_password() && !ctx.is_mod(f.fid))
-            || (!f.active && !ctx.is_mod(f.fid))
-        {
-            continue;
-        }
-        if p.canonlyviewownthreads && !ctx.is_mod(f.fid) {
-            own_only.push(f.fid);
-        } else {
-            all.push(f.fid);
-        }
-    }
-    (all, own_only)
+    ctx.access()
+        .readable(crate::domain::access::Purpose::Search)
+}
+
+/// Forums whose threads the viewer may read (feeds, portal, statistics): (all, own only).
+pub fn readable_forums(ctx: &Ctx) -> (Vec<i32>, Vec<i32>) {
+    ctx.access().readable(crate::domain::access::Purpose::Read)
 }
 
 pub async fn search_form(ctx: Ctx) -> AppResult<Response> {
@@ -80,7 +66,7 @@ pub struct SearchParams {
 }
 
 async fn flood_check(ctx: &Ctx) -> AppResult<()> {
-    if ctx.is_any_mod() {
+    if ctx.can(crate::domain::staff::Cap::PostingExempt) {
         return Ok(());
     }
     let secs = ctx.settings().int("searchfloodtime");
@@ -477,7 +463,7 @@ pub async fn results(
         let ordered: Vec<Thread> = slice
             .iter()
             .filter_map(|id| by_id.remove(id))
-            .filter(|t| ctx.forum_perms(t.fid).canviewthreads)
+            .filter(|t| ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()))
             .collect();
         let mut rows = thread_rows(&ctx, ordered).await?;
         for r in rows.iter_mut() {
@@ -492,22 +478,27 @@ pub async fn results(
         .fetch_all(&ctx.app.db)
         .await?;
         let tids: Vec<i32> = posts.iter().map(|p| p.tid).collect();
-        let subjects: HashMap<i32, (String, i32, i32)> =
-            sqlx::query_as::<_, (i32, String, i32, i32)>(
-                "SELECT tid, subject, replies, views FROM threads WHERE tid = ANY($1)",
-            )
-            .bind(&tids)
-            .fetch_all(&ctx.app.db)
-            .await?
+        let thread_rows: Vec<(i32, String, i32, i32, i32)> = sqlx::query_as(
+            "SELECT tid, subject, replies, views, uid FROM threads WHERE tid = ANY($1)",
+        )
+        .bind(&tids)
+        .fetch_all(&ctx.app.db)
+        .await?;
+        let thread_authors: HashMap<i32, i32> = thread_rows.iter().map(|r| (r.0, r.4)).collect();
+        let subjects: HashMap<i32, (String, i32, i32)> = thread_rows
             .into_iter()
-            .map(|(t, s, r, v)| (t, (s, r, v)))
+            .map(|(t, s, r, v, _)| (t, (s, r, v)))
             .collect();
         let mut by_id: HashMap<i32, Post> = posts.into_iter().map(|p| (p.pid, p)).collect();
         let mut stale = vec![];
         let mut out = vec![];
         for id in &slice {
             let Some(p) = by_id.remove(id) else { continue };
-            if !ctx.forum_perms(p.fid).canviewthreads {
+            // Search results are stored; check again what the viewer may read now.
+            let author = thread_authors.get(&p.tid).copied().unwrap_or(0);
+            if !ctx.access().can_read_thread(p.fid, author, ctx.uid())
+                || !ctx.visible_states(p.fid).contains(&p.visible)
+            {
                 continue;
             }
             let html = crate::render::post_html(&ctx, &p, &mut stale);

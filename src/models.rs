@@ -166,8 +166,12 @@ pub struct Forum {
     pub usepostcounts: bool,
     pub usethreadcounts: bool,
     pub requireprefix: bool,
+    /// Argon2id verifier of the forum password ('' = none).
     #[serde(skip_serializing)]
     pub password: String,
+    /// Changes whenever the password does; unlock cookies are bound to it.
+    #[serde(skip_serializing)]
+    pub password_version: i32,
     pub showinjump: bool,
     pub style: i32,
     pub overridestyle: bool,

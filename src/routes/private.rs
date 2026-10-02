@@ -606,7 +606,7 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             }
         }
         let flood = s.int("pmfloodsecs");
-        if flood > 0 && !ctx.is_any_mod() {
+        if flood > 0 && !ctx.can(crate::domain::staff::Cap::PostingExempt) {
             let last: Option<i64> = sqlx::query_scalar(
                 "SELECT MAX(dateline) FROM privatemessages WHERE fromid = $1 AND folder <> 3",
             )

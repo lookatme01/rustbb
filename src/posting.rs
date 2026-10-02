@@ -65,7 +65,7 @@ pub fn validate(ctx: &CtxInner, input: &PostInput, need_subject: bool) -> AppRes
     };
     let min = s.int("minmessagelength").max(1) as usize;
     let max = s.int("maxmessagelength") as usize;
-    let is_mod_or_admin = ctx.is_any_mod() || ctx.is_admin();
+    let is_mod_or_admin = ctx.can(crate::domain::staff::Cap::PostingExempt);
     if len < min && !is_mod_or_admin {
         return Err(AppError::user(format!(
             "The message is too short. Please enter a message longer than {min} characters."
@@ -105,7 +105,7 @@ pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
                 "Your posting privileges are currently suspended.",
             ));
         }
-        let exempt = ctx.is_any_mod() || ctx.is_admin();
+        let exempt = ctx.can(crate::domain::staff::Cap::PostingExempt);
         if !exempt && s.bool("postfloodcheck") {
             let secs = s.int("postfloodsecs");
             let wait = u.lastpost + secs - now();

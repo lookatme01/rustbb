@@ -60,16 +60,13 @@ pub async fn check_thread(ctx: &Ctx, tid: i32) -> AppResult<(Thread, Forum, Foru
     let t = load_thread(ctx, tid).await?;
     let (forum, fp) = ctx.check_forum(t.fid)?;
     let forum = forum.clone();
-    if !fp.canviewthreads {
+    if !ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()) {
         return Err(AppError::no_perm());
     }
     let states = ctx.visible_states(t.fid);
     let own = t.uid == ctx.uid() && ctx.uid() > 0;
     if !states.contains(&t.visible) && !(t.visible == 0 && own) {
         return Err(AppError::not_found("thread"));
-    }
-    if fp.canonlyviewownthreads && !own && !ctx.is_mod(t.fid) {
-        return Err(AppError::no_perm());
     }
     Ok((t, forum, fp))
 }
@@ -454,8 +451,7 @@ pub async fn showthread(
                 a.iter()
                     .filter(|r| {
                         let f = r["fid"].as_i64().unwrap_or(0) as i32;
-                        let p = ctx.forum_perms(f);
-                        p.canview && p.canviewthreads && !p.canonlyviewownthreads && ctx.cache.forum(f).map(|x| !x.has_password()).unwrap_or(false)
+                        ctx.access().forum(f).is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
                     })
                     .take(s.int("similarlimit").max(1) as usize)
                     .map(|r| {

@@ -599,6 +599,7 @@ const MIDNIGHT_CSS_05: &str = ":root, :root[data-colormode] {\n  --canvas: #080b
 
 pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
     crate::system::ensure(db).await?;
+    hash_forum_passwords(db).await?;
     // 0.6 (Halo): an unedited Midnight takes its accent from the brand colour instead of CSS.
     sqlx::query("UPDATE themes SET stylesheet = $1, properties = properties || jsonb_build_object('brand', $2::text) WHERE tid = 2 AND name = 'Midnight' AND stylesheet = $3")
         .bind(MIDNIGHT_CSS)
@@ -620,6 +621,30 @@ pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
             .bind(now() + 60)
             .execute(db)
             .await?;
+    }
+    Ok(())
+}
+
+/// Replace plaintext forum passwords (from before 0.6, or imported) with Argon2id verifiers.
+async fn hash_forum_passwords(db: &PgPool) -> anyhow::Result<()> {
+    let plain: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT fid, password FROM forums WHERE password <> '' AND password NOT LIKE '$argon2%'",
+    )
+    .fetch_all(db)
+    .await?;
+    for (fid, pw) in plain {
+        let h = crate::auth::hash_password(&pw)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        // Only if unchanged meanwhile (another node may be doing the same).
+        sqlx::query(
+            "UPDATE forums SET password = $2, password_version = password_version + 1 WHERE fid = $1 AND password = $3",
+        )
+        .bind(fid)
+        .bind(h)
+        .bind(&pw)
+        .execute(db)
+        .await?;
     }
     Ok(())
 }

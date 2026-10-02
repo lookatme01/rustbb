@@ -55,6 +55,45 @@ pub async fn alert(
     }
 }
 
+/// Of `uids`, those who may currently read the thread `tid` (its forum, ancestors, passwords,
+/// "own threads only"…). Notifications carry subjects and excerpts, so they follow the same rules
+/// as viewing.
+async fn readers(app: &App, tid: i32, uids: &[i32]) -> std::collections::HashSet<i32> {
+    let mut ok = std::collections::HashSet::new();
+    if uids.is_empty() {
+        return ok;
+    }
+    let Ok(Some((fid, author, visible))) = sqlx::query_as::<_, (i32, i32, i16)>(
+        "SELECT fid, uid, visible FROM threads WHERE tid = $1",
+    )
+    .bind(tid)
+    .fetch_optional(&app.db)
+    .await
+    else {
+        return ok;
+    };
+    let rows: Vec<(i32, i32, Vec<i32>)> =
+        sqlx::query_as("SELECT uid, usergroup, additionalgroups FROM users WHERE uid = ANY($1)")
+            .bind(uids)
+            .fetch_all(&app.db)
+            .await
+            .unwrap_or_default();
+    let cache = app.cache();
+    for (uid, g, extra) in rows {
+        let mut groups = vec![g];
+        groups.extend(extra);
+        let access = crate::domain::access::member(&cache, uid, &groups);
+        let state_ok = visible == 1
+            || access
+                .forum(fid)
+                .is_ok_and(|a| a.visible_states().contains(&visible));
+        if state_ok && access.can_read_thread(fid, author, uid) {
+            ok.insert(uid);
+        }
+    }
+    ok
+}
+
 pub async fn thread_subscribers(
     app: &App,
     tid: i32,
@@ -82,7 +121,11 @@ pub async fn thread_subscribers(
     };
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
     let excerpt = crate::util::truncate_chars(&crate::parser::to_plaintext(message), 500);
+    let allowed = readers(app, tid, &subs.iter().map(|s| s.0).collect::<Vec<_>>()).await;
     for (uid, notification, email, username, _lastactive) in subs {
+        if !allowed.contains(&uid) {
+            continue;
+        }
         alert(
             app,
             uid,
@@ -155,8 +198,11 @@ pub async fn forum_subscribers(
         if let Some((g, extra)) = groups {
             let mut all = vec![g];
             all.extend(extra);
-            let fp = cache.forum_perms(&all, fid);
-            if !fp.canview || !fp.canviewthreads || fp.canonlyviewownthreads {
+            let access = crate::domain::access::member(&cache, uid, &all);
+            if !access
+                .forum(fid)
+                .is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
+            {
                 continue;
             }
         }
@@ -180,6 +226,7 @@ pub async fn mentions_and_quotes(
 ) {
     let cache = app.cache();
     let mut notified: Vec<i32> = vec![poster_uid];
+    let mut candidates: Vec<(i32, &str)> = vec![];
     for qpid in crate::parser::extract_quoted_pids(message) {
         let quoted: Option<i32> = sqlx::query_scalar("SELECT uid FROM posts WHERE pid = $1")
             .bind(qpid)
@@ -192,15 +239,7 @@ pub async fn mentions_and_quotes(
             && !notified.contains(&q)
         {
             notified.push(q);
-            alert(
-                app,
-                q,
-                poster_uid,
-                "quoted",
-                pid,
-                serde_json::json!({"tid": tid, "subject": subject, "poster": poster}),
-            )
-            .await;
+            candidates.push((q, "quoted"));
         }
     }
     if cache.settings.bool("enablementions") {
@@ -216,17 +255,29 @@ pub async fn mentions_and_quotes(
             for u in uids {
                 if !notified.contains(&u) {
                     notified.push(u);
-                    alert(
-                        app,
-                        u,
-                        poster_uid,
-                        "mention",
-                        pid,
-                        serde_json::json!({"tid": tid, "subject": subject, "poster": poster}),
-                    )
-                    .await;
+                    candidates.push((u, "mention"));
                 }
             }
+        }
+    }
+    // Only members who can read the thread hear about it.
+    let allowed = readers(
+        app,
+        tid,
+        &candidates.iter().map(|c| c.0).collect::<Vec<_>>(),
+    )
+    .await;
+    for (u, kind) in candidates {
+        if allowed.contains(&u) {
+            alert(
+                app,
+                u,
+                poster_uid,
+                kind,
+                pid,
+                serde_json::json!({"tid": tid, "subject": subject, "poster": poster}),
+            )
+            .await;
         }
     }
 }

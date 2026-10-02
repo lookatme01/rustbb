@@ -97,7 +97,7 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     .await?;
     let threads: Vec<_> = threads
         .into_iter()
-        .filter(|t| ctx.forum_perms(t.fid).canviewthreads)
+        .filter(|t| ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()))
         .collect();
     let rows = crate::routes::forumdisplay::thread_rows(&ctx, threads).await?;
     let latest: Vec<crate::models::Thread> = sqlx::query_as(
@@ -975,7 +975,7 @@ pub async fn subscriptions(
         &ctx,
         rows.into_iter()
             .map(|r| r.0)
-            .filter(|t| ctx.forum_perms(t.fid).canview)
+            .filter(|t| ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()))
             .collect(),
     )
     .await?;

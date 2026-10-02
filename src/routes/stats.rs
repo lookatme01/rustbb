@@ -14,7 +14,7 @@ pub async fn stats(ctx: Ctx) -> AppResult<Response> {
     let n = s.int("statstopcount").max(1);
     let cache_key = "statspage";
     let base = crate::routes::index::board_stats(&ctx).await?;
-    let (fids, _) = crate::routes::search::searchable_forums(&ctx);
+    let (fids, _) = crate::routes::search::readable_forums(&ctx);
     let data = if let Some(v) = ctx
         .app
         .stats_cache

@@ -120,7 +120,7 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         .fetch_one(&ctx.app.db)
         .await?;
     let max = s.int("maxattachments");
-    if max > 0 && count >= max && !ctx.is_any_mod() {
+    if max > 0 && count >= max && !ctx.can(crate::domain::staff::Cap::PostingExempt) {
         return Ok(json_err(&format!(
             "You can attach at most {max} files to a post."
         )));
@@ -191,9 +191,10 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         None if is_image => attachname.clone(),
         None => String::new(),
     };
-    let visible = !(fid > 0 && ctx.forum_perms(fid).modattachments && !ctx.is_mod(fid))
-        && !ctx.perms.modattachments
-        || ctx.is_any_mod();
+    // Moderators of this forum (or of every forum) skip attachment moderation; moderating some
+    // other forum is no exemption.
+    let visible = ctx.is_mod(fid)
+        || !((fid > 0 && ctx.forum_perms(fid).modattachments) || ctx.perms.modattachments);
     let aid: i32 = sqlx::query_scalar(
         "INSERT INTO attachments (pid, posthash, uid, filename, filetype, filesize, attachname, dateuploaded, visible, thumbnail) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING aid",
     )

@@ -13,6 +13,7 @@ pub mod config;
 pub mod ctx;
 pub mod debugbar;
 pub mod doctor;
+pub mod domain;
 pub mod error;
 pub mod i18n;
 pub mod import;

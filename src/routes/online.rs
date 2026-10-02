@@ -15,7 +15,7 @@ pub fn describe_location(ctx: &Ctx, loc: &str) -> String {
     match (seg.first().copied().unwrap_or(""), id) {
         ("", _) | ("index.php", _) => "<a href=\"/\">Viewing the board index</a>".to_string(),
         ("forum", Some(fid)) => match ctx.cache.forum(fid) {
-            Some(f) if ctx.forum_perms(fid).canview => format!(
+            Some(f) if ctx.access().can_see(fid) => format!(
                 "Viewing forum <a href=\"/forum/{fid}\">{}</a>",
                 escape_html(&f.name)
             ),
@@ -101,7 +101,10 @@ pub async fn online(ctx: Ctx) -> AppResult<Response> {
         let mut location = describe_location(&ctx, &loc);
         if l2 > 0
             && let Some((subj, fid)) = threads.get(&l2)
-            && ctx.forum_perms(*fid).canviewthreads
+            && ctx
+                .access()
+                .forum(*fid)
+                .is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
         {
             location = format!(
                 "Reading thread <a href=\"/thread/{l2}\">{}</a>",

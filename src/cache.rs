@@ -45,6 +45,8 @@ pub struct Cache {
     pub theme_versions: Arc<HashMap<i32, String>>,
     /// Per theme, resolved through parent themes: (brand colour, has any custom CSS).
     pub theme_look: Arc<HashMap<i32, (String, bool)>>,
+    /// Computed forum access per permission set; emptied whenever any part reloads.
+    pub access_memo: Arc<dashmap::DashMap<String, Arc<crate::domain::access::ForumAccess>>>,
 }
 
 pub const PARTS: &[&str] = &[
@@ -76,6 +78,8 @@ impl Cache {
     }
 
     pub async fn reload(&mut self, db: &PgPool, part: &str) -> anyhow::Result<()> {
+        // Anything can affect access (groups, forums, permissions, moderators, settings).
+        self.access_memo = Default::default();
         match part {
             "settings" => {
                 let rows: Vec<(String, String)> =
@@ -108,7 +112,7 @@ impl Cache {
             }
             "forums" => {
                 let rows: Vec<Forum> = sqlx::query_as(
-                    "SELECT fid, name, description, linkto, type, pid, parentlist, disporder, active, open, allowhtml, allowmycode, allowsmilies, allowimgcode, allowvideocode, allowpicons, allowtratings, usepostcounts, usethreadcounts, requireprefix, password, showinjump, style, overridestyle, rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder FROM forums ORDER BY disporder, fid",
+                    "SELECT fid, name, description, linkto, type, pid, parentlist, disporder, active, open, allowhtml, allowmycode, allowsmilies, allowimgcode, allowvideocode, allowpicons, allowtratings, usepostcounts, usethreadcounts, requireprefix, password, showinjump, style, overridestyle, rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder, password_version FROM forums ORDER BY disporder, fid",
                 )
                 .fetch_all(db)
                 .await?;
@@ -300,6 +304,40 @@ impl Cache {
             other => anyhow::bail!("unknown cache part {other}"),
         }
         Ok(())
+    }
+
+    /// Rebuild the fid → position index after changing `forums` directly (tests).
+    pub fn reindex_forums(&mut self) {
+        self.forum_idx = Arc::new(
+            self.forums
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (f.fid, i))
+                .collect(),
+        );
+        self.access_memo = Default::default();
+    }
+
+    /// Forum access for a viewer. Viewers without forum-password cookies share the result
+    /// with everyone in the same groups (and moderator assignments) until the cache reloads.
+    pub fn forum_access(
+        &self,
+        v: &crate::domain::access::Viewer<'_>,
+        memo_key: Option<String>,
+    ) -> Arc<crate::domain::access::ForumAccess> {
+        if let Some(k) = &memo_key
+            && let Some(a) = self.access_memo.get(k)
+        {
+            return a.clone();
+        }
+        let a = Arc::new(crate::domain::access::ForumAccess::compute(self, v));
+        if let Some(k) = memo_key {
+            if self.access_memo.len() > 10_000 {
+                self.access_memo.clear();
+            }
+            self.access_memo.insert(k, a.clone());
+        }
+        a
     }
 
     pub fn forum(&self, fid: i32) -> Option<&Forum> {

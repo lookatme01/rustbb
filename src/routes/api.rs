@@ -136,14 +136,19 @@ pub async fn forums(ctx: Ctx) -> AppResult<Response> {
         .cache
         .forums
         .iter()
-        .filter(|f| f.active && ctx.forum_perms(f.fid).canview)
+        .filter(|f| ctx.access().listed(f.fid))
         .map(|f| {
             let c = counters.get(&f.fid).cloned().unwrap_or_default();
-            let fp = ctx.forum_perms(f.fid);
+            // Counts and latest post only where the viewer may read every thread.
+            let full = ctx
+                .access()
+                .forum(f.fid)
+                .is_ok_and(|a| a.threads == crate::domain::access::Threads::All);
             serde_json::json!({
                 "fid": f.fid, "pid": f.pid, "name": f.name, "description": f.description, "type": f.kind, "linkto": f.linkto,
-                "threads": c.threads, "posts": c.posts, "open": f.open,
-                "lastpost": if fp.canviewthreads && !fp.canonlyviewownthreads && !f.has_password() { serde_json::json!({"dateline": c.lastpost, "username": c.lastposter, "uid": c.lastposteruid, "tid": c.lastposttid, "subject": c.lastpostsubject}) } else { serde_json::Value::Null },
+                "threads": if full { c.threads } else { 0 }, "posts": if full { c.posts } else { 0 }, "open": f.open,
+                "password": f.has_password() && !ctx.access().can_see(f.fid),
+                "lastpost": if full { serde_json::json!({"dateline": c.lastpost, "username": c.lastposter, "uid": c.lastposteruid, "tid": c.lastposttid, "subject": c.lastpostsubject}) } else { serde_json::Value::Null },
             })
         })
         .collect();
@@ -169,14 +174,15 @@ pub async fn forum_threads(
     Path(fid): Path<i32>,
     Query(q): Query<PageQ>,
 ) -> AppResult<Response> {
-    let (_, fp) = ctx.check_forum(fid)?;
-    if !fp.canviewthreads {
+    let (_, _fp) = ctx.check_forum(fid)?;
+    let access = ctx.access().forum(fid).map_err(|_| AppError::no_perm())?;
+    if access.threads == crate::domain::access::Threads::None {
         return Err(AppError::no_perm());
     }
     let per = q.per_page.unwrap_or(25).clamp(1, 100);
     let page = util::clamp_page(q.page);
     let states = ctx.visible_states(fid);
-    let own = if fp.canonlyviewownthreads && !ctx.is_mod(fid) {
+    let own = if access.threads == crate::domain::access::Threads::Own {
         ctx.uid()
     } else {
         0

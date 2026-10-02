@@ -154,6 +154,10 @@ perm_struct!(GroupPerms, GROUP_PERM_META {
     canbanusers: bool = false, Or, "Can ban users?";
     canviewwarnlogs: bool = false, Or, "Can view warning logs?";
     canuseipsearch: bool = false, Or, "Can use IP search?";
+    canviewmodnotes: bool = false, Or, "Can read moderator notes about members?";
+    canaddmodnotes: bool = false, Or, "Can add moderator notes about members?";
+    canviewpmreports: bool = false, Or, "Can see reported private messages?";
+    canviewallmodhistory: bool = false, Or, "Can see members' moderation history in all forums?";
     canpostassystem: bool = false, Or, "Can post as the System account?";
 });
 
@@ -349,6 +353,8 @@ impl GroupPerms {
             canviewmodlogs: true,
             canviewwarnlogs: true,
             canuseipsearch: true,
+            canviewmodnotes: true,
+            canaddmodnotes: true,
             showforumteam: true,
             cancustomtitle: true,
             reputationpower: 2,
@@ -366,6 +372,8 @@ impl GroupPerms {
             canviewboardclosed: true,
             canoverridepm: true,
             cansendemailoverride: true,
+            canviewpmreports: true,
+            canviewallmodhistory: true,
             maxwarningsday: 0,
             ..Self::moderator()
         }

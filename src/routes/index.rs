@@ -157,12 +157,9 @@ fn build_level(
     let cache = &ctx.cache;
     let mut out = Vec::new();
     let readcut = now() - ctx.settings().int("threadreadcut").max(1) * 86400;
+    let access = ctx.access();
     for f in cache.children(pid) {
-        if !f.active && !ctx.is_mod(f.fid) {
-            continue;
-        }
-        let fp = ctx.forum_perms(f.fid);
-        if !fp.canview {
+        if !access.listed(f.fid) {
             continue;
         }
         let mut node = ForumNode {
@@ -178,34 +175,29 @@ fn build_level(
             viewers: viewers.get(&f.fid).copied().unwrap_or(0),
             ..Default::default()
         };
-        // Aggregate counters over this forum and all viewable descendants.
+        // Aggregate counters over this forum and its descendants — only those whose threads the
+        // viewer may read in full, so hidden, locked or own-threads-only forums leak neither
+        // counts nor their latest post.
         let mut ids = vec![f.fid];
-        ids.extend(
-            cache
-                .descendants(f.fid)
-                .into_iter()
-                .filter(|d| ctx.forum_perms(*d).canview),
-        );
+        ids.extend(cache.descendants(f.fid));
+        let counted = |id: i32| {
+            access
+                .forum(id)
+                .is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
+        };
         let mut best: Option<&ForumCounters> = None;
-        for id in &ids {
-            let Some(c) = counters.get(id) else { continue };
+        for id in ids.iter().copied().filter(|id| counted(*id)) {
+            let Some(c) = counters.get(&id) else { continue };
             node.threads += c.threads as i64;
             node.posts += c.posts as i64;
-            if ctx.is_mod(*id) {
+            if access.forum(id).is_ok_and(|a| a.is_moderator()) {
                 node.unapproved += (c.unapprovedthreads + c.unapprovedposts) as i64;
             }
-            let p = ctx.forum_perms(*id);
-            let pw = cache.forum(*id).map(|f| f.has_password()).unwrap_or(false);
-            if p.canviewthreads
-                && !p.canonlyviewownthreads
-                && !pw
-                && best.map(|b| c.lastpost > b.lastpost).unwrap_or(true)
-                && c.lastpost > 0
-            {
+            if best.map(|b| c.lastpost > b.lastpost).unwrap_or(true) && c.lastpost > 0 {
                 best = Some(c);
             }
             if ctx.uid() > 0 && c.lastpost > readcut && c.lastposteruid != ctx.uid() {
-                let r = read.get(id).copied().unwrap_or(0);
+                let r = read.get(&id).copied().unwrap_or(0);
                 if c.lastpost > r {
                     node.unread = true;
                 }
@@ -237,7 +229,7 @@ fn build_level(
         } else if subf_limit > 0 {
             node.subforums = cache
                 .children(f.fid)
-                .filter(|s| s.active && ctx.forum_perms(s.fid).canview)
+                .filter(|s| access.listed(s.fid))
                 .take(subf_limit)
                 .map(|s| SubForum {
                     fid: s.fid,

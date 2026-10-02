@@ -6,6 +6,7 @@
 
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx, de};
+use crate::domain::staff::Cap;
 use crate::error::{AppError, AppResult};
 use crate::util::now;
 use axum::Router;
@@ -38,10 +39,11 @@ pub fn can_retract(
     viewer_is_admin || (author > 0 && author == viewer && now - created <= RETRACT_WINDOW_SECS)
 }
 
-/// Staff who may read and write notes: anyone with Mod CP access.
+/// Staff who may open a member's moderation history: Mod CP access. What it shows depends on
+/// further capabilities (notes, warnings, reports, and which forums' moderation entries).
 fn require_staff(ctx: &Ctx) -> AppResult<()> {
     ctx.require_login()?;
-    if ctx.perms.canmodcp || ctx.is_any_mod() {
+    if ctx.can(Cap::ModCp) {
         Ok(())
     } else {
         Err(AppError::no_perm())
@@ -84,6 +86,9 @@ pub async fn add_note(
     CsrfForm(f): CsrfForm<NoteForm>,
 ) -> AppResult<Response> {
     require_staff(&ctx)?;
+    if !ctx.can(Cap::WriteModNotes) {
+        return Err(AppError::no_perm());
+    }
     let note = f.note.trim();
     if note.is_empty() {
         return Err(AppError::user("Please write a note."));
@@ -116,6 +121,9 @@ pub async fn retract(
     CsrfForm(_f): CsrfForm<NoteForm>,
 ) -> AppResult<Response> {
     require_staff(&ctx)?;
+    if !ctx.can(Cap::WriteModNotes) && !ctx.is_admin() {
+        return Err(AppError::no_perm());
+    }
     let (uid, author, created, retracted): (i32, i32, i64, i64) = sqlx::query_as(
         "SELECT uid, author, created, retracted_at FROM moderator_notes WHERE id = $1",
     )
@@ -205,7 +213,8 @@ pub async fn history(
     let want = |k: &str| q.r#type.is_empty() || q.r#type == k;
     let mut events: Vec<Event> = vec![];
 
-    if want("notes") {
+    let notes_visible = ctx.can(Cap::ReadModNotes);
+    if want("notes") && notes_visible {
         let rows: Vec<(i64, i32, String, i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT n.id, n.author, n.note, n.created, n.retracted_at, a.username, r.username
              FROM moderator_notes n LEFT JOIN users a ON a.uid = n.author LEFT JOIN users r ON r.uid = n.retracted_by
@@ -319,18 +328,22 @@ pub async fn history(
     if want("reports") {
         // Reports against the member, their content, ratings and messages; forum moderators only
         // see post reports from the forums they moderate, as on the reports page.
-        let fids = crate::routes::modcp::mod_fids(&ctx);
-        let rows: Vec<(i32, String, String, i32, i64, i32, i16, Option<String>, i32)> = sqlx::query_as(
+        let rs = ctx.staff().report_scope();
+        let rows: Vec<(i32, String, String, i32, i64, i32, i16, Option<String>, i32)> = sqlx::query_as(&format!(
             "SELECT r.rid, r.type, r.reason, r.reasonid, r.dateline, r.reports, r.reportstatus, u.username, r.id
              FROM reportedcontent r LEFT JOIN users u ON u.uid = r.uid
              WHERE ((r.type IN ('profile', 'reputation', 'pm') AND r.id2 = $1)
                     OR (r.type = 'post' AND r.id IN (SELECT pid FROM posts WHERE uid = $1)))
-               AND ($2 OR r.type <> 'post' OR r.id3 = ANY($3))
-             ORDER BY r.dateline DESC LIMIT $4",
-        )
+               AND {}
+             ORDER BY r.dateline DESC LIMIT $7",
+            crate::domain::staff::ReportScope::clause("r", 2)
+        ))
         .bind(uid)
-        .bind(fids.is_none())
-        .bind(fids.unwrap_or_default())
+        .bind(rs.posts)
+        .bind(rs.posts_all)
+        .bind(&rs.post_forums)
+        .bind(rs.members)
+        .bind(rs.pms)
         .bind(SOURCE_LIMIT)
         .fetch_all(db)
         .await?;
@@ -374,19 +387,25 @@ pub async fn history(
         }
     }
 
+    // Moderation in forums the viewer does not moderate (and board-wide actions) needs the
+    // cross-forum history capability.
+    let (hist_all, hist_fids) = ctx.staff().history_scope().sql();
     if want("moderation") {
         // Moderator-log entries about the member or their content. Ban lifts and warnings are
         // already on the timeline from the audit log and the warnings table.
         let rows: Vec<(String, i64, i32, i32, Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT l.action, l.dateline, l.tid, l.pid, u.username, t.subject
              FROM moderatorlog l LEFT JOIN users u ON u.uid = l.uid LEFT JOIN threads t ON t.tid = l.tid
-             WHERE (l.data->>'uid' = $1::text AND l.action NOT IN ('Lifted ban', 'Warned user', 'Banned user'))
+             WHERE ((l.data->>'uid' = $1::text AND l.action NOT IN ('Lifted ban', 'Warned user', 'Banned user'))
                 OR (l.pid > 0 AND l.pid IN (SELECT pid FROM posts WHERE uid = $1))
-                OR (l.pid = 0 AND l.tid > 0 AND l.tid IN (SELECT tid FROM threads WHERE uid = $1))
+                OR (l.pid = 0 AND l.tid > 0 AND l.tid IN (SELECT tid FROM threads WHERE uid = $1)))
+               AND ($3 OR l.fid = ANY($4))
              ORDER BY l.id DESC LIMIT $2",
         )
         .bind(uid)
         .bind(SOURCE_LIMIT)
+        .bind(hist_all)
+        .bind(&hist_fids)
         .fetch_all(db)
         .await?;
         for (action, dateline, tid, pid, actor, subject) in rows {
@@ -448,7 +467,7 @@ pub async fn history(
     .min(100);
     let kinds: Vec<_> = KINDS
         .iter()
-        .filter(|k| k.0 != "warnings" || warnings_visible)
+        .filter(|k| (k.0 != "warnings" || warnings_visible) && (k.0 != "notes" || notes_visible))
         .map(|k| minijinja::context! { key => k.0, label => k.1 })
         .collect();
     let group = ctx
@@ -468,7 +487,7 @@ pub async fn history(
                 suspendposting => member.suspendposting, moderateposts => member.moderateposts, suspendsignature => member.suspendsignature,
             },
             ban => ban.map(|(reason, lifted)| minijinja::context! { reason => reason, lifted => lifted }),
-            events => events, kinds => kinds, filter => &q.r#type,
+            events => events, kinds => kinds, filter => &q.r#type, can_write_notes => ctx.can(Cap::WriteModNotes),
             can_ban => ctx.perms.canbanusers, can_warn => ctx.perms.canwarnusers,
         },
     )

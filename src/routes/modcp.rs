@@ -3,6 +3,7 @@
 
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx, de};
+use crate::domain::staff::{Cap, ReportScope};
 use crate::error::{AppError, AppResult};
 use crate::models::User;
 use crate::templates::url_thread;
@@ -40,16 +41,19 @@ pub fn router() -> Router<App> {
 
 pub(crate) fn require_modcp(ctx: &Ctx) -> AppResult<()> {
     ctx.require_login()?;
-    if !(ctx.perms.canmodcp || ctx.is_any_mod()) {
+    if !ctx.can(Cap::ModCp) {
         return Err(AppError::no_perm());
     }
     Ok(())
 }
 
-/// Forums the viewer moderates (None = all).
-pub(crate) fn mod_fids(ctx: &Ctx) -> Option<Vec<i32>> {
-    ctx.cache
-        .moderated_forums(ctx.uid(), &ctx.groups, &ctx.perms)
+/// Forums whose moderation queue the viewer works on: (all forums, forum ids).
+fn queue_scope(ctx: &Ctx) -> (bool, Vec<i32>) {
+    if ctx.can(Cap::ModQueue) {
+        ctx.staff().scope(Cap::ModQueue).sql()
+    } else {
+        (false, vec![])
+    }
 }
 
 async fn page(
@@ -66,9 +70,7 @@ async fn page(
 
 pub async fn home(ctx: Ctx) -> AppResult<Response> {
     require_modcp(&ctx)?;
-    let fids = mod_fids(&ctx);
-    let all = fids.is_none();
-    let f = fids.unwrap_or_default();
+    let (all, f) = queue_scope(&ctx);
     let (uthreads, uposts): (i64, i64) = sqlx::query_as(
         "SELECT COALESCE(SUM(unapprovedthreads), 0)::bigint, COALESCE(SUM(unapprovedposts), 0)::bigint FROM forums WHERE $1 OR fid = ANY($2)",
     )
@@ -76,12 +78,23 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     .bind(&f)
     .fetch_one(&ctx.app.db)
     .await?;
-    let reports: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0 AND ($1 OR type <> 'post' OR id3 = ANY($2))")
-        .bind(all)
-        .bind(&f)
-        .fetch_one(&ctx.app.db)
-        .await?;
-    let logs = load_logs(&ctx, 0, 0, 10, 0).await?;
+    let rs = ctx.staff().report_scope();
+    let reports: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0 AND {}",
+        ReportScope::clause("", 1)
+    ))
+    .bind(rs.posts)
+    .bind(rs.posts_all)
+    .bind(&rs.post_forums)
+    .bind(rs.members)
+    .bind(rs.pms)
+    .fetch_one(&ctx.app.db)
+    .await?;
+    let logs = if ctx.can(Cap::ModLog) {
+        load_logs(&ctx, 0, 0, 10, 0).await?
+    } else {
+        vec![]
+    };
     page(&ctx, "modcp/home.html", "home", "Moderator Control Panel", minijinja::context! { uthreads => uthreads, uposts => uposts, reports => reports, logs => logs }).await
 }
 
@@ -95,35 +108,43 @@ pub struct ReportsQuery {
 
 pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Response> {
     crate::routes::modreports::require_reports(&ctx)?;
-    let fids = mod_fids(&ctx);
-    let all = fids.is_none();
-    let f = fids.unwrap_or_default();
+    let rs = ctx.staff().report_scope();
     let status = q.status.unwrap_or(0);
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = $1 AND ($2 OR type <> 'post' OR id3 = ANY($3))")
-        .bind(status)
-        .bind(all)
-        .bind(&f)
-        .fetch_one(&ctx.app.db)
-        .await?;
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = $1 AND {}",
+        ReportScope::clause("", 2)
+    ))
+    .bind(status)
+    .bind(rs.posts)
+    .bind(rs.posts_all)
+    .bind(&rs.post_forums)
+    .bind(rs.members)
+    .bind(rs.pms)
+    .fetch_one(&ctx.app.db)
+    .await?;
     let pg = util::paginate(
         total,
         25,
         util::clamp_page(q.page),
         &format!("/modcp/reports?status={status}&page={{page}}"),
     );
-    let rows: Vec<(i32, i32, i32, i32, String, i32, String, i32, i64, i64, Option<String>, Option<String>, Option<String>, Option<String>, i32)> = sqlx::query_as(
+    let rows: Vec<(i32, i32, i32, i32, String, i32, String, i32, i64, i64, Option<String>, Option<String>, Option<String>, Option<String>, i32)> = sqlx::query_as(&format!(
         "SELECT r.rid, r.id, r.id2, r.id3, r.type, r.reports, r.reason, r.reasonid, r.dateline, r.lastreport, u.username, t.subject, ru.username, cu.username,
                 COALESCE(CASE WHEN r.type = 'post' THEN (SELECT uid FROM posts WHERE pid = r.id) ELSE r.id2 END, 0)
          FROM reportedcontent r LEFT JOIN users u ON u.uid = r.uid
          LEFT JOIN users cu ON cu.uid = r.claimed_by AND r.claimed_by > 0
          LEFT JOIN threads t ON r.type = 'post' AND t.tid = r.id2
          LEFT JOIN users ru ON (r.type IN ('profile', 'reputation') AND ru.uid = r.id2) OR (r.type = 'post' AND ru.uid = (SELECT uid FROM posts WHERE pid = r.id))
-         WHERE r.reportstatus = $1 AND ($2 OR r.type <> 'post' OR r.id3 = ANY($3))
-         ORDER BY r.lastreport DESC LIMIT 25 OFFSET $4",
-    )
+         WHERE r.reportstatus = $1 AND {}
+         ORDER BY r.lastreport DESC LIMIT 25 OFFSET $7",
+        ReportScope::clause("r", 2)
+    ))
     .bind(status)
-    .bind(all)
-    .bind(&f)
+    .bind(rs.posts)
+    .bind(rs.posts_all)
+    .bind(&rs.post_forums)
+    .bind(rs.members)
+    .bind(rs.pms)
     .bind((pg.page - 1) * 25)
     .fetch_all(&ctx.app.db)
     .await?;
@@ -168,19 +189,23 @@ pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResu
     // Same permission as viewing the reports: Mod CP access alone isn't enough.
     crate::routes::modreports::require_reports(&ctx)?;
     let status: i16 = if f.action == "reopen" { 0 } else { 1 };
-    let fids = mod_fids(&ctx);
-    let changed: Vec<i32> = sqlx::query_scalar(
+    let rs = ctx.staff().report_scope();
+    let changed: Vec<i32> = sqlx::query_scalar(&format!(
         "UPDATE reportedcontent SET reportstatus = $2,
-            resolved_by = CASE WHEN $2 = 1 THEN $5 ELSE 0 END, resolved_at = CASE WHEN $2 = 1 THEN $6 ELSE 0 END,
+            resolved_by = CASE WHEN $2 = 1 THEN $3 ELSE 0 END, resolved_at = CASE WHEN $2 = 1 THEN $4 ELSE 0 END,
             resolution = CASE WHEN $2 = 1 THEN resolution ELSE '' END
-         WHERE rid = ANY($1) AND reportstatus <> $2 AND ($3 OR type <> 'post' OR id3 = ANY($4)) RETURNING rid",
-    )
+         WHERE rid = ANY($1) AND reportstatus <> $2 AND {} RETURNING rid",
+        ReportScope::clause("", 5)
+    ))
     .bind(&f.ids)
     .bind(status)
-    .bind(fids.is_none())
-    .bind(fids.unwrap_or_default())
     .bind(ctx.uid())
     .bind(now())
+    .bind(rs.posts)
+    .bind(rs.posts_all)
+    .bind(&rs.post_forums)
+    .bind(rs.members)
+    .bind(rs.pms)
     .fetch_all(&ctx.app.db)
     .await?;
     for rid in changed {
@@ -207,9 +232,10 @@ pub struct QueueQuery {
 
 pub async fn modqueue(ctx: Ctx, Query(q): Query<QueueQuery>) -> AppResult<Response> {
     require_modcp(&ctx)?;
-    let fids = mod_fids(&ctx);
-    let all = fids.is_none();
-    let f = fids.unwrap_or_default();
+    if !ctx.can(Cap::ModQueue) {
+        return Err(AppError::no_perm());
+    }
+    let (all, f) = queue_scope(&ctx);
     let kind = if q.kind.is_empty() {
         "threads".to_string()
     } else {
@@ -284,9 +310,10 @@ pub struct QueueForm {
 
 pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppResult<Response> {
     require_modcp(&ctx)?;
-    let fids = mod_fids(&ctx);
-    let all = fids.is_none();
-    let fl = fids.unwrap_or_default();
+    if !ctx.can(Cap::ModQueue) {
+        return Err(AppError::no_perm());
+    }
+    let (all, fl) = queue_scope(&ctx);
     let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     match f.kind.as_str() {
         "posts" => {
@@ -393,6 +420,8 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
 
 // ---------------------------------------------------------------- logs
 
+/// Moderator log entries the viewer may see: forum moderators only those of their forums
+/// (board-wide entries, with no forum, need board-wide log access).
 pub async fn load_logs(
     ctx: &Ctx,
     uid: i32,
@@ -400,20 +429,29 @@ pub async fn load_logs(
     limit: i64,
     offset: i64,
 ) -> AppResult<Vec<minijinja::Value>> {
+    if !ctx.can(Cap::ModLog) {
+        return Ok(vec![]);
+    }
+    let (all, fids) = ctx.staff().scope(Cap::ModLog).sql();
+    let show_ip = ctx.can(Cap::IpSearch);
     let rows: Vec<(i64, i32, i64, i32, i32, i32, String, serde_json::Value, String, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT l.id, l.uid, l.dateline, l.fid, l.tid, l.pid, l.action, l.data, l.ipaddress, u.username, t.subject FROM moderatorlog l
          LEFT JOIN users u ON u.uid = l.uid LEFT JOIN threads t ON t.tid = l.tid
-         WHERE ($1 = 0 OR l.uid = $1) AND ($2 = 0 OR l.tid = $2) ORDER BY l.id DESC LIMIT $3 OFFSET $4",
+         WHERE ($1 = 0 OR l.uid = $1) AND ($2 = 0 OR l.tid = $2) AND ($5 OR l.fid = ANY($6))
+         ORDER BY l.id DESC LIMIT $3 OFFSET $4",
     )
     .bind(uid)
     .bind(tid)
     .bind(limit)
     .bind(offset)
+    .bind(all)
+    .bind(&fids)
     .fetch_all(&ctx.app.db)
     .await?;
     Ok(rows
         .into_iter()
         .map(|(id, uid, dl, fid, tid, pid, action, data, ip, uname, subj)| {
+            let ip = if show_ip { ip } else { String::new() };
             minijinja::context! { id => id, uid => uid, dateline => dl, fid => fid, tid => tid, pid => pid, action => action, data => data.to_string(), ip => ip,
                 username => uname, subject => subj.or_else(|| data.get("subject").and_then(|s| s.as_str()).map(|s| s.to_string())), forum => ctx.cache.forum(fid).map(|f| f.name.clone()) }
         })
@@ -429,15 +467,18 @@ pub struct LogQuery {
 
 pub async fn modlogs(ctx: Ctx, Query(q): Query<LogQuery>) -> AppResult<Response> {
     require_modcp(&ctx)?;
-    if !ctx.perms.canviewmodlogs && !ctx.is_any_mod() {
+    if !ctx.can(Cap::ModLog) {
         return Err(AppError::no_perm());
     }
     let (uid, tid) = (q.uid.unwrap_or(0), q.tid.unwrap_or(0));
+    let (all, fids) = ctx.staff().scope(Cap::ModLog).sql();
     let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM moderatorlog WHERE ($1 = 0 OR uid = $1) AND ($2 = 0 OR tid = $2)",
+        "SELECT COUNT(*) FROM moderatorlog WHERE ($1 = 0 OR uid = $1) AND ($2 = 0 OR tid = $2) AND ($3 OR fid = ANY($4))",
     )
     .bind(uid)
     .bind(tid)
+    .bind(all)
+    .bind(&fids)
     .fetch_one(&ctx.app.db)
     .await?;
     let pg = util::paginate(

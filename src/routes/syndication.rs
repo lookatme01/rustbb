@@ -34,7 +34,7 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
     if !s.bool("enablesyndication") {
         return Err(AppError::not_found("feed"));
     }
-    let (mut fids, _) = crate::routes::search::searchable_forums(&ctx);
+    let (mut fids, _) = crate::routes::search::readable_forums(&ctx);
     let wanted: Vec<i32> = q
         .fid
         .split(',')
@@ -146,7 +146,9 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
 pub async fn sitemap(ctx: Ctx) -> AppResult<Response> {
     let s = ctx.settings();
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
-    let (fids, _) = crate::routes::search::searchable_forums(&ctx);
+    // Only what guests can see, whoever fetches the sitemap.
+    let (fids, _) =
+        crate::domain::access::guest(&ctx.cache).readable(crate::domain::access::Purpose::Read);
     let threads: Vec<(i32, String, i64)> = sqlx::query_as(
         "SELECT tid, subject, lastpost FROM threads WHERE fid = ANY($1) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY lastpost DESC LIMIT 45000",
     )

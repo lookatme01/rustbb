@@ -215,7 +215,7 @@ pub fn forum_jump(ctx: &Ctx) -> Vec<(i32, String, usize)> {
     ctx.cache
         .forums
         .iter()
-        .filter(|f| f.active && f.showinjump && ctx.forum_perms(f.fid).canview)
+        .filter(|f| f.showinjump && ctx.access().listed(f.fid))
         .map(|f| {
             (
                 f.fid,

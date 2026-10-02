@@ -86,13 +86,13 @@ pub async fn forum_password(
         .cache
         .forum(fid)
         .ok_or_else(|| AppError::not_found("forum"))?;
-    if !util::ct_eq(&forum.password, &f.password) {
+    if !forum.has_password()
+        || f.password.is_empty()
+        || !crate::auth::verify_password(&f.password, &forum.password).await
+    {
         return Err(AppError::user("The password you entered is incorrect."));
     }
-    let token = util::hmac_hex(
-        &ctx.app.cfg.secret,
-        &format!("forumpass:{fid}:{}", forum.password),
-    );
+    let token = crate::ctx::forum_unlock_token(&ctx.app.cfg.secret, forum);
     ctx.add_cookie(&format!("forumpass_{fid}"), &token, Some(30 * 86400), true);
     let to = if f.return_to.starts_with('/') {
         f.return_to.clone()
