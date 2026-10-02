@@ -52,5 +52,14 @@
   <div class="box-body" style="display:grid;gap:6px"><label class="check"><input type="checkbox" name="deletecontent" value="1"> Also delete all threads and posts</label><button class="btn danger small">Delete user</button></div>
 </form>
 </div>
+<form method="post" action="/admin/users/{{ user.uid }}/erase" class="box">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Erase personal data</h2><span class="right small muted">For erasure requests: deletes the account and removes the member's name and IP addresses from anything kept.</span></div>
+  <div class="box-body" style="display:grid;gap:6px">
+    <label class="check"><input type="checkbox" name="keepposts" value="1" checked> Keep their posts (shown as the deleted-member name)</label>
+    <input type="text" name="reference" maxlength="200" placeholder="Reference, e.g. request date or ticket (optional)" aria-label="Reference">
+    <input type="text" name="confirm" required autocomplete="off" placeholder="Type {{ user.username }} to confirm" aria-label="Confirm username">
+    <button class="btn danger small">Erase personal data</button>
+  </div>
+</form>
 {% endif %}
 {% endblock %}

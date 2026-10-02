@@ -97,6 +97,18 @@ cargo build --release && ./target/release/rbb serve
   Keys can be backed up (passphrase-locked), restored on other devices, rotated with a vouch from
   the old key, exported to GnuPG, or revoked. See [docs/PGP.md](docs/PGP.md).
 
+### Privacy
+
+* **Retention limits** (Admin CP → Settings → Privacy): after a set number of days, a daily task
+  shortens IP addresses to their network (IPv4 /24, IPv6 /48) in posts, messages and logs, and
+  prunes the account activity, spam and mail logs. Every limit is off or unchanged until set.
+* **Deleted accounts:** optionally, posts a deleted member keeps are shown as "Former member" and
+  their IP addresses are removed.
+* **Erasure requests:** Admin CP → Users → *Erase personal data* deletes an account and always
+  anonymizes what stays. The Erasure log records that it happened, but none of the data.
+* **Accurate privacy page:** `{retention}` in the privacy policy expands to a plain description of
+  the current settings.
+
 ### The System account
 
 A built-in, always-online member that automated features act as. It can't sign in, be banned,
@@ -445,6 +457,7 @@ second argument where applicable):
 | `tests/deleted_visibility.sh` | soft-deleted content hidden from members, guests and the API |
 | `tests/doctor.sh` | `rbb doctor` against the dev setup and deliberately broken ones |
 | `tests/mod_workflow.sh` | moderator notes, member history, report claiming, ban appeals |
+| `tests/privacy.sh` | IP shortening, retention limits, deleted-account anonymizing, erasure, `{retention}` |
 | `tests/pgp_e2e.mjs` | end-to-end PGP flows with the shipped browser module |
 | `tests/load.sh` | load test against a seeded board |
 | `tests/simulate.mjs` | realistic traffic simulation with optional ramp-up |

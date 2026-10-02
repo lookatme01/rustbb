@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added: privacy controls (2026-10-02)
+- New **Privacy** settings group. *Shorten IP addresses after (days)* truncates stored IPs to their
+  network in posts, messages, logs, poll votes and the System log. *Keep account activity log*,
+  *Keep spam log* and *Keep mail log* set retention (the activity and spam logs were fixed at 365
+  and 90 days; mail logs were kept forever). A daily "Privacy Retention" task applies them. The
+  defaults keep today's behavior.
+- *Anonymize kept posts of deleted accounts* (off by default): posts a deleted member keeps are
+  shown under a configurable name ("Former member"), and their IPs are removed from posts, votes,
+  ratings and messages; their mail and search logs are deleted.
+- **Erase personal data** in the Admin CP user editor, for erasure requests: deletes the account,
+  always anonymizes what stays, needs the username typed to confirm, and records the former ID,
+  who did it and an optional reference in the new Erasure log, without personal data.
+- `{retention}` in the privacy policy expands to sentences describing the current Privacy
+  settings; the default policy uses it.
+
 ### Added: moderation workflow (2026-10-02)
 - **Moderator notes:** an append-only, staff-only log of notes per member, replacing the single
   "Moderator notes" box. Existing notes (also from MyBB imports) are carried over. Authors can

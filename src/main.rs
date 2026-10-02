@@ -25,6 +25,7 @@ mod perms;
 mod pgp;
 mod plugins;
 mod posting;
+mod privacy;
 mod render;
 mod routes;
 mod seed;

@@ -23,6 +23,7 @@ pub fn router() -> Router<crate::app::App> {
         .route("/tools/mailerrors", get(mailerrors).post(mailerrors_action))
         .route("/tools/spamlog", get(spamlog))
         .route("/tools/systemlog", get(systemlog))
+        .route("/tools/erasurelog", get(erasurelog))
         .route("/tools/stats", get(stats))
         .route("/tools/backup", get(backup_page).post(backup))
         .route("/tools/plugins", get(plugins))
@@ -352,6 +353,17 @@ pub async fn systemlog(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> 
         minijinja::context! { rows => rows, pagination => pg },
     )
     .await
+}
+
+/// Erasure requests carried out (no personal data is kept about the erased member).
+pub async fn erasurelog(ctx: Ctx) -> AppResult<Response> {
+    crate::admin::acp_guard!(ctx, "logs");
+    let rows: Vec<(i32, i32, i64, bool, String, Option<String>)> = sqlx::query_as(
+        "SELECT e.id, e.former_uid, e.dateline, e.kept_posts, e.reference, u.username FROM erasure_log e LEFT JOIN users u ON u.uid = e.performed_by ORDER BY e.id DESC LIMIT 500",
+    )
+    .fetch_all(&ctx.app.db)
+    .await?;
+    crate::admin::page(&ctx, "admin/erasurelog.html", "tools", "Erasure Log", minijinja::context! { rows => rows }).await
 }
 
 pub async fn maillogs(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {

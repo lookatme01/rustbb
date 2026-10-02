@@ -73,6 +73,12 @@ pub static TASKS: &[TaskDef] = &[
         interval: 86400,
     },
     TaskDef {
+        key: "privacy",
+        title: "Privacy Retention",
+        description: "Shortens old IP addresses and removes logs older than the Privacy settings allow.",
+        interval: 86400,
+    },
+    TaskDef {
         key: "systemautoclose",
         title: "Close Inactive Threads",
         description: "System closes threads that have been inactive for the configured number of days.",

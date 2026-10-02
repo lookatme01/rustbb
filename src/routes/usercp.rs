@@ -1791,11 +1791,22 @@ pub async fn delete_user_content(app: &crate::app::App, uid: i32) -> AppResult<(
 }
 
 pub async fn delete_user(app: &crate::app::App, uid: i32, delete_posts: bool) -> AppResult<()> {
+    let anonymize = app.cache().settings.bool("privacy_anonymize_deleted");
+    delete_user_with(app, uid, delete_posts, anonymize).await
+}
+
+/// Delete an account. With `anonymize`, what the member leaves behind (kept posts, votes,
+/// messages in other inboxes, mail and search logs) loses their name and IP addresses.
+pub async fn delete_user_with(app: &crate::app::App, uid: i32, delete_posts: bool, anonymize: bool) -> AppResult<()> {
     crate::system::guard(&app.cache(), uid, "deleted")?;
     if delete_posts {
         delete_user_content(app, uid).await?;
     }
     let mut tx = app.db.begin().await?;
+    if anonymize {
+        let name = app.cache().settings.get("privacy_deleted_name").trim().to_string();
+        crate::privacy::anonymize_member(&mut tx, uid, if name.is_empty() { "Former member" } else { &name }).await?;
+    }
     sqlx::query("UPDATE posts SET uid = 0 WHERE uid = $1")
         .bind(uid)
         .execute(&mut *tx)

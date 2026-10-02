@@ -421,7 +421,9 @@ pub async fn privacy(ctx: Ctx) -> AppResult<Response> {
     if text.is_empty() {
         return Err(AppError::not_found("page"));
     }
-    let html = crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &Default::default(), text);
+    let summary = crate::privacy::retention_summary(&crate::privacy::Retention::from_settings(ctx.settings()));
+    let text = text.replace("{retention}", &crate::parser::literal(&summary));
+    let html = crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &Default::default(), &text);
     ctx.render(
         "page.html",
         minijinja::context! { title => "Privacy Policy", html => html },

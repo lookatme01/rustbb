@@ -19,6 +19,7 @@ pub fn router() -> Router<crate::app::App> {
         .route("/users/merge", get(merge_form).post(merge_save))
         .route("/users/{uid}", get(edit_form).post(edit_save))
         .route("/users/{uid}/delete", post(delete))
+        .route("/users/{uid}/erase", post(erase))
         .route("/users/{uid}/ban", post(ban))
         .route("/users/{uid}/activity", get(activity))
         .route("/adminperms", get(adminperms))
@@ -397,6 +398,35 @@ pub async fn edit_save(
     .await;
     crate::audit::log(&ctx, uid, "staff_edit", serde_json::json!({"via": "admin"})).await;
     Ok(ctx.redirect(&format!("/admin/users/{uid}"), "The user has been updated."))
+}
+
+/// Erase a member's personal data on request: delete the account and anonymize what stays,
+/// whatever the Privacy settings say. The erasure log records that it happened, without the data.
+pub async fn erase(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {
+    crate::admin::acp_guard!(ctx, "users");
+    crate::system::guard(&ctx.cache, uid, "erased")?;
+    if uid == ctx.uid() {
+        return Err(AppError::user("You cannot erase your own account here."));
+    }
+    let user = load(&ctx, uid).await?;
+    if s(f.fields.get("confirm")).trim() != user.username {
+        return Err(AppError::user("Type the member's username exactly to confirm the erasure."));
+    }
+    let keep_posts = b(f.fields.get("keepposts"));
+    let reference: String = s(f.fields.get("reference")).trim().chars().take(200).collect();
+    crate::routes::usercp::delete_user_with(&ctx.app, uid, !keep_posts, true).await?;
+    let id: i32 = sqlx::query_scalar(
+        "INSERT INTO erasure_log (former_uid, performed_by, dateline, kept_posts, reference) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+    )
+    .bind(uid)
+    .bind(ctx.uid())
+    .bind(now())
+    .bind(keep_posts)
+    .bind(&reference)
+    .fetch_one(&ctx.app.db)
+    .await?;
+    crate::admin::log(&ctx, "users", "Erased a member's personal data", serde_json::json!({"uid": uid, "erasure": id})).await;
+    Ok(ctx.redirect("/admin/users", "The member's personal data has been erased."))
 }
 
 pub async fn delete(

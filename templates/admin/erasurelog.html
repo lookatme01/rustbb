@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}
+{% block acp %}
+<section class="box"><div class="box-head"><h2>Erasure log</h2><span class="right small">Erasure requests carried out. No personal data about the erased member is kept.</span></div>
+<table class="grid"><thead><tr><th>Former member ID</th><th>Posts</th><th>Reference</th><th>Erased by</th><th>When</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>#{{ r[1] }}</td><td class="small">{{ 'Kept, anonymized' if r[3] else 'Deleted' }}</td><td class="small">{{ r[4] }}</td><td class="small">{{ r[5] or '' }}</td><td class="small">{{ r[2]|date }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No erasures yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

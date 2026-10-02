@@ -95,10 +95,6 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t)
                 .execute(db)
                 .await?;
-            sqlx::query("DELETE FROM user_audit WHERE dateline < $1")
-                .bind(t - 365 * 86400)
-                .execute(db)
-                .await?;
             sqlx::query("DELETE FROM ratelimits WHERE reset_at < $1")
                 .bind(t)
                 .execute(db)
@@ -122,10 +118,6 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .await?;
             sqlx::query("DELETE FROM tasklog WHERE dateline < $1")
                 .bind(t - 30 * 86400)
-                .execute(db)
-                .await?;
-            sqlx::query("DELETE FROM spamlog WHERE dateline < $1")
-                .bind(t - 90 * 86400)
                 .execute(db)
                 .await?;
             sqlx::query("DELETE FROM mailqueue WHERE attempts >= 5 AND dateline < $1")
@@ -225,6 +217,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
         }
         "automoderation" => crate::automod::run(app).await?,
         "systemautoclose" => crate::system::autoclose(app).await?,
+        "privacy" => crate::privacy::run(app).await?,
         "delayedmoderation" => crate::routes::moderation::run_delayed(app).await?,
         "promotions" => crate::admin::promotions::run_promotions(app).await?,
         "massmail" => crate::admin::massmail::run_batch(app).await?,

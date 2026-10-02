@@ -124,6 +124,11 @@ pub static GROUPS: &[SettingGroup] = &[
         description: "Contact form.",
     },
     SettingGroup {
+        name: "privacy",
+        title: "Privacy",
+        description: "How long personal data is kept, and what happens to it when an account is deleted.",
+    },
+    SettingGroup {
         name: "system",
         title: "System Account",
         description: "What the built-in System account does automatically.",
@@ -237,9 +242,9 @@ pub static DEFS: &[SettingDef] = &[
         "general",
         "privacypolicy",
         "Privacy Policy",
-        "Privacy policy (MyCode allowed). Leave empty to hide the page.",
+        "Privacy policy (MyCode allowed). {retention} is replaced with a description of the Privacy settings. Leave empty to hide the page.",
         "textarea",
-        "We store the information you provide when registering (username, email address, password hash) and your posts. IP addresses are logged for moderation and anti-abuse purposes. You may request deletion of your account at any time."
+        "We store the information you provide when registering (username, email address, password hash) and your posts. {retention} You may delete your account at any time from the User CP, or ask the administrators to erase your personal data."
     ),
     // datetime
     s!(
@@ -1434,6 +1439,54 @@ pub static DEFS: &[SettingDef] = &[
         "Where contact form emails are delivered (empty = admin email).",
         "text",
         ""
+    ),
+    s!(
+        "privacy",
+        "privacy_ip_days",
+        "Shorten IP Addresses After (days)",
+        "IP addresses older than this are shortened to their network (e.g. 203.0.113.0) in posts, messages and logs, so they no longer identify anyone. 0 keeps them as they are.",
+        "numeric",
+        "0"
+    ),
+    s!(
+        "privacy",
+        "privacy_audit_days",
+        "Keep Account Activity Log (days)",
+        "Sign-ins and security changes shown in the User CP. 0 keeps them until the account is deleted.",
+        "numeric",
+        "365"
+    ),
+    s!(
+        "privacy",
+        "privacy_spamlog_days",
+        "Keep Spam Log (days)",
+        "Blocked registrations, with their usernames, emails and IP addresses. 0 keeps them.",
+        "numeric",
+        "90"
+    ),
+    s!(
+        "privacy",
+        "privacy_maillog_days",
+        "Keep Mail Log (days)",
+        "Copies of emails sent through the board (addresses and text). 0 keeps them.",
+        "numeric",
+        "0"
+    ),
+    s!(
+        "privacy",
+        "privacy_anonymize_deleted",
+        "Anonymize Kept Posts of Deleted Accounts",
+        "When a member deletes their account but keeps their posts, show the posts under the name below and remove their IP addresses.",
+        "yesno",
+        "0"
+    ),
+    s!(
+        "privacy",
+        "privacy_deleted_name",
+        "Name for Deleted Members",
+        "Shown on posts kept from deleted, anonymized accounts.",
+        "text",
+        "Former member"
     ),
     s!(
         "system",
