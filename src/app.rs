@@ -2,6 +2,7 @@
 
 use crate::cache::Cache;
 use crate::config::Config;
+use crate::infra::cluster::Broadcast;
 use crate::templates::Templates;
 use crate::util::now;
 use arc_swap::ArcSwap;
@@ -128,13 +129,36 @@ pub struct AppState {
     pub parse_writeback: tokio::sync::Semaphore,
     /// Flips to `true` when the server is shutting down (ends live streams so it can exit).
     pub shutdown: tokio::sync::watch::Sender<bool>,
+    /// Which cluster events this node has applied.
+    pub cluster_cursor: std::sync::Mutex<crate::infra::cluster::Cursor>,
+    /// Wakes the outbox worker (jobs committed here, or NOTIFY from another node).
+    pub outbox_wake: tokio::sync::Notify,
+    /// Wakes the mail worker.
+    pub mail_wake: tokio::sync::Notify,
+    /// Activity rows whose flush failed, retried with the next flush.
+    pending_activity: std::sync::Mutex<Option<Pending<HashMap<String, Activity>>>>,
+    /// View counts whose flush failed, retried with the next flush.
+    pending_views: std::sync::Mutex<Option<Pending<HashMap<i32, i32>>>>,
 }
+
+/// A batch that failed to flush, kept for a bounded number of retries.
+struct Pending<T> {
+    batch: T,
+    /// Identifies the batch so a retry after an unseen commit is not applied twice.
+    id: uuid::Uuid,
+    attempts: u32,
+}
+
+/// Give up on a batch after this many failed flushes (minutes of database trouble).
+const MAX_FLUSH_ATTEMPTS: u32 = 20;
+/// Cap on buffered entries kept across failures, so an outage cannot exhaust memory.
+const MAX_PENDING_ENTRIES: usize = 500_000;
 
 impl AppState {
     pub async fn new(cfg: Config, db: PgPool) -> anyhow::Result<App> {
         let cache = Arc::new(ArcSwap::from_pointee(Cache::load_all(&db).await?));
         let tpl = Templates::new(cache.clone(), cfg.dev_templates.clone());
-        let plugins = crate::plugins::Plugins::load(&cfg.plugins_dir);
+        let plugins = crate::plugins::Plugins::load_with(&cfg.plugins_dir, cfg.plugins_trusted);
         let page_cache_mb = if cfg.dev_templates.is_some() {
             0
         } else {
@@ -182,6 +206,11 @@ impl AppState {
             parse_inflight: dashmap::DashSet::new(),
             parse_writeback: tokio::sync::Semaphore::new(4),
             shutdown: tokio::sync::watch::channel(false).0,
+            cluster_cursor: std::sync::Mutex::new(Default::default()),
+            outbox_wake: tokio::sync::Notify::new(),
+            mail_wake: tokio::sync::Notify::new(),
+            pending_activity: std::sync::Mutex::new(None),
+            pending_views: std::sync::Mutex::new(None),
         }))
     }
 
@@ -206,27 +235,36 @@ impl AppState {
         self.page_cache_dirty_tags.lock().unwrap().extend(tags);
     }
 
-    /// Reload cache parts locally and tell other nodes to do the same.
+    /// Reload cache parts here and on every other node (through the durable cluster log).
     pub async fn invalidate(&self, parts: &[&str]) -> anyhow::Result<()> {
-        self.reload_parts(parts).await?;
-        for p in parts {
-            sqlx::query("SELECT pg_notify('rbb_cache', $1)")
-                .bind(format!("{}:{}", self.node_id, p))
-                .execute(&self.db)
-                .await?;
+        let b = Broadcast::Cache(parts.iter().map(|p| p.to_string()).collect());
+        self.apply_broadcast(&b).await?;
+        self.broadcast(&b).await?;
+        Ok(())
+    }
+
+    /// Record an invalidation this node already applied, for the other nodes.
+    async fn broadcast(&self, b: &Broadcast) -> anyhow::Result<()> {
+        let mut c = self.db.acquire().await?;
+        let id = crate::infra::cluster::record(&mut c, &self.node_id, b).await?;
+        self.cluster_cursor.lock().unwrap().mark(id);
+        Ok(())
+    }
+
+    /// Apply an invalidation to this node's caches.
+    pub async fn apply_broadcast(&self, b: &Broadcast) -> anyhow::Result<()> {
+        match b {
+            Broadcast::PageTags(tags) => self.page_cache.invalidate_tags(tags),
+            Broadcast::PageCache => self.page_cache.clear(),
+            Broadcast::Cache(parts) => {
+                let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
+                self.reload_parts(&parts).await?;
+            }
         }
         Ok(())
     }
 
     async fn reload_parts(&self, parts: &[&str]) -> anyhow::Result<()> {
-        // Another node's scoped page-cache invalidation.
-        if let [p] = parts
-            && let Some(tags) = p.strip_prefix("pagetags|")
-        {
-            self.page_cache
-                .invalidate_tags(&tags.split(',').collect::<Vec<_>>());
-            return Ok(());
-        }
         // Settings, forums, themes… all change what guests see.
         self.page_cache.clear();
         let parts: Vec<&str> = parts
@@ -260,16 +298,21 @@ impl AppState {
         self.invalidate(&["settings", "parser"]).await
     }
 
+    /// Deliver a live event to this node's streams.
     pub fn publish(&self, ev: LiveEvent) {
         self.live.send(ev);
-        // Other nodes learn about it via NOTIFY; keep payload small.
     }
 
-    /// Publish a live event cluster-wide.
+    /// The NOTIFY payload carrying `ev` to other nodes (`None` if it is too large to send).
+    pub fn live_payload(&self, ev: &LiveEvent) -> Option<String> {
+        let s = serde_json::json!({"node": self.node_id, "kind": ev.kind, "tid": ev.tid, "uid": ev.uid, "data": ev.data}).to_string();
+        (s.len() < 7000).then_some(s)
+    }
+
+    /// Publish a live event cluster-wide. Live events are best-effort: a browser that misses
+    /// one catches up on its next page load.
     pub async fn publish_all(&self, ev: LiveEvent) {
-        let payload = serde_json::json!({"node": self.node_id, "kind": ev.kind, "tid": ev.tid, "uid": ev.uid, "data": ev.data});
-        let s = payload.to_string();
-        if s.len() < 7000 {
+        if let Some(s) = self.live_payload(&ev) {
             let _ = sqlx::query("SELECT pg_notify('rbb_live', $1)")
                 .bind(s)
                 .execute(&self.db)
@@ -296,7 +339,7 @@ impl AppState {
     }
 }
 
-/// Listen for cache invalidations and live events from other nodes.
+/// Follow cache invalidations, live events and outbox wake-ups from other nodes.
 pub fn spawn_listener(app: App) {
     tokio::spawn(async move {
         loop {
@@ -311,45 +354,70 @@ pub fn spawn_listener(app: App) {
 
 async fn run_listener(app: &App) -> anyhow::Result<()> {
     let mut l = sqlx::postgres::PgListener::connect_with(&app.db).await?;
-    l.listen_all(["rbb_cache", "rbb_live"]).await?;
-    // After (re)connecting we may have missed notifications: reload everything.
+    l.listen_all([
+        crate::infra::cluster::CHANNEL,
+        "rbb_live",
+        crate::infra::outbox::CHANNEL,
+    ])
+    .await?;
+    // Events may have been missed while disconnected: start from a full reload.
+    let mut conn = app.db.acquire().await?;
+    *app.cluster_cursor.lock().unwrap() = crate::infra::cluster::Cursor::start(&mut conn).await?;
+    drop(conn);
     let fresh = Cache::load_all(&app.db).await?;
     app.cache.store(Arc::new(fresh));
     app.tpl.reset();
+    app.page_cache.clear();
+    let mut poll = tokio::time::interval(crate::infra::cluster::POLL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
-        let n = l.recv().await?;
-        match n.channel() {
-            "rbb_cache" => {
-                if let Some((node, part)) = n.payload().split_once(':')
-                    && node != app.node_id
-                    && let Err(e) = app.reload_parts(&[part]).await
-                {
-                    tracing::warn!("cache reload {part} failed: {e:#}");
+        let catch_up = tokio::select! {
+            n = l.recv() => {
+                let n = n?;
+                match n.channel() {
+                    crate::infra::cluster::CHANNEL => true,
+                    crate::infra::outbox::CHANNEL => {
+                        app.outbox_wake.notify_one();
+                        app.mail_wake.notify_one();
+                        false
+                    }
+                    "rbb_live" => {
+                        relay_live(app, n.payload());
+                        false
+                    }
+                    _ => false,
                 }
             }
-            "rbb_live" => {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(n.payload())
-                    && v["node"].as_str() != Some(app.node_id.as_str())
-                {
-                    let kind: &'static str = match v["kind"].as_str().unwrap_or("") {
-                        "newpost" => "newpost",
-                        "alert" => "alert",
-                        "pm" => "pm",
-                        "editpost" => "editpost",
-                        "typing" => "typing",
-                        _ => continue,
-                    };
-                    app.publish(LiveEvent {
-                        kind,
-                        tid: v["tid"].as_i64().unwrap_or(0) as i32,
-                        uid: v["uid"].as_i64().unwrap_or(0) as i32,
-                        data: v["data"].clone(),
-                    });
-                }
-            }
-            _ => {}
+            _ = poll.tick() => true,
+        };
+        if catch_up {
+            let mut conn = app.db.acquire().await?;
+            crate::infra::cluster::catch_up(app, &mut conn).await?;
         }
     }
+}
+
+fn relay_live(app: &App, payload: &str) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return;
+    };
+    if v["node"].as_str() == Some(app.node_id.as_str()) {
+        return;
+    }
+    let kind: &'static str = match v["kind"].as_str().unwrap_or("") {
+        "newpost" => "newpost",
+        "alert" => "alert",
+        "pm" => "pm",
+        "editpost" => "editpost",
+        "typing" => "typing",
+        _ => return,
+    };
+    app.publish(LiveEvent {
+        kind,
+        tid: v["tid"].as_i64().unwrap_or(0) as i32,
+        uid: v["uid"].as_i64().unwrap_or(0) as i32,
+        data: v["data"].clone(),
+    });
 }
 
 /// Periodically flush batched session activity and thread view counts to the database.
@@ -373,19 +441,19 @@ pub fn spawn_flushers(app: App) {
             let everything = a
                 .page_cache_dirty
                 .swap(false, std::sync::atomic::Ordering::AcqRel)
-                || tags.iter().map(|t| t.len() + 1).sum::<usize>() > 7000; // NOTIFY payload limit
-            let payload = if everything {
-                Some(format!("{}:pagecache", a.node_id))
+                || tags.len() > 500;
+            let event = if everything {
+                Some(Broadcast::PageCache)
             } else if !tags.is_empty() {
-                Some(format!("{}:pagetags|{}", a.node_id, tags.join(",")))
+                Some(Broadcast::PageTags(tags))
             } else {
                 None
             };
-            if let Some(p) = payload {
-                let _ = sqlx::query("SELECT pg_notify('rbb_cache', $1)")
-                    .bind(p)
-                    .execute(&a.db)
-                    .await;
+            if let Some(b) = event
+                && let Err(e) = a.broadcast(&b).await
+            {
+                // Other nodes' entries still expire after pagecache::TTL.
+                tracing::warn!("page cache invalidation not recorded: {e:#}");
             }
         }
     });
@@ -413,17 +481,68 @@ pub fn spawn_flushers(app: App) {
     });
 }
 
+/// Move everything buffered into a batch. Entries are removed one at a time (each removal is
+/// atomic), so updates arriving meanwhile land in the buffer for the next flush, not nowhere.
+fn drain<K: Eq + std::hash::Hash + Clone, V>(live: &DashMap<K, V>) -> HashMap<K, V> {
+    let keys: Vec<K> = live.iter().map(|e| e.key().clone()).collect();
+    keys.into_iter().filter_map(|k| live.remove(&k)).collect()
+}
+
+fn new_batch<T>(batch: T) -> Pending<T> {
+    Pending {
+        batch,
+        id: uuid::Uuid::new_v4(),
+        attempts: 0,
+    }
+}
+
+/// Keep a failed batch for the next flush, unless it has failed too often or grown too big.
+fn keep_failed<K, V>(
+    pending: &std::sync::Mutex<Option<Pending<HashMap<K, V>>>>,
+    mut p: Pending<HashMap<K, V>>,
+    what: &'static str,
+) {
+    p.attempts += 1;
+    if p.attempts >= MAX_FLUSH_ATTEMPTS || p.batch.len() > MAX_PENDING_ENTRIES {
+        tracing::error!(
+            entries = p.batch.len(),
+            attempts = p.attempts,
+            "giving up on flushing buffered {what}"
+        );
+        crate::infra::metrics::counter_with(
+            "rbb_flush_dropped_total",
+            &[("what", what)],
+            p.batch.len() as u64,
+        );
+        return;
+    }
+    *pending.lock().unwrap() = Some(p);
+}
+
+/// Write buffered "who's online" activity. The writes are idempotent upserts, so retrying a
+/// batch that did commit changes nothing.
 pub async fn flush_activity(app: &App) -> anyhow::Result<()> {
-    if app.activity.is_empty() {
+    // A batch that failed before goes first, alone, so it is retried exactly as it was.
+    let retry = app.pending_activity.lock().unwrap().take();
+    if let Some(p) = retry
+        && let Err(e) = write_activity(app, &p.batch).await
+    {
+        keep_failed(&app.pending_activity, p, "activity");
+        return Err(e);
+    }
+    let batch = drain(&app.activity);
+    if batch.is_empty() {
         return Ok(());
     }
-    let keys: Vec<String> = app.activity.iter().map(|e| e.key().clone()).collect();
-    let mut rows: Vec<(String, Activity)> = Vec::with_capacity(keys.len());
-    for k in keys {
-        if let Some((k, v)) = app.activity.remove(&k) {
-            rows.push((k, v));
-        }
+    let p = new_batch(batch);
+    if let Err(e) = write_activity(app, &p.batch).await {
+        keep_failed(&app.pending_activity, p, "activity");
+        return Err(e);
     }
+    Ok(())
+}
+
+async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::Result<()> {
     let mut sids = Vec::new();
     let mut uids = Vec::new();
     let mut ips = Vec::new();
@@ -436,6 +555,7 @@ pub async fn flush_activity(app: &App) -> anyhow::Result<()> {
     let mut bots = Vec::new();
     let mut user_times: HashMap<i32, (i64, String)> = HashMap::new();
     for (sid, a) in rows {
+        let (sid, a) = (sid.clone(), a.clone());
         if a.uid > 0 {
             let e = user_times.entry(a.uid).or_insert((0, String::new()));
             if a.time > e.0 {
@@ -494,25 +614,46 @@ pub async fn flush_activity(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Add buffered thread view counts. Each batch is recorded in `applied_batches` in the same
+/// transaction, so a retry of a batch that committed (the reply was lost) is not counted twice.
 pub async fn flush_views(app: &App) -> anyhow::Result<()> {
-    if app.thread_views.is_empty() {
+    let retry = app.pending_views.lock().unwrap().take();
+    if let Some(p) = retry
+        && let Err(e) = write_views(app, p.id, &p.batch).await
+    {
+        keep_failed(&app.pending_views, p, "views");
+        return Err(e);
+    }
+    let batch = drain(&app.thread_views);
+    if batch.is_empty() {
         return Ok(());
     }
-    let keys: Vec<i32> = app.thread_views.iter().map(|e| *e.key()).collect();
-    let mut tids = Vec::new();
-    let mut counts = Vec::new();
-    for k in keys {
-        if let Some((k, v)) = app.thread_views.remove(&k) {
-            tids.push(k);
-            counts.push(v);
-        }
+    let p = new_batch(batch);
+    if let Err(e) = write_views(app, p.id, &p.batch).await {
+        keep_failed(&app.pending_views, p, "views");
+        return Err(e);
     }
-    sqlx::query(
-        "UPDATE threads SET views = views + d.c FROM UNNEST($1::int[], $2::int[]) AS d(tid, c) WHERE threads.tid = d.tid",
-    )
-    .bind(&tids)
-    .bind(&counts)
-    .execute(&app.db)
-    .await?;
+    Ok(())
+}
+
+async fn write_views(app: &App, id: uuid::Uuid, views: &HashMap<i32, i32>) -> anyhow::Result<()> {
+    let (tids, counts): (Vec<i32>, Vec<i32>) = views.iter().map(|(k, v)| (*k, *v)).unzip();
+    let mut tx = app.db.begin().await?;
+    let fresh = sqlx::query("INSERT INTO applied_batches (id) VALUES ($1) ON CONFLICT DO NOTHING")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+        == 1;
+    if fresh {
+        sqlx::query(
+            "UPDATE threads SET views = views + d.c FROM UNNEST($1::int[], $2::int[]) AS d(tid, c) WHERE threads.tid = d.tid",
+        )
+        .bind(&tids)
+        .bind(&counts)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }

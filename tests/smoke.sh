@@ -58,10 +58,11 @@ REG=$(curl -s -b "$JAR2" -c "$JAR2" "$BASE/member/register")
 FT=$(echo "$REG" | sed -n 's/.*name="formtoken" value="\([^"]*\)".*/\1/p' | head -1)
 CAPH=$(echo "$REG" | sed -n 's/.*name="captcha_hash" value="\([^"]*\)".*/\1/p' | head -1)
 T2=$(echo "$REG" | sed -n 's/.*name="csrf-token" content="\([^"]*\)".*/\1/p' | head -1)
-CODE=$(psql -h 127.0.0.1 -p 5433 -U rbb rbb -tAc "SELECT imagestring FROM captcha WHERE imagehash='$CAPH'" 2>/dev/null || /opt/homebrew/opt/postgresql@17/bin/psql -h 127.0.0.1 -p 5433 -U rbb rbb -tAc "SELECT imagestring FROM captcha WHERE imagehash='$CAPH'")
-# Previous runs count toward the per-IP registration limit; age their accounts out of the window.
-PSQL_BIN=$(command -v psql || echo /opt/homebrew/opt/postgresql@17/bin/psql)
-"$PSQL_BIN" -h 127.0.0.1 -p 5433 -U rbb rbb -qtAc "UPDATE users SET regdate = regdate - 172800 WHERE (username LIKE 'smoke%' OR username LIKE 'man%') AND regdate > extract(epoch from now())::bigint - 86400" >/dev/null 2>&1 || true
+PSQL_BIN="${PSQL:-$(command -v psql || echo /opt/homebrew/opt/postgresql@17/bin/psql)}"
+DB="${DATABASE_URL:-postgres://rbb@127.0.0.1:5433/rbb}"
+CODE=$("$PSQL_BIN" "$DB" -tAc "SELECT imagestring FROM captcha WHERE imagehash='$CAPH'")
+# Earlier test registrations from this machine count toward the per-IP limit; age them out.
+"$PSQL_BIN" "$DB" -qtAc "UPDATE users SET regdate = regdate - 172800 WHERE regip IN ('127.0.0.1', '::1') AND regdate > extract(epoch from now())::bigint - 86400" >/dev/null 2>&1 || true
 sleep 3
 U="smoke$RANDOM"
 check "register" 303 -b "$JAR2" -c "$JAR2" --data-urlencode "my_post_key=$T2" --data-urlencode "formtoken=$FT" --data-urlencode "username=$U" --data-urlencode "password=Passw0rd!x" --data-urlencode "password2=Passw0rd!x" --data-urlencode "email=$U@example.com" --data-urlencode "email2=$U@example.com" --data-urlencode "agree=1" --data-urlencode "captcha_hash=$CAPH" --data-urlencode "captcha=$CODE" "$BASE/member/register"

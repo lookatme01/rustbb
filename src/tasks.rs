@@ -1,15 +1,29 @@
-//! Scheduled tasks (MyBB's task system). Each run takes a Postgres advisory lock so only one node
-//! executes a given task when several app servers are running.
+//! Scheduled tasks (MyBB's task system).
+//!
+//! Several nodes may run the scheduler. A due task is claimed in one short transaction: a
+//! transaction-scoped advisory lock serializes claims of that task, and the claim sets a lease
+//! (`locked_until`) and the next run time. The task then runs with no lock or connection held,
+//! and the lease is released when it ends. A node that dies mid-task leaves a lease that simply
+//! expires. Unrelated due tasks run in parallel, a few at a time.
 
 use crate::app::App;
 use crate::util::now;
 use std::time::Duration;
 
+/// Due tasks run at once per node.
+const PARALLEL: usize = 3;
+/// A task running longer than this may be started again elsewhere.
+const LEASE: Duration = Duration::from_secs(30 * 60);
+
 pub fn spawn_scheduler(app: App) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(30));
+        let mut stop = app.shutdown.subscribe();
         loop {
-            tick.tick().await;
+            tokio::select! {
+                _ = tick.tick() => {}
+                _ = stop.wait_for(|s| *s) => break,
+            }
             if let Err(e) = run_due(&app).await {
                 tracing::warn!("task scheduler error: {e:#}");
             }
@@ -17,53 +31,99 @@ pub fn spawn_scheduler(app: App) {
     });
 }
 
-async fn run_due(app: &App) -> anyhow::Result<()> {
-    let due: Vec<(i32, String, i32, bool)> =
-        sqlx::query_as("SELECT tid, key, interval_secs, logging FROM tasks WHERE enabled AND nextrun <= $1 ORDER BY nextrun").bind(now()).fetch_all(&app.db).await?;
-    for (tid, key, interval, logging) in due {
-        run_task(app, tid, &key, interval, logging).await?;
-    }
+pub async fn run_due(app: &App) -> anyhow::Result<()> {
+    use futures::StreamExt;
+    let due: Vec<(i32, String, i32, bool)> = sqlx::query_as(
+        "SELECT tid, key, interval_secs, logging FROM tasks
+         WHERE enabled AND nextrun <= $1 AND (locked_until IS NULL OR locked_until < now()) ORDER BY nextrun",
+    )
+    .bind(now())
+    .fetch_all(&app.db)
+    .await?;
+    futures::stream::iter(due)
+        .for_each_concurrent(PARALLEL, |(tid, key, interval, logging)| async move {
+            let _ = interval;
+            if let Err(e) = run(app, tid, &key, logging, false).await {
+                tracing::warn!(task = %key, "task failed: {e:#}");
+            }
+        })
+        .await;
     Ok(())
 }
 
+/// Take the lease on a task if nobody holds it. `force` ignores the schedule (run now).
+async fn claim(app: &App, tid: i32, force: bool) -> sqlx::Result<bool> {
+    let mut tx = app.db.begin().await?;
+    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(424242, $1)")
+        .bind(tid)
+        .fetch_one(&mut *tx)
+        .await?;
+    if !locked {
+        return Ok(false);
+    }
+    let claimed = sqlx::query(
+        "UPDATE tasks SET locked_until = now() + make_interval(secs => $2), locked_by = $3, nextrun = $4 + interval_secs
+         WHERE tid = $1 AND (locked_until IS NULL OR locked_until < now()) AND ($5 OR nextrun <= $4)",
+    )
+    .bind(tid)
+    .bind(LEASE.as_secs_f64())
+    .bind(&app.node_id)
+    .bind(now())
+    .bind(force)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    tx.commit().await?;
+    Ok(claimed)
+}
+
+/// Run one task now, whatever its schedule (if no other node is running it), and log it.
 pub async fn run_task(
     app: &App,
     tid: i32,
     key: &str,
-    interval: i32,
+    _interval: i32,
     logging: bool,
 ) -> anyhow::Result<String> {
-    let mut conn = app.db.acquire().await?;
-    let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(424242, $1)")
-        .bind(tid)
-        .fetch_one(&mut *conn)
-        .await?;
-    if !locked {
-        return Ok("locked by another node".into());
+    run(app, tid, key, logging, true).await
+}
+
+async fn run(app: &App, tid: i32, key: &str, logging: bool, force: bool) -> anyhow::Result<String> {
+    if !claim(app, tid, force).await? {
+        return Ok("already running or done on another node".into());
     }
-    let _ = interval;
-    let result = execute(app, key).await;
-    let msg = match &result {
-        Ok(m) => m.clone(),
-        Err(e) => format!("error: {e:#}"),
+    let t0 = std::time::Instant::now();
+    // Run in its own task so a panic is contained and the lease is still released.
+    let result = {
+        let (app, key) = (app.clone(), key.to_string());
+        tokio::spawn(async move { execute(&app, &key).await }).await
     };
-    sqlx::query("UPDATE tasks SET lastrun = $2, nextrun = $2 + interval_secs WHERE tid = $1")
-        .bind(tid)
-        .bind(now())
-        .execute(&mut *conn)
-        .await?;
+    let msg = match result {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => format!("error: {e:#}"),
+        Err(e) => format!("error: task panicked: {e}"),
+    };
+    crate::infra::metrics::observe(
+        "rbb_task_seconds",
+        &[("task", key)],
+        t0.elapsed().as_secs_f64(),
+    );
+    sqlx::query(
+        "UPDATE tasks SET lastrun = $2, locked_until = NULL, locked_by = NULL WHERE tid = $1",
+    )
+    .bind(tid)
+    .bind(now())
+    .execute(&app.db)
+    .await?;
     if logging {
         sqlx::query("INSERT INTO tasklog (tid, dateline, data) VALUES ($1, $2, $3)")
             .bind(tid)
             .bind(now())
             .bind(&msg)
-            .execute(&mut *conn)
+            .execute(&app.db)
             .await?;
     }
-    let _ = sqlx::query("SELECT pg_advisory_unlock(424242, $1)")
-        .bind(tid)
-        .execute(&mut *conn)
-        .await;
     Ok(msg)
 }
 
@@ -95,6 +155,15 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t)
                 .execute(db)
                 .await?;
+            sqlx::query(
+                "DELETE FROM cluster_events WHERE created_at < now() - make_interval(secs => $1)",
+            )
+            .bind(crate::infra::cluster::RETENTION_SECS as f64)
+            .execute(db)
+            .await?;
+            sqlx::query("DELETE FROM applied_batches WHERE applied_at < now() - interval '1 day'")
+                .execute(db)
+                .await?;
             sqlx::query("DELETE FROM ratelimits WHERE reset_at < $1")
                 .bind(t)
                 .execute(db)
@@ -120,7 +189,10 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t - 30 * 86400)
                 .execute(db)
                 .await?;
-            sqlx::query("DELETE FROM mailqueue WHERE attempts >= 5 AND dateline < $1")
+            sqlx::query("DELETE FROM outbox WHERE status = 'dead' AND created_at < now() - interval '30 days'")
+                .execute(db)
+                .await?;
+            sqlx::query("DELETE FROM mailqueue WHERE status = 'dead' AND dateline < $1")
                 .bind(t - 7 * 86400)
                 .execute(db)
                 .await?;

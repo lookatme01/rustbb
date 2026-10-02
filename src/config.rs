@@ -16,6 +16,8 @@ pub struct Config {
     pub secure_cookies: bool,
     pub run_tasks: bool,
     pub plugins_dir: String,
+    /// Plugins are fully trusted: their HTML output is not sanitized.
+    pub plugins_trusted: bool,
     pub dev_templates: Option<String>,
     /// Memory for the guest page cache in MiB (0 turns it off).
     pub page_cache_mb: u64,
@@ -35,6 +37,27 @@ pub const KNOWN_SECRETS: &[&str] = &[
 ];
 
 impl Config {
+    /// Settings for tests: no background tasks, no page cache, a throwaway upload directory.
+    pub fn for_tests(database_url: &str) -> Config {
+        Config {
+            database_url: database_url.to_string(),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            secret: "integration-test-secret-0123456789abcdef".into(),
+            db_max_connections: 16,
+            upload_dir: std::env::temp_dir()
+                .join(format!("rbb-test-uploads-{}", std::process::id()))
+                .to_string_lossy()
+                .into_owned(),
+            trust_proxy: false,
+            secure_cookies: false,
+            run_tasks: false,
+            plugins_dir: "/nonexistent-rbb-test-plugins".into(),
+            plugins_trusted: false,
+            dev_templates: None,
+            page_cache_mb: 0,
+        }
+    }
+
     pub fn from_env() -> anyhow::Result<Self> {
         let get = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_string());
         let secret = get("RBB_SECRET", "");
@@ -57,6 +80,7 @@ impl Config {
             secure_cookies: get("RBB_SECURE_COOKIES", "false") == "true",
             run_tasks: get("RBB_RUN_TASKS", "true") == "true",
             plugins_dir: get("RBB_PLUGINS_DIR", DEFAULT_PLUGINS_DIR),
+            plugins_trusted: get("RBB_PLUGINS_TRUSTED", "false") == "true",
             dev_templates: std::env::var("RBB_DEV_TEMPLATES").ok(),
             page_cache_mb: get("RBB_PAGE_CACHE_MB", DEFAULT_PAGE_CACHE_MB).parse()?,
         })

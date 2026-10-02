@@ -13,7 +13,7 @@ axum = { version = "0.8", features = ["multipart", "macros"] }
 axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
 tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.6", features = ["fs", "compression-full", "trace", "set-header", "catch-panic", "request-id", "timeout", "limit"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "json", "migrate"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "json", "migrate", "uuid", "chrono", "ipnetwork"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_urlencoded = "0.7"
@@ -54,6 +54,7 @@ pgp = { version = "0.20", default-features = false }
 rsa = "0.9"
 brotli = "8"
 flate2 = "1"
+ammonia = "4"
 rhai = { version = "1", features = ["sync", "serde"] }
 fake = { version = "2", optional = true }
 

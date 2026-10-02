@@ -1,10 +1,12 @@
 //! Login, registration, activation, password recovery and profiles.
 
+use crate::audit::Actor;
 use crate::auth;
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
 use crate::models::User;
 use crate::templates::url_user;
+use crate::usecase::accounts::{self, Activation};
 use crate::util::{self, now};
 use axum::Json;
 use axum::extract::{Path, Query};
@@ -680,121 +682,47 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
         return register_page(&ctx, &f, errors).await;
     }
 
-    let regtype = s.get("regtype").to_string();
-    let group = match regtype.as_str() {
-        "verify" | "admin" | "both" => 5,
-        _ => 2,
-    };
-    let hash = auth::hash_password(&password).await?;
-    let tz = if f.timezone.is_empty() || f.timezone.parse::<chrono_tz::Tz>().is_err() {
+    let activation = Activation::from_setting(s.get("regtype"));
+    let password_hash = auth::hash_password(&password).await?;
+    let timezone = if f.timezone.is_empty() || f.timezone.parse::<chrono_tz::Tz>().is_err() {
         String::new()
     } else {
         f.timezone.clone()
     };
-    let t = now();
-    let mut tx = ctx.app.db.begin().await?;
-    let uid: i32 = match sqlx::query_scalar(
-        "INSERT INTO users (username, password, email, usergroup, regdate, lastactive, lastvisit, regip, lastip, timezone, referrer, hideemail, receivepms, pmfolders)
-         VALUES ($1, $2, $3, $4, $5, $5, $5, $6, $6, $7, $8, $9, $10, $11) RETURNING uid",
-    )
-    .bind(&username)
-    .bind(&hash)
-    .bind(&email)
-    .bind(group)
-    .bind(t)
-    .bind(&ctx.ip)
-    .bind(&tz)
-    .bind(referrer_uid)
-    .bind(f.hideemail)
-    .bind(true)
-    .bind(serde_json::json!([]))
-    .fetch_one(&mut *tx)
-    .await
-    {
-        Ok(u) => u,
-        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
-            return register_page(&ctx, &f, vec!["The username you have chosen is already registered.".into()]).await;
-        }
-        Err(e) => return Err(e.into()),
+    let account = accounts::NewAccount {
+        username: username.clone(),
+        email: email.clone(),
+        password,
+        password_hash,
+        timezone,
+        referrer_uid,
+        hideemail: f.hideemail,
+        fields: field_values,
+        activation,
     };
-    for (fid, v) in field_values {
-        sqlx::query("INSERT INTO userfields (uid, fid, value) VALUES ($1, $2, $3)")
-            .bind(uid)
-            .bind(fid)
-            .bind(v)
-            .execute(&mut *tx)
-            .await?;
-    }
-    crate::audit::log(
-        &ctx,
-        uid,
-        "registered",
-        serde_json::json!({"username": f.username.trim()}),
-    )
-    .await;
-    if referrer_uid > 0 {
-        sqlx::query("UPDATE users SET referrals = referrals + 1 WHERE uid = $1")
-            .bind(referrer_uid)
-            .execute(&mut *tx)
-            .await?;
-    }
-    sqlx::query(
-        "UPDATE counters SET numusers = numusers + 1, lastuid = $1, lastusername = $2 WHERE id = 1",
-    )
-    .bind(uid)
-    .bind(&username)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
-    ctx.app.stats_cache.invalidate(&"boardstats");
-    ctx.app.plugins.run_hook(
-        "user_registered",
-        serde_json::json!({"uid": uid, "username": username}),
-    );
-    if group == 2 {
-        crate::system::welcome(&ctx.app, &[(uid, username.clone())]).await;
-    }
-
-    let bbname = s.get("bbname").to_string();
-    let bburl = s.get("bburl").trim_end_matches('/').to_string();
-    match regtype.as_str() {
-        "verify" | "both" => {
-            let code = util::random_token(20);
-            sqlx::query("INSERT INTO awaitingactivation (uid, dateline, code, type) VALUES ($1, $2, $3, 'r')").bind(uid).bind(t).bind(&code).execute(&ctx.app.db).await?;
-            let body = format!(
-                "{username},\n\nTo complete the registration process on {bbname}, you will need to go to the URL below in your web browser.\n\n{bburl}/member/activate?uid={uid}&code={code}\n\nIf the above link does not work correctly, go to\n{bburl}/member/activate\nand enter your username and activation code: {code}\n\nThank you,\n{bbname} Staff"
-            );
-            crate::mail::queue(
-                &ctx.app,
-                &email,
-                &format!("Account Activation at {bbname}"),
-                &body,
+    let uid = match accounts::register(&ctx.app, &Actor::from_ctx(&ctx), account).await? {
+        Ok(uid) => uid,
+        Err(accounts::RegisterError::UsernameTaken) => {
+            return register_page(
+                &ctx,
+                &f,
+                vec!["The username you have chosen is already registered.".into()],
             )
             .await;
+        }
+    };
+    let bbname = s.get("bbname").to_string();
+    match activation {
+        Activation::Email { .. } => {
             auth::create_login(&ctx, uid, false).await?;
             Ok(ctx.redirect("/", "Thank you for registering. An activation email has been sent — please follow the link in it to activate your account."))
         }
-        "admin" => {
-            sqlx::query("INSERT INTO awaitingactivation (uid, dateline, code, type) VALUES ($1, $2, $3, 'b')").bind(uid).bind(t).bind(util::random_token(20)).execute(&ctx.app.db).await?;
-            Ok(ctx.redirect("/", "Thank you for registering. Your account must be activated by an administrator before you can post."))
-        }
-        "randompass" => {
-            let body = format!(
-                "{username},\n\nThank you for registering on {bbname}. Your login details are:\n\nUsername: {username}\nPassword: {password}\n\nPlease change your password after logging in.\n\n{bburl}/member/login\n"
-            );
-            crate::mail::queue(
-                &ctx.app,
-                &email,
-                &format!("Your Password for {bbname}"),
-                &body,
-            )
-            .await;
-            Ok(ctx.redirect(
-                "/member/login",
-                "Thank you for registering. Your password has been emailed to you.",
-            ))
-        }
-        _ => {
+        Activation::Admin => Ok(ctx.redirect("/", "Thank you for registering. Your account must be activated by an administrator before you can post.")),
+        Activation::RandomPassword => Ok(ctx.redirect(
+            "/member/login",
+            "Thank you for registering. Your password has been emailed to you.",
+        )),
+        Activation::Instant => {
             auth::create_login(&ctx, uid, true).await?;
             Ok(ctx.redirect(
                 "/",
@@ -823,57 +751,17 @@ pub async fn activate(ctx: Ctx, Query(q): Query<ActivateQuery>) -> AppResult<Res
             )
             .await;
     }
-    let row: Option<(i32, String, String)> = sqlx::query_as("SELECT aid, type, misc FROM awaitingactivation WHERE uid = $1 AND code = $2 AND type IN ('r', 'e')")
-        .bind(q.uid)
-        .bind(&q.code)
-        .fetch_optional(&ctx.app.db)
-        .await?;
-    let Some((aid, kind, misc)) = row else {
-        return Err(AppError::user(
-            "The activation code you entered is invalid.",
-        ));
-    };
-    sqlx::query("DELETE FROM awaitingactivation WHERE aid = $1")
-        .bind(aid)
-        .execute(&ctx.app.db)
-        .await?;
-    if kind == "e" {
-        sqlx::query("UPDATE users SET email = $2 WHERE uid = $1")
-            .bind(q.uid)
-            .bind(&misc)
-            .execute(&ctx.app.db)
-            .await?;
-        crate::audit::log(
-            &ctx,
-            q.uid,
-            "email_changed",
-            serde_json::json!({"confirmed": true}),
-        )
-        .await;
-        return Ok(ctx.redirect("/usercp", "Your new email address has been confirmed."));
-    }
-    if ctx.settings().get("regtype") == "both" {
-        sqlx::query(
-            "INSERT INTO awaitingactivation (uid, dateline, code, type) VALUES ($1, $2, $3, 'b')",
-        )
-        .bind(q.uid)
-        .bind(now())
-        .bind(util::random_token(20))
-        .execute(&ctx.app.db)
-        .await?;
-        return Ok(ctx.redirect("/", "Your email address has been verified. An administrator must now activate your account."));
-    }
-    let activated: Option<String> = sqlx::query_scalar(
-        "UPDATE users SET usergroup = 2 WHERE uid = $1 AND usergroup = 5 RETURNING username",
+    Ok(
+        match accounts::activate(&ctx.app, &Actor::from_ctx(&ctx), q.uid, &q.code).await? {
+            accounts::Activated::EmailChanged => {
+                ctx.redirect("/usercp", "Your new email address has been confirmed.")
+            }
+            accounts::Activated::AwaitingAdmin => ctx.redirect("/", "Your email address has been verified. An administrator must now activate your account."),
+            accounts::Activated::Active => {
+                ctx.redirect("/", "Your account has been activated. Welcome!")
+            }
+        },
     )
-    .bind(q.uid)
-    .fetch_optional(&ctx.app.db)
-    .await?;
-    crate::audit::log(&ctx, q.uid, "activated", serde_json::Value::Null).await;
-    if let Some(name) = activated {
-        crate::system::welcome(&ctx.app, &[(q.uid, name)]).await;
-    }
-    Ok(ctx.redirect("/", "Your account has been activated. Welcome!"))
 }
 
 #[derive(Deserialize)]
@@ -894,29 +782,7 @@ pub async fn resend_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppRes
     if !ctx.app.rate_check(&format!("resend:{}", ctx.ip), 3, 3600) {
         return Err(AppError::RateLimited);
     }
-    let rows: Vec<(i32, String, String)> = sqlx::query_as(
-        "SELECT u.uid, u.username, a.code FROM users u JOIN awaitingactivation a ON a.uid = u.uid AND a.type = 'r' WHERE lower(u.email) = lower($1) AND u.usergroup = 5",
-    )
-    .bind(f.email.trim())
-    .fetch_all(&ctx.app.db)
-    .await?;
-    let s = ctx.settings();
-    let (bbname, bburl) = (
-        s.get("bbname").to_string(),
-        s.get("bburl").trim_end_matches('/').to_string(),
-    );
-    for (uid, username, code) in rows {
-        let body = format!(
-            "{username},\n\nPlease activate your account at {bbname} by visiting:\n\n{bburl}/member/activate?uid={uid}&code={code}\n"
-        );
-        crate::mail::queue(
-            &ctx.app,
-            f.email.trim(),
-            &format!("Account Activation at {bbname}"),
-            &body,
-        )
-        .await;
-    }
+    accounts::resend_activation(&ctx.app, f.email.trim()).await?;
     Ok(ctx.redirect("/", "If an account awaiting activation exists for that email address, the activation email has been resent."))
 }
 
@@ -932,49 +798,7 @@ pub async fn lostpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppRes
     if !ctx.app.rate_check(&format!("lostpw:{}", ctx.ip), 5, 3600) {
         return Err(AppError::RateLimited);
     }
-    let users: Vec<(i32, String, String)> = sqlx::query_as(
-        "SELECT uid, username, email FROM users WHERE lower(email) = lower($1) AND NOT is_system",
-    )
-    .bind(f.email.trim())
-    .fetch_all(&ctx.app.db)
-    .await?;
-    let s = ctx.settings();
-    let (bbname, bburl) = (
-        s.get("bbname").to_string(),
-        s.get("bburl").trim_end_matches('/').to_string(),
-    );
-    for (uid, username, email) in users {
-        crate::audit::log(
-            &ctx,
-            uid,
-            "password_reset_requested",
-            serde_json::Value::Null,
-        )
-        .await;
-        let code = util::random_token(30);
-        sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type = 'p'")
-            .bind(uid)
-            .execute(&ctx.app.db)
-            .await?;
-        sqlx::query(
-            "INSERT INTO awaitingactivation (uid, dateline, code, type) VALUES ($1, $2, $3, 'p')",
-        )
-        .bind(uid)
-        .bind(now())
-        .bind(util::sha256_hex(&code))
-        .execute(&ctx.app.db)
-        .await?;
-        let body = format!(
-            "{username},\n\nSomeone (hopefully you) requested a password reset for your account at {bbname}.\n\nTo reset your password, visit the following link within 24 hours:\n\n{bburl}/member/resetpw?uid={uid}&code={code}\n\nIf you did not request this, you can ignore this email.\n"
-        );
-        crate::mail::queue(
-            &ctx.app,
-            &email,
-            &format!("Password Reset at {bbname}"),
-            &body,
-        )
-        .await;
-    }
+    accounts::request_password_reset(&ctx.app, &Actor::from_ctx(&ctx), f.email.trim()).await?;
     Ok(ctx.redirect(
         "/",
         "If an account exists with that email address, a password reset link has been sent to it.",
@@ -998,43 +822,20 @@ pub struct ResetForm {
 }
 
 pub async fn resetpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ResetForm>) -> AppResult<Response> {
-    let row: Option<(i32, i64)> = sqlx::query_as(
-        "SELECT aid, dateline FROM awaitingactivation WHERE uid = $1 AND type = 'p' AND code = $2",
-    )
-    .bind(f.uid)
-    .bind(util::sha256_hex(&f.code))
-    .fetch_optional(&ctx.app.db)
-    .await?;
-    let Some((aid, dl)) = row.filter(|r| r.1 > now() - 86400) else {
+    let Some(username) = accounts::reset_code_valid(&ctx.app, f.uid, &f.code).await? else {
         return Err(AppError::user(
             "The password reset link is invalid or has expired. Please request a new one.",
         ));
     };
-    let _ = dl;
-    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE uid = $1")
-        .bind(f.uid)
-        .fetch_one(&ctx.app.db)
-        .await?;
     let err = auth::password_strength_error(&ctx, &f.password, &username).or_else(|| {
         (f.password != f.password2).then(|| "The passwords you entered do not match.".to_string())
     });
     if let Some(e) = err {
         return ctx.render("resetpw.html", minijinja::context! { title => "Reset Password", uid => f.uid, code => f.code, errors => vec![e] }).await;
     }
+    // Hash before the transaction: it is slow, and the code is only consumed if all succeeds.
     let h = auth::hash_password(&f.password).await?;
-    sqlx::query(
-        "UPDATE users SET password = $2, loginattempts = 0, loginlockoutexpiry = 0 WHERE uid = $1",
-    )
-    .bind(f.uid)
-    .bind(h)
-    .execute(&ctx.app.db)
-    .await?;
-    sqlx::query("DELETE FROM awaitingactivation WHERE aid = $1")
-        .bind(aid)
-        .execute(&ctx.app.db)
-        .await?;
-    auth::destroy_all_logins(&ctx.app, f.uid, None).await?;
-    crate::audit::log(&ctx, f.uid, "password_reset", serde_json::Value::Null).await;
+    accounts::reset_password(&ctx.app, &Actor::from_ctx(&ctx), f.uid, &f.code, &h).await?;
     Ok(ctx.redirect(
         "/member/login",
         "Your password has been reset. You can now log in with your new password.",

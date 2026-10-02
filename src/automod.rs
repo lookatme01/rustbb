@@ -392,19 +392,7 @@ mod database_tests {
         )
         .await
         .unwrap();
-        let cfg = crate::config::Config {
-            database_url: url,
-            listen: "127.0.0.1:0".parse().unwrap(),
-            secret: "test-secret-automod-at-least-32-chars".into(),
-            db_max_connections: 8,
-            upload_dir: "/private/tmp/rbb-automod-uploads".into(),
-            trust_proxy: false,
-            secure_cookies: false,
-            run_tasks: false,
-            plugins_dir: "/private/tmp/rbb-no-plugins".into(),
-            dev_templates: None,
-            page_cache_mb: 0,
-        };
+        let cfg = crate::config::Config::for_tests(&url);
         let app = crate::app::AppState::new(cfg, db.clone()).await.unwrap();
         let uid:i32 = sqlx::query_scalar("INSERT INTO users (username,password,email,usergroup,regdate) VALUES ('modtest','!','modtest@invalid',2,$1) RETURNING uid").bind(now()).fetch_one(&db).await.unwrap();
         let tid:i32 = sqlx::query_scalar("INSERT INTO threads (fid,subject,uid,username,dateline) VALUES (3,'Test', $1,'modtest',$2) RETURNING tid").bind(uid).bind(now()-1).fetch_one(&db).await.unwrap();

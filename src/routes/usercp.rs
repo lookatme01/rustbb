@@ -612,27 +612,14 @@ pub async fn email_save(ctx: Ctx, CsrfForm(f): CsrfForm<EmailChange>) -> AppResu
     }
     let s = ctx.settings();
     if matches!(s.get("regtype"), "verify" | "both") && !ctx.is_admin() {
-        let code = util::random_token(20);
-        sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type = 'e'")
-            .bind(me.uid)
-            .execute(&ctx.app.db)
-            .await?;
-        sqlx::query("INSERT INTO awaitingactivation (uid, dateline, code, type, misc) VALUES ($1, $2, $3, 'e', $4)").bind(me.uid).bind(now()).bind(&code).bind(&email).execute(&ctx.app.db).await?;
-        let body = format!(
-            "{},\n\nYou asked to change your email address at {}. Confirm the new address by visiting:\n\n{}/member/activate?uid={}&code={}\n",
-            me.username,
-            s.get("bbname"),
-            s.get("bburl").trim_end_matches('/'),
-            me.uid,
-            code
-        );
-        crate::mail::queue(
+        crate::usecase::accounts::request_email_change(
             &ctx.app,
+            &crate::audit::Actor::from_ctx(&ctx),
+            me.uid,
+            &me.username,
             &email,
-            &format!("Confirm your new email at {}", s.get("bbname")),
-            &body,
         )
-        .await;
+        .await?;
         return Ok(ctx.redirect(
             "/usercp/email",
             "A confirmation link has been sent to your new email address.",

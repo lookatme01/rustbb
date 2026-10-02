@@ -70,6 +70,11 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
         "security",
     ),
     ("email_changed", "Changed email address", "account"),
+    (
+        "email_change_requested",
+        "Asked to change email address",
+        "account",
+    ),
     ("username_changed", "Changed username", "account"),
     ("registered", "Created the account", "account"),
     ("activated", "Activated the account", "account"),
@@ -102,56 +107,79 @@ pub fn describe(action: &str) -> (&'static str, &'static str) {
         .unwrap_or(("Account event", "account"))
 }
 
-/// Record an event for `uid`, attributing it to the current request (IP, browser, actor).
-/// Failures are logged, never surfaced: auditing must not break the action being audited.
-pub async fn log(ctx: &Ctx, uid: i32, action: &str, details: Value) {
-    let actor = if ctx.uid() > 0 && ctx.uid() != uid {
-        ctx.uid()
-    } else {
-        0
-    };
-    log_raw(
-        &ctx.app,
-        uid,
-        action,
-        &ctx.ip,
-        &ctx.useragent,
-        actor,
-        details,
-    )
-    .await
+/// Who caused an audited event: the request's address and browser, and the signed-in member.
+#[derive(Clone, Debug, Default)]
+pub struct Actor {
+    pub uid: i32,
+    pub ip: String,
+    pub useragent: String,
 }
 
-pub async fn log_raw(
-    app: &App,
+impl Actor {
+    pub fn from_ctx(ctx: &crate::ctx::CtxInner) -> Actor {
+        Actor {
+            uid: ctx.uid(),
+            ip: ctx.ip.clone(),
+            useragent: ctx.useragent.clone(),
+        }
+    }
+
+    /// Background work with no request behind it.
+    pub fn system() -> Actor {
+        Actor::default()
+    }
+}
+
+/// Record an event for `uid` on `conn` (normally the transaction making the audited change, so
+/// the record and the change commit together). Errors are returned: inside a transaction a failed
+/// insert aborts it anyway.
+pub async fn record(
+    conn: &mut sqlx::PgConnection,
+    actor: &Actor,
     uid: i32,
     action: &str,
-    ip: &str,
-    ua: &str,
-    actor: i32,
     details: Value,
-) {
+) -> sqlx::Result<()> {
     if uid <= 0 {
-        return;
+        return Ok(());
     }
     let details = if details.is_null() {
         serde_json::json!({})
     } else {
         details
     };
-    if let Err(e) = sqlx::query(
+    let by = if actor.uid > 0 && actor.uid != uid {
+        actor.uid
+    } else {
+        0
+    };
+    sqlx::query(
         "INSERT INTO user_audit (uid, dateline, action, ipaddress, useragent, actor_uid, details) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(uid)
     .bind(now())
     .bind(action)
-    .bind(ip)
-    .bind(ua.chars().take(200).collect::<String>())
-    .bind(actor)
+    .bind(&actor.ip)
+    .bind(actor.useragent.chars().take(200).collect::<String>())
+    .bind(by)
     .bind(details)
-    .execute(&app.db)
-    .await
-    {
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Record an event for `uid` on its own, outside any transaction (for events that are not part
+/// of a change, such as failed sign-ins). Failures are logged, never surfaced.
+pub async fn log(ctx: &Ctx, uid: i32, action: &str, details: Value) {
+    log_actor(&ctx.app, &Actor::from_ctx(ctx), uid, action, details).await
+}
+
+async fn log_actor(app: &App, actor: &Actor, uid: i32, action: &str, details: Value) {
+    let r = match app.db.acquire().await {
+        Ok(mut c) => record(&mut c, actor, uid, action, details).await,
+        Err(e) => Err(e),
+    };
+    if let Err(e) = r {
         tracing::warn!(error = %e, uid, action, "audit log write failed");
     }
 }

@@ -200,6 +200,7 @@ pub async fn serve(cfg: config::Config) -> anyhow::Result<()> {
     }
     app.tpl.warm(app.cache().default_theme());
     mail::spawn_worker(app.clone());
+    crate::infra::outbox::spawn_worker(app.clone());
     if cfg.run_tasks {
         tasks::spawn_scheduler(app.clone());
     }

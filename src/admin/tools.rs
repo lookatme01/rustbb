@@ -418,12 +418,12 @@ pub async fn mailerrors_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppR
     crate::admin::acp_guard!(ctx, "logs");
     match s(f.fields.get("action")).as_str() {
         "retry" => {
-            sqlx::query("UPDATE mailqueue SET attempts = 0")
+            sqlx::query("UPDATE mailqueue SET attempts = 0, status = 'pending', available_at = now(), locked_until = NULL")
                 .execute(&ctx.app.db)
                 .await?;
         }
         "clear" => {
-            sqlx::query("DELETE FROM mailqueue WHERE attempts >= 5")
+            sqlx::query("DELETE FROM mailqueue WHERE status = 'dead'")
                 .execute(&ctx.app.db)
                 .await?;
         }
