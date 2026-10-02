@@ -60,7 +60,7 @@ pub async fn queue_in(
     Ok(())
 }
 
-pub fn spawn_worker(app: App) {
+pub fn spawn_worker(app: App) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut stop = app.shutdown.subscribe();
         loop {
@@ -75,7 +75,7 @@ pub fn spawn_worker(app: App) {
                 _ = stop.wait_for(|s| *s) => break,
             }
         }
-    });
+    })
 }
 
 struct Claimed {

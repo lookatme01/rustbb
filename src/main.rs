@@ -14,8 +14,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run the web server (default). Applies pending migrations first.
-    Serve,
+    /// Run the server (default): web, worker and scheduler roles unless --role or RBB_ROLE
+    /// says otherwise. Applies pending migrations first unless RBB_MIGRATE_ON_START=false.
+    Serve {
+        /// Roles for this process: all, or a comma-separated list of web, worker, scheduler.
+        #[arg(long)]
+        role: Option<String>,
+    },
+    /// Run only background workers (mail delivery and outbox jobs). Same as `serve --role worker`.
+    Worker,
+    /// Run only scheduled tasks. Same as `serve --role scheduler`.
+    Scheduler,
+    /// Check a health endpoint and exit 0 if it answers 200 (for container health checks).
+    Healthcheck {
+        /// URL to check; default: /readyz on RBB_ADMIN_LISTEN if set, else on RBB_LISTEN.
+        #[arg(long)]
+        url: Option<String>,
+    },
     /// Apply database migrations.
     Migrate,
     /// Create default board data and an administrator account.
@@ -88,13 +103,41 @@ async fn main() -> anyhow::Result<()> {
         .with(debugbar::QueryLayer.with_filter(debugbar::filter()))
         .init();
     let cli = Cli::parse();
+    // Before loading the configuration: the health check must work with a minimal environment.
+    if let Some(Cmd::Healthcheck { url }) = &cli.cmd {
+        let url = url.clone().unwrap_or_else(|| {
+            let addr = std::env::var("RBB_ADMIN_LISTEN")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .or_else(|| std::env::var("RBB_LISTEN").ok())
+                .unwrap_or_else(|| config::DEFAULT_LISTEN.to_string())
+                .replace("0.0.0.0", "127.0.0.1")
+                .replace("[::]", "[::1]");
+            format!("http://{addr}/readyz")
+        });
+        std::process::exit(rbb::infra::observe::healthcheck(&url).await);
+    }
     // Before loading the configuration: doctor reports configuration problems instead of exiting.
     if let Some(Cmd::Doctor { strict }) = cli.cmd {
         std::process::exit(doctor::run(strict).await);
     }
-    let cfg = config::Config::from_env()?;
-    match cli.cmd.unwrap_or(Cmd::Serve) {
-        Cmd::Serve => serve(cfg).await,
+    let mut cfg = config::Config::from_env()?;
+    match cli.cmd.unwrap_or(Cmd::Serve { role: None }) {
+        Cmd::Serve { role } => {
+            if let Some(r) = role {
+                cfg.roles = config::Roles::parse(&r)?;
+            }
+            serve(cfg).await
+        }
+        Cmd::Worker => {
+            cfg.roles = config::Roles::parse("worker")?;
+            serve(cfg).await
+        }
+        Cmd::Scheduler => {
+            cfg.roles = config::Roles::parse("scheduler")?;
+            serve(cfg).await
+        }
+        Cmd::Healthcheck { .. } => unreachable!("handled before the configuration is loaded"),
         Cmd::Migrate => {
             let db = connect(&cfg).await?;
             migrate(&db).await?;
@@ -108,8 +151,16 @@ async fn main() -> anyhow::Result<()> {
             board_name,
             board_url,
         } => {
+            if admin_password.chars().count() < 10 {
+                anyhow::bail!("the administrator password must be at least 10 characters long");
+            }
             let db = connect(&cfg).await?;
             migrate(&db).await?;
+            if rbb::server::is_installed(&db).await? {
+                anyhow::bail!(
+                    "this database already holds an installed board; nothing was changed"
+                );
+            }
             install::install(
                 &db,
                 &admin_user,

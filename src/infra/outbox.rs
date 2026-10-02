@@ -29,8 +29,27 @@ pub enum Job {
         name: String,
         data: serde_json::Value,
     },
+    /// A private message from the System account.
+    SystemPm {
+        uid: i32,
+        subject: String,
+        message: String,
+    },
     /// Send the board's welcome PM to new members.
     WelcomePm { members: Vec<(i32, String)> },
+    /// Subscriptions, mentions and quotes for a new visible post.
+    PostNotifications {
+        new_thread: bool,
+        fid: i32,
+        tid: i32,
+        pid: i32,
+        uid: i32,
+        username: String,
+        subject: String,
+        message: String,
+    },
+    /// Remove uploaded files (paths relative to the upload directory) whose rows are gone.
+    DeleteFiles { paths: Vec<String> },
     /// Create an alert for a member (and push it live).
     Alert {
         uid: i32,
@@ -46,7 +65,10 @@ impl Job {
         match self {
             Job::Hook { .. } => "hook",
             Job::WelcomePm { .. } => "welcome_pm",
+            Job::SystemPm { .. } => "system_pm",
             Job::Alert { .. } => "alert",
+            Job::DeleteFiles { .. } => "delete_files",
+            Job::PostNotifications { .. } => "post_notifications",
         }
     }
 }
@@ -133,6 +155,42 @@ async fn finish(app: &App, id: i64, attempts: i32, result: anyhow::Result<()>) {
 async fn run(app: &App, job: Job) -> anyhow::Result<()> {
     match job {
         Job::Hook { name, data } => app.plugins.run_hook_async(&name, data).await,
+        Job::PostNotifications {
+            new_thread,
+            fid,
+            tid,
+            pid,
+            uid,
+            username,
+            subject,
+            message,
+        } => {
+            if new_thread {
+                crate::notify::forum_subscribers(app, fid, tid, uid, &subject, &username).await;
+            } else {
+                crate::notify::thread_subscribers(
+                    app, tid, pid, uid, &subject, &username, &message,
+                )
+                .await;
+            }
+            crate::notify::mentions_and_quotes(app, uid, &username, tid, pid, &subject, &message)
+                .await;
+            Ok(())
+        }
+        Job::DeleteFiles { paths } => {
+            for p in paths {
+                crate::infra::storage::delete(app, &p).await?;
+            }
+            Ok(())
+        }
+        Job::SystemPm {
+            uid,
+            subject,
+            message,
+        } => {
+            crate::routes::private::send_system_pm(app, uid, &subject, &message).await?;
+            Ok(())
+        }
         Job::WelcomePm { members } => {
             crate::system::welcome(app, &members).await;
             Ok(())
@@ -172,7 +230,7 @@ pub async fn run_batch(app: &App) -> anyhow::Result<usize> {
 }
 
 /// Run outbox jobs until shutdown: woken by NOTIFY (via the listener), and every second.
-pub fn spawn_worker(app: App) {
+pub fn spawn_worker(app: App) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut stop = app.shutdown.subscribe();
         loop {
@@ -187,7 +245,7 @@ pub fn spawn_worker(app: App) {
                 _ = stop.wait_for(|s| *s) => break,
             }
         }
-    });
+    })
 }
 
 /// (pending, dead, age in seconds of the oldest pending job).

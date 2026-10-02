@@ -287,6 +287,7 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
     let fids = mod_fids(&ctx);
     let all = fids.is_none();
     let fl = fids.unwrap_or_default();
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     match f.kind.as_str() {
         "posts" => {
             let ok = |ids: Vec<i32>| {
@@ -308,23 +309,40 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             let a = ok(f.approve.clone()).await?;
             let d = ok(f.delete.clone()).await?;
             if !a.is_empty() {
-                crate::ops::set_posts_visibility(&ctx.app, &a, 1).await?;
+                crate::ops::set_posts_visibility_in(&mut uow, &a, 1).await?;
             }
             if !d.is_empty() {
-                crate::ops::delete_posts(&ctx.app, &d).await?;
+                crate::ops::delete_posts_in(&mut uow, &d).await?;
             }
         }
         "attachments" => {
-            sqlx::query("UPDATE attachments SET visible = TRUE WHERE aid = ANY($1)")
-                .bind(&f.approve)
-                .execute(&ctx.app.db)
-                .await?;
-            let files: Vec<(String, String)> = sqlx::query_as("DELETE FROM attachments WHERE aid = ANY($1) AND NOT visible RETURNING attachname, thumbnail").bind(&f.delete).fetch_all(&ctx.app.db).await?;
-            for (a, t) in files {
-                let _ = tokio::fs::remove_file(format!("{}/{a}", ctx.app.cfg.upload_dir)).await;
-                if !t.is_empty() {
-                    let _ = tokio::fs::remove_file(format!("{}/{t}", ctx.app.cfg.upload_dir)).await;
-                }
+            // Only attachments of posts in forums this moderator moderates.
+            sqlx::query(
+                "UPDATE attachments a SET visible = TRUE FROM posts p
+                 WHERE a.aid = ANY($1) AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))",
+            )
+            .bind(&f.approve)
+            .bind(all)
+            .bind(&fl)
+            .execute(uow.conn())
+            .await?;
+            let files: Vec<(String, String)> = sqlx::query_as(
+                "DELETE FROM attachments a USING posts p
+                 WHERE a.aid = ANY($1) AND NOT a.visible AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))
+                 RETURNING a.attachname, a.thumbnail",
+            )
+            .bind(&f.delete)
+            .bind(all)
+            .bind(&fl)
+            .fetch_all(uow.conn())
+            .await?;
+            let paths: Vec<String> = files
+                .into_iter()
+                .flat_map(|(a, t)| [a, t])
+                .filter(|p| !p.is_empty())
+                .collect();
+            if !paths.is_empty() {
+                uow.job(crate::infra::outbox::Job::DeleteFiles { paths });
             }
         }
         _ => {
@@ -347,15 +365,15 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             let a = ok(f.approve.clone()).await?;
             let d = ok(f.delete.clone()).await?;
             if !a.is_empty() {
-                crate::ops::set_threads_visibility(&ctx.app, &a, 1).await?;
+                crate::ops::set_threads_visibility_in(&mut uow, &a, 1).await?;
             }
             if !d.is_empty() {
-                crate::ops::delete_threads(&ctx.app, &d).await?;
+                crate::ops::delete_threads_in(&mut uow, &d).await?;
             }
         }
     }
-    crate::ops::log_moderator_action(
-        &ctx.app,
+    crate::ops::log_moderator_action_in(
+        uow.conn(),
         ctx.uid(),
         &ctx.ip,
         0,
@@ -364,7 +382,8 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
         "Moderation queue",
         serde_json::json!({"kind": f.kind, "approved": f.approve, "deleted": f.delete}),
     )
-    .await;
+    .await?;
+    uow.commit(&ctx.app).await?;
     ctx.app.mod_counts.invalidate_all();
     Ok(ctx.redirect(
         &format!("/modcp/modqueue?kind={}", f.kind),

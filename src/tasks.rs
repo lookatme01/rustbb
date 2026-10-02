@@ -15,7 +15,7 @@ const PARALLEL: usize = 3;
 /// A task running longer than this may be started again elsewhere.
 const LEASE: Duration = Duration::from_secs(30 * 60);
 
-pub fn spawn_scheduler(app: App) {
+pub fn spawn_scheduler(app: App) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(30));
         let mut stop = app.shutdown.subscribe();
@@ -28,7 +28,7 @@ pub fn spawn_scheduler(app: App) {
                 tracing::warn!("task scheduler error: {e:#}");
             }
         }
-    });
+    })
 }
 
 pub async fn run_due(app: &App) -> anyhow::Result<()> {

@@ -822,46 +822,31 @@ pub async fn editpost_submit(
     }
     let silent = form.silent && mp.is_some();
     let reason: String = form.editreason.chars().take(150).collect();
-    let moderated = posting::edit_post(
-        &ctx,
-        pid,
-        &form.subject,
-        &form.message,
-        &reason,
-        form.icon,
-        form.includesig,
-        form.smilieoff,
-        silent,
-    )
-    .await?;
-    if is_first && form.prefix != thread.prefix {
-        let allowed = form.prefix == 0
+    let prefix = (is_first
+        && form.prefix != thread.prefix
+        && (form.prefix == 0
             || ctx
                 .cache
                 .prefixes_for(thread.fid, &ctx.groups)
                 .iter()
-                .any(|p| p.pid == form.prefix);
-        if allowed {
-            sqlx::query("UPDATE threads SET prefix = $2 WHERE tid = $1")
-                .bind(thread.tid)
-                .bind(form.prefix)
-                .execute(&ctx.app.db)
-                .await?;
-        }
-    }
-    if mp.is_some() && post.uid != ctx.uid() {
-        crate::ops::log_moderator_action(
-            &ctx.app,
-            ctx.uid(),
-            &ctx.ip,
-            thread.fid,
-            thread.tid,
-            pid,
-            "Edited post",
-            serde_json::json!({}),
-        )
-        .await;
-    }
+                .any(|p| p.pid == form.prefix)))
+    .then_some(form.prefix);
+    let moderated = posting::edit_post(
+        &ctx,
+        pid,
+        &posting::PostEdit {
+            subject: &form.subject,
+            message: &form.message,
+            reason: &reason,
+            icon: form.icon,
+            includesig: form.includesig,
+            smilieoff: form.smilieoff,
+            silent,
+            prefix,
+            log_as_moderator: mp.is_some() && post.uid != ctx.uid(),
+        },
+    )
+    .await?;
     ctx.write_scope(crate::pagecache::post_tags(
         &ctx.cache, thread.fid, thread.tid,
     ));
@@ -913,20 +898,21 @@ async fn do_delete(
     } else {
         !soft_setting
     };
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     if is_first {
         if hard {
-            crate::ops::delete_threads(&ctx.app, &[thread.tid]).await?;
+            crate::ops::delete_threads_in(&mut uow, &[thread.tid]).await?;
         } else {
-            crate::ops::set_threads_visibility(&ctx.app, &[thread.tid], -1).await?;
+            crate::ops::set_threads_visibility_in(&mut uow, &[thread.tid], -1).await?;
         }
     } else if hard {
-        crate::ops::delete_posts(&ctx.app, &[post.pid]).await?;
+        crate::ops::delete_posts_in(&mut uow, &[post.pid]).await?;
     } else {
-        crate::ops::set_posts_visibility(&ctx.app, &[post.pid], -1).await?;
+        crate::ops::set_posts_visibility_in(&mut uow, &[post.pid], -1).await?;
     }
     if mp.is_some() {
-        crate::ops::log_moderator_action(
-            &ctx.app,
+        crate::ops::log_moderator_action_in(
+            uow.conn(),
             ctx.uid(),
             &ctx.ip,
             thread.fid,
@@ -945,8 +931,12 @@ async fn do_delete(
             },
             serde_json::json!({"subject": thread.subject}),
         )
-        .await;
+        .await?;
     }
+    uow.page_tags(crate::pagecache::post_tags(
+        &ctx.cache, thread.fid, thread.tid,
+    ));
+    uow.commit(&ctx.app).await?;
     ctx.app.mod_counts.invalidate_all();
     let forum = ctx.cache.forum(thread.fid);
     if is_first {
@@ -988,19 +978,20 @@ pub async fn restorepost(
     let (thread, _, _) = check_thread(&ctx, post.tid).await?;
     let mp = ctx.mod_perms(thread.fid).ok_or_else(AppError::no_perm)?;
     let is_first = post.pid == thread.firstpost;
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     if is_first {
         if !mp.canrestorethreads {
             return Err(AppError::no_perm());
         }
-        crate::ops::set_threads_visibility(&ctx.app, &[thread.tid], 1).await?;
+        crate::ops::set_threads_visibility_in(&mut uow, &[thread.tid], 1).await?;
     } else {
         if !mp.canrestoreposts {
             return Err(AppError::no_perm());
         }
-        crate::ops::set_posts_visibility(&ctx.app, &[pid], 1).await?;
+        crate::ops::set_posts_visibility_in(&mut uow, &[pid], 1).await?;
     }
-    crate::ops::log_moderator_action(
-        &ctx.app,
+    crate::ops::log_moderator_action_in(
+        uow.conn(),
         ctx.uid(),
         &ctx.ip,
         thread.fid,
@@ -1009,7 +1000,12 @@ pub async fn restorepost(
         "Restored post",
         serde_json::json!({}),
     )
-    .await;
+    .await?;
+    uow.page_tags(crate::pagecache::post_tags(
+        &ctx.cache, thread.fid, thread.tid,
+    ));
+    uow.commit(&ctx.app).await?;
+    ctx.app.mod_counts.invalidate_all();
     Ok(ctx.redirect(&format!("/post/{pid}"), "The post has been restored."))
 }
 

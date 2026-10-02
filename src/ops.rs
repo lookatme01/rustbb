@@ -4,11 +4,18 @@
 //! forum depending on its visibility; an operation snapshots the contribution before and after
 //! and applies the difference. Thread counters are recounted exactly (a cheap indexed query per
 //! thread). This keeps every write O(size of the affected thread), never O(size of forum).
+//!
+//! Every operation has a `*_in` form that runs inside a caller's unit of work, so a use case can
+//! combine several of them (and its own writes) atomically; the plain form is its own unit of
+//! work. Locks are always taken in the same order — threads by id, then posts by id — so
+//! concurrent operations cannot deadlock each other. Files are removed only after commit.
 
 use crate::app::App;
 use crate::error::AppResult;
+use crate::infra::outbox::Job;
+use crate::usecase::Uow;
 use crate::util::now;
-use sqlx::{PgConnection, Postgres, Transaction};
+use sqlx::PgConnection;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct Contrib {
@@ -255,16 +262,51 @@ async fn all_pids_of_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<Ve
     )
 }
 
+/// Lock threads (in id order) for the rest of the transaction.
+pub async fn lock_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
+    sqlx::query("SELECT tid FROM threads WHERE tid = ANY($1) ORDER BY tid FOR UPDATE")
+        .bind(tids)
+        .fetch_all(&mut *c)
+        .await?;
+    Ok(())
+}
+
+/// Lock the threads of these posts, then the posts (both in id order). Returns
+/// (pid, tid, firstpost of its thread) for the posts that exist.
+pub async fn lock_posts(c: &mut PgConnection, pids: &[i32]) -> AppResult<Vec<(i32, i32, i32)>> {
+    let tids: Vec<i32> = sqlx::query_scalar("SELECT DISTINCT tid FROM posts WHERE pid = ANY($1)")
+        .bind(pids)
+        .fetch_all(&mut *c)
+        .await?;
+    lock_threads(c, &tids).await?;
+    Ok(sqlx::query_as(
+        "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid
+         WHERE p.pid = ANY($1) ORDER BY p.pid FOR UPDATE OF p",
+    )
+    .bind(pids)
+    .fetch_all(&mut *c)
+    .await?)
+}
+
+/// Run `f` as its own unit of work.
+macro_rules! own_uow {
+    ($app:expr, |$uow:ident| $body:expr) => {{
+        let mut $uow = Uow::begin($app).await?;
+        let r = $body;
+        $uow.commit($app).await?;
+        Ok(r)
+    }};
+}
+
 /// Change visibility of posts (approve = 1, unapprove = 0, soft delete = -1).
 /// First posts are routed to thread visibility changes.
 pub async fn set_posts_visibility(app: &App, pids: &[i32], vis: i16) -> AppResult<()> {
-    let mut tx = app.db.begin().await?;
-    let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
-        "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = ANY($1) FOR UPDATE OF p",
-    )
-    .bind(pids)
-    .fetch_all(&mut *tx)
-    .await?;
+    own_uow!(app, |uow| set_posts_visibility_in(&mut uow, pids, vis)
+        .await?)
+}
+
+pub async fn set_posts_visibility_in(uow: &mut Uow, pids: &[i32], vis: i16) -> AppResult<()> {
+    let rows = lock_posts(uow.conn(), pids).await?;
     let mut first_tids = Vec::new();
     let mut reply_pids = Vec::new();
     let mut tids = Vec::new();
@@ -279,66 +321,61 @@ pub async fn set_posts_visibility(app: &App, pids: &[i32], vis: i16) -> AppResul
         }
     }
     if !reply_pids.is_empty() {
-        let before = snapshot(&mut tx, &tids).await?;
-        adjust_user_postcounts(&mut tx, &reply_pids, -1).await?;
+        let c = uow.conn();
+        let before = snapshot(c, &tids).await?;
+        adjust_user_postcounts(c, &reply_pids, -1).await?;
         sqlx::query("UPDATE posts SET visible = $2 WHERE pid = ANY($1)")
             .bind(&reply_pids)
             .bind(vis)
-            .execute(&mut *tx)
+            .execute(&mut *c)
             .await?;
-        adjust_user_postcounts(&mut tx, &reply_pids, 1).await?;
-        settle(&mut tx, before).await?;
+        adjust_user_postcounts(c, &reply_pids, 1).await?;
+        settle(c, before).await?;
     }
-    tx.commit().await?;
     if !first_tids.is_empty() {
-        set_threads_visibility(app, &first_tids, vis).await?;
+        set_threads_visibility_in(uow, &first_tids, vis).await?;
     }
     Ok(())
 }
 
 /// Change visibility of whole threads (their first post follows the thread).
 pub async fn set_threads_visibility(app: &App, tids: &[i32], vis: i16) -> AppResult<()> {
-    let mut tx = app.db.begin().await?;
-    lock_threads(&mut tx, tids).await?;
-    let before = snapshot(&mut tx, tids).await?;
-    let pids = all_pids_of_threads(&mut tx, tids).await?;
-    adjust_user_postcounts(&mut tx, &pids, -1).await?;
-    adjust_user_threadcounts(&mut tx, tids, -1).await?;
+    own_uow!(app, |uow| set_threads_visibility_in(&mut uow, tids, vis)
+        .await?)
+}
+
+pub async fn set_threads_visibility_in(uow: &mut Uow, tids: &[i32], vis: i16) -> AppResult<()> {
+    let c = uow.conn();
+    lock_threads(c, tids).await?;
+    let before = snapshot(c, tids).await?;
+    let pids = all_pids_of_threads(c, tids).await?;
+    adjust_user_postcounts(c, &pids, -1).await?;
+    adjust_user_threadcounts(c, tids, -1).await?;
     let dt = if vis == -1 { now() } else { 0 };
     sqlx::query("UPDATE threads SET visible = $2, deletetime = $3 WHERE tid = ANY($1)")
         .bind(tids)
         .bind(vis)
         .bind(dt)
-        .execute(&mut *tx)
+        .execute(&mut *c)
         .await?;
     sqlx::query("UPDATE posts SET visible = $2 WHERE pid IN (SELECT firstpost FROM threads WHERE tid = ANY($1))")
         .bind(tids)
         .bind(vis)
-        .execute(&mut *tx)
+        .execute(&mut *c)
         .await?;
-    adjust_user_postcounts(&mut tx, &pids, 1).await?;
-    adjust_user_threadcounts(&mut tx, tids, 1).await?;
-    settle(&mut tx, before).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
-async fn lock_threads(tx: &mut Transaction<'_, Postgres>, tids: &[i32]) -> AppResult<()> {
-    sqlx::query("SELECT tid FROM threads WHERE tid = ANY($1) ORDER BY tid FOR UPDATE")
-        .bind(tids)
-        .fetch_all(&mut **tx)
-        .await?;
+    adjust_user_postcounts(c, &pids, 1).await?;
+    adjust_user_threadcounts(c, tids, 1).await?;
+    settle(c, before).await?;
     Ok(())
 }
 
 /// Permanently delete posts (first posts delete their whole thread).
 pub async fn delete_posts(app: &App, pids: &[i32]) -> AppResult<()> {
-    let mut tx = app.db.begin().await?;
-    let rows: Vec<(i32, i32, i32)> =
-        sqlx::query_as("SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = ANY($1)")
-            .bind(pids)
-            .fetch_all(&mut *tx)
-            .await?;
+    own_uow!(app, |uow| delete_posts_in(&mut uow, pids).await?)
+}
+
+pub async fn delete_posts_in(uow: &mut Uow, pids: &[i32]) -> AppResult<()> {
+    let rows = lock_posts(uow.conn(), pids).await?;
     let mut thread_deletes = Vec::new();
     let mut reply_pids = Vec::new();
     let mut tids = Vec::new();
@@ -353,39 +390,42 @@ pub async fn delete_posts(app: &App, pids: &[i32]) -> AppResult<()> {
         }
     }
     tids.retain(|t| !thread_deletes.contains(t));
-    reply_pids.retain(|_| true);
     if !reply_pids.is_empty() {
-        let before = snapshot(&mut tx, &tids).await?;
-        adjust_user_postcounts(&mut tx, &reply_pids, -1).await?;
-        delete_attachments_of_posts(&mut tx, app, &reply_pids).await?;
+        let before = snapshot(uow.conn(), &tids).await?;
+        adjust_user_postcounts(uow.conn(), &reply_pids, -1).await?;
+        delete_attachments_of_posts(uow, &reply_pids).await?;
+        let c = uow.conn();
         sqlx::query("DELETE FROM posts WHERE pid = ANY($1)")
             .bind(&reply_pids)
-            .execute(&mut *tx)
+            .execute(&mut *c)
             .await?;
         sqlx::query("DELETE FROM reportedcontent WHERE type = 'post' AND id = ANY($1)")
             .bind(&reply_pids)
-            .execute(&mut *tx)
+            .execute(&mut *c)
             .await?;
-        settle(&mut tx, before).await?;
+        settle(c, before).await?;
     }
-    tx.commit().await?;
     if !thread_deletes.is_empty() {
-        delete_threads(app, &thread_deletes).await?;
+        delete_threads_in(uow, &thread_deletes).await?;
     }
     Ok(())
 }
 
 pub async fn delete_threads(app: &App, tids: &[i32]) -> AppResult<()> {
-    let mut tx = app.db.begin().await?;
-    lock_threads(&mut tx, tids).await?;
-    let before = snapshot(&mut tx, tids).await?;
-    let pids = all_pids_of_threads(&mut tx, tids).await?;
-    adjust_user_postcounts(&mut tx, &pids, -1).await?;
-    adjust_user_threadcounts(&mut tx, tids, -1).await?;
-    delete_attachments_of_posts(&mut tx, app, &pids).await?;
+    own_uow!(app, |uow| delete_threads_in(&mut uow, tids).await?)
+}
+
+pub async fn delete_threads_in(uow: &mut Uow, tids: &[i32]) -> AppResult<()> {
+    lock_threads(uow.conn(), tids).await?;
+    let before = snapshot(uow.conn(), tids).await?;
+    let pids = all_pids_of_threads(uow.conn(), tids).await?;
+    adjust_user_postcounts(uow.conn(), &pids, -1).await?;
+    adjust_user_threadcounts(uow.conn(), tids, -1).await?;
+    delete_attachments_of_posts(uow, &pids).await?;
+    let c = uow.conn();
     sqlx::query("DELETE FROM reportedcontent WHERE type = 'post' AND id = ANY($1)")
         .bind(&pids)
-        .execute(&mut *tx)
+        .execute(&mut *c)
         .await?;
     // Redirects pointing at these threads go too.
     let redirect_tids: Vec<i32> =
@@ -395,47 +435,42 @@ pub async fn delete_threads(app: &App, tids: &[i32]) -> AppResult<()> {
                     .map(|t| format!("moved|{t}"))
                     .collect::<Vec<_>>(),
             )
-            .fetch_all(&mut *tx)
+            .fetch_all(&mut *c)
             .await?;
     sqlx::query("DELETE FROM threads WHERE tid = ANY($1) OR tid = ANY($2)")
         .bind(tids)
         .bind(&redirect_tids)
-        .execute(&mut *tx)
+        .execute(&mut *c)
         .await?;
     let mut fids = Vec::new();
     for (_, fid, con) in before {
-        apply_forum_delta(&mut tx, fid, Contrib::default().sub(con)).await?;
+        apply_forum_delta(c, fid, Contrib::default().sub(con)).await?;
         if !fids.contains(&fid) {
             fids.push(fid);
         }
     }
     for f in fids {
-        update_forum_lastpost(&mut tx, f).await?;
+        update_forum_lastpost(c, f).await?;
     }
-    tx.commit().await?;
     Ok(())
 }
 
-async fn delete_attachments_of_posts(
-    tx: &mut PgConnection,
-    app: &App,
-    pids: &[i32],
-) -> AppResult<()> {
+/// Delete attachment rows now; their files are removed by a job once this commits.
+async fn delete_attachments_of_posts(uow: &mut Uow, pids: &[i32]) -> AppResult<()> {
     let files: Vec<(String, String)> = sqlx::query_as(
         "DELETE FROM attachments WHERE pid = ANY($1) RETURNING attachname, thumbnail",
     )
     .bind(pids)
-    .fetch_all(&mut *tx)
+    .fetch_all(uow.conn())
     .await?;
-    let dir = app.cfg.upload_dir.clone();
-    tokio::spawn(async move {
-        for (a, t) in files {
-            let _ = tokio::fs::remove_file(format!("{dir}/{a}")).await;
-            if !t.is_empty() {
-                let _ = tokio::fs::remove_file(format!("{dir}/{t}")).await;
-            }
-        }
-    });
+    let paths: Vec<String> = files
+        .into_iter()
+        .flat_map(|(a, t)| [a, t])
+        .filter(|p| !p.is_empty())
+        .collect();
+    if !paths.is_empty() {
+        uow.job(Job::DeleteFiles { paths });
+    }
     Ok(())
 }
 
@@ -447,12 +482,27 @@ pub async fn move_threads(
     to_fid: i32,
     redirect_days: Option<i64>,
 ) -> AppResult<()> {
-    let mut tx = app.db.begin().await?;
-    lock_threads(&mut tx, tids).await?;
-    let before = snapshot(&mut tx, tids).await?;
-    let pids = all_pids_of_threads(&mut tx, tids).await?;
-    adjust_user_postcounts(&mut tx, &pids, -1).await?;
-    adjust_user_threadcounts(&mut tx, tids, -1).await?;
+    own_uow!(app, |uow| move_threads_in(
+        &mut uow,
+        tids,
+        to_fid,
+        redirect_days
+    )
+    .await?)
+}
+
+pub async fn move_threads_in(
+    uow: &mut Uow,
+    tids: &[i32],
+    to_fid: i32,
+    redirect_days: Option<i64>,
+) -> AppResult<()> {
+    let tx = uow.conn();
+    lock_threads(tx, tids).await?;
+    let before = snapshot(tx, tids).await?;
+    let pids = all_pids_of_threads(tx, tids).await?;
+    adjust_user_postcounts(tx, &pids, -1).await?;
+    adjust_user_threadcounts(tx, tids, -1).await?;
     if let Some(days) = redirect_days {
         for &(tid, fid, _) in &before {
             if fid == to_fid {
@@ -479,10 +529,9 @@ pub async fn move_threads(
         .bind(to_fid)
         .execute(&mut *tx)
         .await?;
-    adjust_user_postcounts(&mut tx, &pids, 1).await?;
-    adjust_user_threadcounts(&mut tx, tids, 1).await?;
-    settle(&mut tx, before).await?;
-    tx.commit().await?;
+    adjust_user_postcounts(tx, &pids, 1).await?;
+    adjust_user_threadcounts(tx, tids, 1).await?;
+    settle(tx, before).await?;
     Ok(())
 }
 
@@ -496,12 +545,25 @@ pub async fn merge_threads(
     if into == from {
         return Ok(());
     }
-    let mut tx = app.db.begin().await?;
-    lock_threads(&mut tx, &[into, from]).await?;
-    let before = snapshot(&mut tx, &[into, from]).await?;
-    let pids = all_pids_of_threads(&mut tx, &[into, from]).await?;
-    adjust_user_postcounts(&mut tx, &pids, -1).await?;
-    adjust_user_threadcounts(&mut tx, &[into, from], -1).await?;
+    own_uow!(app, |uow| merge_threads_in(&mut uow, into, from, subject)
+        .await?)
+}
+
+pub async fn merge_threads_in(
+    uow: &mut Uow,
+    into: i32,
+    from: i32,
+    subject: Option<&str>,
+) -> AppResult<()> {
+    if into == from {
+        return Ok(());
+    }
+    let tx = uow.conn();
+    lock_threads(tx, &[into, from]).await?;
+    let before = snapshot(tx, &[into, from]).await?;
+    let pids = all_pids_of_threads(tx, &[into, from]).await?;
+    adjust_user_postcounts(tx, &pids, -1).await?;
+    adjust_user_threadcounts(tx, &[into, from], -1).await?;
     let into_fid: i32 = sqlx::query_scalar("SELECT fid FROM threads WHERE tid = $1")
         .bind(into)
         .fetch_one(&mut *tx)
@@ -550,33 +612,42 @@ pub async fn merge_threads(
         .execute(&mut *tx)
         .await?;
     // Ensure the new first post of `into` has the thread's visibility.
-    recount_thread(&mut tx, into).await?;
+    recount_thread(tx, into).await?;
     sqlx::query("UPDATE posts SET visible = (SELECT visible FROM threads WHERE tid = $1) WHERE pid = (SELECT firstpost FROM threads WHERE tid = $1)")
         .bind(into)
         .execute(&mut *tx)
         .await?;
     let into_before: Vec<_> = before.into_iter().filter(|b| b.0 == into).collect();
     if let Some((_, fid, con)) = from_before {
-        apply_forum_delta(&mut tx, fid, Contrib::default().sub(con)).await?;
-        update_forum_lastpost(&mut tx, fid).await?;
+        apply_forum_delta(tx, fid, Contrib::default().sub(con)).await?;
+        update_forum_lastpost(tx, fid).await?;
     }
-    settle(&mut tx, into_before).await?;
-    adjust_user_postcounts(&mut tx, &pids, 1).await?;
-    adjust_user_threadcounts(&mut tx, &[into], 1).await?;
-    tx.commit().await?;
+    settle(tx, into_before).await?;
+    adjust_user_postcounts(tx, &pids, 1).await?;
+    adjust_user_threadcounts(tx, &[into], 1).await?;
     Ok(())
 }
 
 /// Split posts out of their thread into a new thread. Returns the new tid.
 pub async fn split_posts(app: &App, pids: &[i32], subject: &str, to_fid: i32) -> AppResult<i32> {
-    let mut tx = app.db.begin().await?;
+    own_uow!(app, |uow| split_posts_in(&mut uow, pids, subject, to_fid)
+        .await?)
+}
+
+pub async fn split_posts_in(
+    uow: &mut Uow,
+    pids: &[i32],
+    subject: &str,
+    to_fid: i32,
+) -> AppResult<i32> {
+    let tx = uow.conn();
     let old_tid: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
         .bind(pids[0])
         .fetch_one(&mut *tx)
         .await?;
-    lock_threads(&mut tx, &[old_tid]).await?;
-    let before = snapshot(&mut tx, &[old_tid]).await?;
-    adjust_user_postcounts(&mut tx, pids, -1).await?;
+    lock_threads(tx, &[old_tid]).await?;
+    let before = snapshot(tx, &[old_tid]).await?;
+    adjust_user_postcounts(tx, pids, -1).await?;
     let first: (i32, String, i64) = sqlx::query_as("SELECT uid, username, dateline FROM posts WHERE pid = ANY($1) ORDER BY dateline, pid LIMIT 1")
         .bind(pids)
         .fetch_one(&mut *tx)
@@ -599,7 +670,7 @@ pub async fn split_posts(app: &App, pids: &[i32], subject: &str, to_fid: i32) ->
         .execute(&mut *tx)
         .await?;
     // First post of the new thread must be visible for the thread to be visible.
-    recount_thread(&mut tx, new_tid).await?;
+    recount_thread(tx, new_tid).await?;
     sqlx::query(
         "UPDATE posts SET visible = 1 WHERE pid = (SELECT firstpost FROM threads WHERE tid = $1)",
     )
@@ -608,16 +679,19 @@ pub async fn split_posts(app: &App, pids: &[i32], subject: &str, to_fid: i32) ->
     .await?;
     let mut all = before;
     all.push((new_tid, to_fid, Contrib::default()));
-    settle(&mut tx, all).await?;
-    adjust_user_postcounts(&mut tx, pids, 1).await?;
-    adjust_user_threadcounts(&mut tx, &[new_tid], 1).await?;
-    tx.commit().await?;
+    settle(tx, all).await?;
+    adjust_user_postcounts(tx, pids, 1).await?;
+    adjust_user_threadcounts(tx, &[new_tid], 1).await?;
     Ok(new_tid)
 }
 
 /// Copy a thread (with all posts) to another forum. Returns new tid.
 pub async fn copy_thread(app: &App, tid: i32, to_fid: i32) -> AppResult<i32> {
-    let mut tx = app.db.begin().await?;
+    own_uow!(app, |uow| copy_thread_in(&mut uow, tid, to_fid).await?)
+}
+
+pub async fn copy_thread_in(uow: &mut Uow, tid: i32, to_fid: i32) -> AppResult<i32> {
+    let tx = uow.conn();
     let new_tid: i32 = sqlx::query_scalar(
         "INSERT INTO threads (fid, subject, prefix, icon, uid, username, dateline, lastpost, lastposter, lastposteruid, closed, sticky, visible, notes)
          SELECT $2, subject, prefix, icon, uid, username, dateline, lastpost, lastposter, lastposteruid, closed, sticky, visible, notes FROM threads WHERE tid = $1
@@ -637,23 +711,33 @@ pub async fn copy_thread(app: &App, tid: i32, to_fid: i32) -> AppResult<i32> {
     .bind(to_fid)
     .execute(&mut *tx)
     .await?;
-    settle(&mut tx, vec![(new_tid, to_fid, Contrib::default())]).await?;
-    let pids = all_pids_of_threads(&mut tx, &[new_tid]).await?;
-    adjust_user_postcounts(&mut tx, &pids, 1).await?;
-    tx.commit().await?;
+    settle(tx, vec![(new_tid, to_fid, Contrib::default())]).await?;
+    let pids = all_pids_of_threads(tx, &[new_tid]).await?;
+    adjust_user_postcounts(tx, &pids, 1).await?;
     Ok(new_tid)
 }
 
-/// Merge several posts of one thread into the earliest one.
+/// Merge several posts of one thread into the earliest one. The thread and the posts are
+/// locked first, so concurrent merges, edits and deletions of the same posts serialize.
 pub async fn merge_posts(app: &App, pids: &[i32], sep: &str) -> AppResult<()> {
+    own_uow!(app, |uow| merge_posts_in(&mut uow, pids, sep).await?)
+}
+
+pub async fn merge_posts_in(uow: &mut Uow, pids: &[i32], sep: &str) -> AppResult<()> {
     if pids.len() < 2 {
         return Ok(());
+    }
+    let locked = lock_posts(uow.conn(), pids).await?;
+    if locked.len() != pids.len() {
+        return Err(crate::error::AppError::user(
+            "Some of the posts no longer exist.",
+        ));
     }
     let posts: Vec<(i32, i32, String)> = sqlx::query_as(
         "SELECT pid, tid, message FROM posts WHERE pid = ANY($1) ORDER BY dateline, pid",
     )
     .bind(pids)
-    .fetch_all(&app.db)
+    .fetch_all(uow.conn())
     .await?;
     if posts.is_empty() || posts.iter().any(|p| p.1 != posts[0].1) {
         return Err(crate::error::AppError::user(
@@ -666,18 +750,19 @@ pub async fn merge_posts(app: &App, pids: &[i32], sep: &str) -> AppResult<()> {
         .map(|p| p.2.as_str())
         .collect::<Vec<_>>()
         .join(sep);
+    let c = uow.conn();
     sqlx::query("UPDATE posts SET message = $2, parser_rev = -1 WHERE pid = $1")
         .bind(target)
         .bind(&combined)
-        .execute(&app.db)
+        .execute(&mut *c)
         .await?;
     sqlx::query("UPDATE attachments SET pid = $1 WHERE pid = ANY($2)")
         .bind(target)
         .bind(pids)
-        .execute(&app.db)
+        .execute(&mut *c)
         .await?;
     let rest: Vec<i32> = posts.iter().skip(1).map(|p| p.0).collect();
-    delete_posts(app, &rest).await
+    delete_posts_in(uow, &rest).await
 }
 
 /// Recalculate everything from scratch (ACP "Recount & Rebuild"). Batched per forum.
@@ -756,7 +841,27 @@ pub async fn log_moderator_action(
     action: &str,
     data: serde_json::Value,
 ) {
-    let _ = sqlx::query(
+    let r = match app.db.acquire().await {
+        Ok(mut c) => log_moderator_action_in(&mut c, uid, ip, fid, tid, pid, action, data).await,
+        Err(e) => Err(e.into()),
+    };
+    if let Err(e) = r {
+        tracing::warn!("moderator log write failed: {e}");
+    }
+}
+
+/// Record a moderator action as part of the caller's transaction.
+pub async fn log_moderator_action_in(
+    c: &mut PgConnection,
+    uid: i32,
+    ip: &str,
+    fid: i32,
+    tid: i32,
+    pid: i32,
+    action: &str,
+    data: serde_json::Value,
+) -> AppResult<()> {
+    sqlx::query(
         "INSERT INTO moderatorlog (uid, dateline, fid, tid, pid, action, data, ipaddress) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(uid)
@@ -767,8 +872,9 @@ pub async fn log_moderator_action(
     .bind(action)
     .bind(data)
     .bind(ip)
-    .execute(&app.db)
-    .await;
+    .execute(c)
+    .await?;
+    Ok(())
 }
 
 /// Compare denormalized counters with freshly computed values. Returns human-readable problems.

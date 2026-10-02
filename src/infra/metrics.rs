@@ -8,24 +8,28 @@ use std::fmt::Write;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Histogram bucket upper bounds in seconds.
-const BUCKETS: [f64; 12] = [
+/// Histogram bucket upper bounds for durations, in seconds.
+pub const SECONDS: &[f64] = &[
     0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
 ];
+/// Histogram bucket upper bounds for small counts (statements per request…).
+pub const COUNTS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0];
 
 struct Histogram {
-    counts: [AtomicU64; BUCKETS.len()],
+    bounds: &'static [f64],
+    counts: Vec<AtomicU64>,
     count: AtomicU64,
-    /// Sum in microseconds.
-    sum_us: AtomicU64,
+    /// Sum, in millionths.
+    sum_micro: AtomicU64,
 }
 
 impl Histogram {
-    fn new() -> Self {
+    fn new(bounds: &'static [f64]) -> Self {
         Histogram {
-            counts: std::array::from_fn(|_| AtomicU64::new(0)),
+            bounds,
+            counts: bounds.iter().map(|_| AtomicU64::new(0)).collect(),
             count: AtomicU64::new(0),
-            sum_us: AtomicU64::new(0),
+            sum_micro: AtomicU64::new(0),
         }
     }
 }
@@ -97,19 +101,25 @@ pub fn gauge_add(name: &'static str, l: &[(&str, &str)], d: f64) {
     });
 }
 
+/// Record a duration in seconds.
 pub fn observe(name: &'static str, l: &[(&str, &str)], seconds: f64) {
+    observe_in(name, l, seconds, SECONDS)
+}
+
+/// Record a value into a histogram with the given bucket bounds (fixed per metric).
+pub fn observe_in(name: &'static str, l: &[(&str, &str)], value: f64, bounds: &'static [f64]) {
     let h = REG
         .histograms
         .entry((name, labels(l)))
-        .or_insert_with(Histogram::new);
-    for (i, b) in BUCKETS.iter().enumerate() {
-        if seconds <= *b {
+        .or_insert_with(|| Histogram::new(bounds));
+    for (i, b) in h.bounds.iter().enumerate() {
+        if value <= *b {
             h.counts[i].fetch_add(1, Ordering::Relaxed);
         }
     }
     h.count.fetch_add(1, Ordering::Relaxed);
-    h.sum_us
-        .fetch_add((seconds * 1e6).max(0.0) as u64, Ordering::Relaxed);
+    h.sum_micro
+        .fetch_add((value * 1e6).max(0.0) as u64, Ordering::Relaxed);
 }
 
 /// Everything in the Prometheus text exposition format.
@@ -170,7 +180,7 @@ pub fn render() -> String {
         header(&mut out, n, "histogram", &mut done);
         let inner = l.trim_start_matches('{').trim_end_matches('}');
         let sep = if inner.is_empty() { "" } else { "," };
-        for (i, b) in BUCKETS.iter().enumerate() {
+        for (i, b) in h.bounds.iter().enumerate() {
             let _ = writeln!(
                 out,
                 "{n}_bucket{{{inner}{sep}le=\"{b}\"}} {}",
@@ -182,7 +192,7 @@ pub fn render() -> String {
         let _ = writeln!(
             out,
             "{n}_sum{l} {}",
-            h.sum_us.load(Ordering::Relaxed) as f64 / 1e6
+            h.sum_micro.load(Ordering::Relaxed) as f64 / 1e6
         );
         let _ = writeln!(out, "{n}_count{l} {count}");
     }

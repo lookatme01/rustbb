@@ -1,9 +1,17 @@
 //! Creating and editing posts/threads (the MyBB "PostDataHandler").
+//!
+//! Each operation is one unit of work: the post, thread and forum rows, counters, read markers,
+//! subscriptions, attachments, edit history and moderator log commit together. Notifications,
+//! plugin hooks and live updates are queued in the same transaction and happen after commit.
+//! Writes to an existing thread lock it first (then its posts), which serializes replies, merges,
+//! edits and moderation of the same thread.
 
 use crate::app::LiveEvent;
 use crate::ctx::CtxInner;
 use crate::error::{AppError, AppResult};
+use crate::infra::outbox::Job;
 use crate::parser;
+use crate::usecase::Uow;
 use crate::util::now;
 
 pub struct PostInput {
@@ -176,7 +184,8 @@ pub async fn create_thread(
     };
     let t = now();
     let subject = input.subject.trim().to_string();
-    let mut tx = app.db.begin().await?;
+    let mut uow = Uow::begin(app).await?;
+    let tx = uow.conn();
     let tid: i32 = sqlx::query_scalar(
         "INSERT INTO threads (fid, subject, prefix, icon, uid, username, dateline, lastpost, lastposter, lastposteruid, visible, sticky, closed)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $6, $5, $8, $9, $10) RETURNING tid",
@@ -239,9 +248,9 @@ pub async fn create_thread(
             .execute(&mut *tx)
             .await?;
     }
-    attach_uploads(&mut tx, ctx, fid, &input.posthash, pid, actor, uid).await?;
+    attach_uploads(tx, ctx, fid, &input.posthash, pid, actor, uid).await?;
     if input.as_system {
-        record_system_authorship(&mut tx, ctx, "thread", tid, &subject).await?;
+        record_system_authorship(tx, ctx, "thread", tid, &subject).await?;
     }
     let forum = ctx.cache.forum(fid);
     if visible == 1 {
@@ -288,27 +297,29 @@ pub async fn create_thread(
             .bind(t)
             .execute(&mut *tx)
             .await?;
-    }
-    tx.commit().await?;
-    if actor > 0 {
-        auto_subscribe(ctx, tid).await;
+        auto_subscribe(tx, ctx, tid).await?;
     }
     if visible == 1 {
-        let app2 = app.clone();
-        let (subject2, username2) = (subject.clone(), username.clone());
-        let message = input.message.clone();
-        tokio::spawn(async move {
-            crate::notify::forum_subscribers(&app2, fid, tid, uid, &subject2, &username2).await;
-            crate::notify::mentions_and_quotes(
-                &app2, uid, &username2, tid, pid, &subject2, &message,
-            )
-            .await;
-        });
-        app.plugins.run_hook(
+        uow.job_once(
+            Job::PostNotifications {
+                new_thread: true,
+                fid,
+                tid,
+                pid,
+                uid,
+                username: username.clone(),
+                subject: subject.clone(),
+                message: input.message.clone(),
+            },
+            format!("notify:post:{pid}"),
+        );
+        uow.hook(
             "thread_created",
             serde_json::json!({"tid": tid, "pid": pid, "fid": fid, "uid": uid}),
         );
     }
+    uow.page_tags(crate::pagecache::forum_tags(&ctx.cache, fid));
+    uow.commit(app).await?;
     ctx.app.mod_counts.invalidate_all();
     Ok((tid, pid, visible))
 }
@@ -355,7 +366,22 @@ pub async fn create_reply(
     input: &PostInput,
     guest_name: Option<&str>,
 ) -> AppResult<(i32, i16, bool)> {
-    let app = &ctx.app;
+    let mut uow = Uow::begin(&ctx.app).await?;
+    let r = create_reply_in(&mut uow, ctx, tid, fid, input, guest_name).await?;
+    uow.commit(&ctx.app).await?;
+    ctx.app.mod_counts.invalidate_all();
+    Ok(r)
+}
+
+/// `create_reply` inside a caller's unit of work.
+pub async fn create_reply_in(
+    uow: &mut Uow,
+    ctx: &CtxInner,
+    tid: i32,
+    fid: i32,
+    input: &PostInput,
+    guest_name: Option<&str>,
+) -> AppResult<(i32, i16, bool)> {
     let actor = ctx.uid();
     let (uid, username) = if input.as_system {
         system_author(ctx).await?
@@ -381,42 +407,57 @@ pub async fn create_reply(
     };
     let t = now();
 
-    // Automatic post merge (double posting) — MyBB's "postmergemins".
+    // Serialize writes to this thread (replies, merges, edits, moderation) and keep counters right.
+    let tvis: i16 = sqlx::query_scalar("SELECT visible FROM threads WHERE tid = $1 FOR UPDATE")
+        .bind(tid)
+        .fetch_optional(uow.conn())
+        .await?
+        .ok_or_else(|| AppError::not_found("thread"))?;
+
+    // Automatic post merge (double posting) — MyBB's "postmergemins". Decided under the thread
+    // lock, with the last post locked too, so two quick replies cannot both merge or both miss.
     let mergemins = ctx.settings().int("postmergemins");
     if uid > 0 && !input.as_system && mergemins > 0 && visible == 1 && input.posthash.is_empty() {
-        let last: Option<(i32, i32, i64, String)> =
-            sqlx::query_as("SELECT pid, uid, dateline, message FROM posts WHERE tid = $1 AND visible = 1 ORDER BY dateline DESC, pid DESC LIMIT 1")
-                .bind(tid)
-                .fetch_optional(&app.db)
-                .await?;
+        let last: Option<(i32, i32, i64, String)> = sqlx::query_as(
+            "SELECT pid, uid, dateline, message FROM posts WHERE tid = $1 AND visible = 1
+             ORDER BY dateline DESC, pid DESC LIMIT 1 FOR UPDATE",
+        )
+        .bind(tid)
+        .fetch_optional(uow.conn())
+        .await?;
         if let Some((lpid, luid, ldate, lmsg)) = last
             && luid == uid
             && t - ldate < mergemins * 60
         {
             let merged = format!("{lmsg}\n[hr]\n{}", input.message.trim());
+            if ctx.settings().bool("keepedithistory") {
+                record_edit(uow.conn(), lpid, uid, t, None, &lmsg, "Automatic merge").await?;
+            }
             sqlx::query(
                 "UPDATE posts SET message = $2, parser_rev = -1, edittime = $3 WHERE pid = $1",
             )
             .bind(lpid)
             .bind(&merged)
             .bind(t)
-            .execute(&app.db)
+            .execute(uow.conn())
             .await?;
             sqlx::query("UPDATE users SET lastpost = $2 WHERE uid = $1")
                 .bind(uid)
                 .bind(t)
-                .execute(&app.db)
+                .execute(uow.conn())
                 .await?;
+            uow.live(LiveEvent {
+                kind: "editpost",
+                tid,
+                uid: 0,
+                data: serde_json::json!({"pid": lpid}),
+            });
+            uow.page_tags(crate::pagecache::post_tags(&ctx.cache, fid, tid));
             return Ok((lpid, 1, true));
         }
     }
 
-    let mut tx = app.db.begin().await?;
-    // Serialize concurrent replies to the same thread for counter correctness.
-    let tvis: i16 = sqlx::query_scalar("SELECT visible FROM threads WHERE tid = $1 FOR UPDATE")
-        .bind(tid)
-        .fetch_one(&mut *tx)
-        .await?;
+    let tx = uow.conn();
     let pid: i32 = sqlx::query_scalar(
         "INSERT INTO posts (tid, replyto, fid, subject, icon, uid, username, dateline, message, ipaddress, includesig, smilieoff, visible)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING pid",
@@ -436,10 +477,14 @@ pub async fn create_reply(
     .bind(visible)
     .fetch_one(&mut *tx)
     .await?;
-    let nattach = attach_uploads(&mut tx, ctx, fid, &input.posthash, pid, actor, uid).await?;
+    let nattach = attach_uploads(tx, ctx, fid, &input.posthash, pid, actor, uid).await?;
     if input.as_system {
-        record_system_authorship(&mut tx, ctx, "post", pid, input.subject.trim()).await?;
+        record_system_authorship(tx, ctx, "post", pid, input.subject.trim()).await?;
     }
+    let subject: String = sqlx::query_scalar("SELECT subject FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&mut *tx)
+        .await?;
     if visible == 1 {
         sqlx::query(
             "UPDATE threads SET replies = replies + 1, lastpost = $2, lastposter = $3, lastposteruid = $4,
@@ -453,10 +498,6 @@ pub async fn create_reply(
         .execute(&mut *tx)
         .await?;
         if tvis == 1 {
-            let subject: String = sqlx::query_scalar("SELECT subject FROM threads WHERE tid = $1")
-                .bind(tid)
-                .fetch_one(&mut *tx)
-                .await?;
             sqlx::query(
                 "UPDATE forums SET posts = posts + 1, lastpost = $2, lastposter = $3, lastposteruid = $4, lastposttid = $5, lastpostsubject = $6
                  WHERE fid = $1",
@@ -466,7 +507,7 @@ pub async fn create_reply(
             .bind(&username)
             .bind(uid)
             .bind(tid)
-            .bind(subject)
+            .bind(&subject)
             .execute(&mut *tx)
             .await?;
         } else {
@@ -520,63 +561,88 @@ pub async fn create_reply(
             .bind(t)
             .execute(&mut *tx)
             .await?;
-    }
-    tx.commit().await?;
-    if actor > 0 {
-        auto_subscribe(ctx, tid).await;
+        auto_subscribe(tx, ctx, tid).await?;
     }
     if visible == 1 && tvis == 1 {
-        let app2 = app.clone();
-        let username2 = username.clone();
-        let message = input.message.clone();
-        tokio::spawn(async move {
-            let subject: String = sqlx::query_scalar("SELECT subject FROM threads WHERE tid = $1")
-                .bind(tid)
-                .fetch_one(&app2.db)
-                .await
-                .unwrap_or_default();
-            crate::notify::thread_subscribers(&app2, tid, pid, uid, &subject, &username2, &message)
-                .await;
-            crate::notify::mentions_and_quotes(
-                &app2, uid, &username2, tid, pid, &subject, &message,
-            )
-            .await;
-            app2.publish_all(LiveEvent {
-                kind: "newpost",
+        uow.job_once(
+            Job::PostNotifications {
+                new_thread: false,
+                fid,
                 tid,
-                uid: 0,
-                data: serde_json::json!({"pid": pid, "username": username2, "uid": uid}),
-            })
-            .await;
+                pid,
+                uid,
+                username: username.clone(),
+                subject,
+                message: input.message.clone(),
+            },
+            format!("notify:post:{pid}"),
+        );
+        uow.live(LiveEvent {
+            kind: "newpost",
+            tid,
+            uid: 0,
+            data: serde_json::json!({"pid": pid, "username": username, "uid": uid}),
         });
-        app.plugins.run_hook(
+        uow.hook(
             "post_created",
             serde_json::json!({"tid": tid, "pid": pid, "fid": fid, "uid": uid}),
         );
     }
-    ctx.app.mod_counts.invalidate_all();
+    uow.page_tags(crate::pagecache::post_tags(&ctx.cache, fid, tid));
     Ok((pid, visible, false))
 }
 
-async fn auto_subscribe(ctx: &CtxInner, tid: i32) {
-    let Some(u) = &ctx.user else { return };
+async fn auto_subscribe(tx: &mut sqlx::PgConnection, ctx: &CtxInner, tid: i32) -> AppResult<()> {
+    let Some(u) = &ctx.user else { return Ok(()) };
     if u.subscriptionmethod == 0 {
-        return;
+        return Ok(());
     }
     let notification: i16 = match u.subscriptionmethod {
         2 => 1,
         3 => 2,
         _ => 0,
     };
-    let _ = sqlx::query(
+    sqlx::query(
         "INSERT INTO threadsubscriptions (uid, tid, notification, dateline) VALUES ($1, $2, $3, $4) ON CONFLICT (uid, tid) DO NOTHING",
     )
     .bind(u.uid)
     .bind(tid)
     .bind(notification)
     .bind(now())
-    .execute(&ctx.app.db)
-    .await;
+    .execute(tx)
+    .await?;
+    Ok(())
+}
+
+/// Keep the previous text of a post in its edit history.
+async fn record_edit(
+    tx: &mut sqlx::PgConnection,
+    pid: i32,
+    editor: i32,
+    t: i64,
+    old_subject: Option<&str>,
+    old_message: &str,
+    reason: &str,
+) -> AppResult<()> {
+    let subject = match old_subject {
+        Some(s) => s.to_string(),
+        None => {
+            sqlx::query_scalar("SELECT subject FROM posts WHERE pid = $1")
+                .bind(pid)
+                .fetch_one(&mut *tx)
+                .await?
+        }
+    };
+    sqlx::query("INSERT INTO post_edits (pid, uid, dateline, subject, message, reason) VALUES ($1, $2, $3, $4, $5, $6)")
+        .bind(pid)
+        .bind(editor)
+        .bind(t)
+        .bind(subject)
+        .bind(old_message)
+        .bind(reason)
+        .execute(tx)
+        .await?;
+    Ok(())
 }
 
 /// Claim attachments uploaded with a posthash for the newly created post.
@@ -639,94 +705,125 @@ async fn attach_uploads(
     Ok(r.rows_affected())
 }
 
-/// Edit a post, keeping edit history. Returns true if the edit was sent to moderation.
-pub async fn edit_post(
-    ctx: &CtxInner,
-    pid: i32,
-    subject: &str,
-    message: &str,
-    reason: &str,
-    icon: i32,
-    includesig: bool,
-    smilieoff: bool,
-    silent: bool,
-) -> AppResult<bool> {
+/// What an edit changes.
+pub struct PostEdit<'a> {
+    pub subject: &'a str,
+    pub message: &'a str,
+    pub reason: &'a str,
+    pub icon: i32,
+    pub includesig: bool,
+    pub smilieoff: bool,
+    /// Moderators may edit without the "edited" note.
+    pub silent: bool,
+    /// New thread prefix (first post only), already checked against the allowed prefixes.
+    pub prefix: Option<i32>,
+    /// Record the edit in the moderator log (a moderator editing someone else's post).
+    pub log_as_moderator: bool,
+}
+
+/// Edit a post: the edit history entry, the post itself, the thread subject and prefix, the
+/// forum's last-post subject, the move to moderation (if edits are moderated here) and the
+/// moderator log commit together, with the thread and post locked. Returns true if the edit was
+/// sent to moderation.
+pub async fn edit_post(ctx: &CtxInner, pid: i32, e: &PostEdit<'_>) -> AppResult<bool> {
     let app = &ctx.app;
-    let old: (i32, i32, String, String, i32, i16) =
-        sqlx::query_as("SELECT tid, fid, subject, message, uid, visible FROM posts WHERE pid = $1")
+    let mut uow = Uow::begin(app).await?;
+    if crate::ops::lock_posts(uow.conn(), &[pid]).await?.is_empty() {
+        return Err(AppError::not_found("post"));
+    }
+    let (tid, fid, old_subject, old_message): (i32, i32, String, String) =
+        sqlx::query_as("SELECT tid, fid, subject, message FROM posts WHERE pid = $1")
             .bind(pid)
-            .fetch_one(&app.db)
+            .fetch_one(uow.conn())
             .await?;
-    let (tid, fid, old_subject, old_message, _post_uid, _vis) = old;
+    let (subject, message) = (e.subject.trim(), e.message.trim());
     let t = now();
     if ctx.settings().bool("keepedithistory") && (old_message != message || old_subject != subject)
     {
-        sqlx::query("INSERT INTO post_edits (pid, uid, dateline, subject, message, reason) VALUES ($1, $2, $3, $4, $5, $6)")
-            .bind(pid)
-            .bind(ctx.uid())
-            .bind(t)
-            .bind(&old_subject)
-            .bind(&old_message)
-            .bind(reason)
-            .execute(&app.db)
-            .await?;
-    }
-    let is_mod = ctx.is_mod(fid);
-    let (edituid, edittime) = if silent { (0, 0) } else { (ctx.uid(), t) };
-    if silent {
-        sqlx::query("UPDATE posts SET subject = $2, message = $3, icon = $4, includesig = $5, smilieoff = $6, parser_rev = -1 WHERE pid = $1")
-            .bind(pid)
-            .bind(subject.trim())
-            .bind(message.trim())
-            .bind(icon)
-            .bind(includesig)
-            .bind(smilieoff)
-            .execute(&app.db)
-            .await?;
-    } else {
-        sqlx::query(
-            "UPDATE posts SET subject = $2, message = $3, icon = $4, includesig = $5, smilieoff = $6, parser_rev = -1,
-                edituid = $7, edittime = $8, editreason = $9 WHERE pid = $1",
+        record_edit(
+            uow.conn(),
+            pid,
+            ctx.uid(),
+            t,
+            Some(&old_subject),
+            &old_message,
+            e.reason,
         )
-        .bind(pid)
-        .bind(subject.trim())
-        .bind(message.trim())
-        .bind(icon)
-        .bind(includesig)
-        .bind(smilieoff)
-        .bind(edituid)
-        .bind(edittime)
-        .bind(reason)
-        .execute(&app.db)
         .await?;
     }
-    // Keep thread subject in sync when editing the first post.
+    let (edituid, edittime) = if e.silent { (0, 0) } else { (ctx.uid(), t) };
+    sqlx::query(
+        "UPDATE posts SET subject = $2, message = $3, icon = $4, includesig = $5, smilieoff = $6, parser_rev = -1,
+            edituid = CASE WHEN $10 THEN edituid ELSE $7 END,
+            edittime = CASE WHEN $10 THEN edittime ELSE $8 END,
+            editreason = CASE WHEN $10 THEN editreason ELSE $9 END
+         WHERE pid = $1",
+    )
+    .bind(pid)
+    .bind(subject)
+    .bind(message)
+    .bind(e.icon)
+    .bind(e.includesig)
+    .bind(e.smilieoff)
+    .bind(edituid)
+    .bind(edittime)
+    .bind(e.reason)
+    .bind(e.silent)
+    .execute(uow.conn())
+    .await?;
     let firstpost: i32 = sqlx::query_scalar("SELECT firstpost FROM threads WHERE tid = $1")
         .bind(tid)
-        .fetch_one(&app.db)
+        .fetch_one(uow.conn())
         .await?;
-    if firstpost == pid && !subject.trim().is_empty() && subject.trim() != old_subject {
-        sqlx::query("UPDATE threads SET subject = $2 WHERE tid = $1")
-            .bind(tid)
-            .bind(subject.trim())
-            .execute(&app.db)
-            .await?;
-        sqlx::query("UPDATE forums SET lastpostsubject = $2 WHERE lastposttid = $1")
-            .bind(tid)
-            .bind(subject.trim())
-            .execute(&app.db)
-            .await?;
+    if firstpost == pid {
+        // Keep the thread subject (and forum last-post subjects) in sync with the first post.
+        if !subject.is_empty() && subject != old_subject {
+            sqlx::query("UPDATE threads SET subject = $2 WHERE tid = $1")
+                .bind(tid)
+                .bind(subject)
+                .execute(uow.conn())
+                .await?;
+            sqlx::query("UPDATE forums SET lastpostsubject = $2 WHERE lastposttid = $1")
+                .bind(tid)
+                .bind(subject)
+                .execute(uow.conn())
+                .await?;
+        }
+        if let Some(prefix) = e.prefix {
+            sqlx::query("UPDATE threads SET prefix = $2 WHERE tid = $1")
+                .bind(tid)
+                .bind(prefix)
+                .execute(uow.conn())
+                .await?;
+        }
     }
-    let moderate = !is_mod && ctx.forum_perms(fid).mod_edit_posts;
+    let moderate = !ctx.is_mod(fid) && ctx.forum_perms(fid).mod_edit_posts;
     if moderate {
-        crate::ops::set_posts_visibility(app, &[pid], 0).await?;
+        crate::ops::set_posts_visibility_in(&mut uow, &[pid], 0).await?;
     }
-    app.publish_all(LiveEvent {
+    if e.log_as_moderator {
+        crate::ops::log_moderator_action_in(
+            uow.conn(),
+            ctx.uid(),
+            &ctx.ip,
+            fid,
+            tid,
+            pid,
+            "Edited post",
+            serde_json::json!({}),
+        )
+        .await?;
+    }
+    uow.live(LiveEvent {
         kind: "editpost",
         tid,
         uid: 0,
         data: serde_json::json!({"pid": pid}),
-    })
-    .await;
+    });
+    uow.page_tags(crate::pagecache::post_tags(&ctx.cache, fid, tid));
+    uow.commit(app).await?;
+    if moderate {
+        app.mod_counts.invalidate_all();
+    }
     Ok(moderate)
 }
