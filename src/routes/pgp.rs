@@ -74,6 +74,9 @@ fn require(ctx: &Ctx) -> AppResult<User> {
     Ok(me)
 }
 
+/// Columns of `pgp_keys` read into [`KeyRow`].
+pub const KEY_COLUMNS: &str = "kid, uid, fingerprint, algorithm, armored, user_ids, enc_keyids, key_created, expires, added, status, retired, source, transition_from, transition_sig, backup";
+
 #[derive(FromRow, Serialize, Clone, Debug)]
 pub struct KeyRow {
     pub kid: i32,
@@ -118,19 +121,20 @@ impl KeyRow {
 
 /// The member's current (active, unexpired) key.
 pub async fn active_key(ctx: &Ctx, uid: i32) -> AppResult<Option<KeyRow>> {
-    Ok(
-        sqlx::query_as::<_, KeyRow>("SELECT * FROM pgp_keys WHERE uid = $1 AND status = 0")
-            .bind(uid)
-            .fetch_optional(&ctx.app.db)
-            .await?
-            .filter(|k| k.expires == 0 || k.expires > now()),
-    )
+    Ok(sqlx::query_as::<_, KeyRow>(&format!(
+        "SELECT {} FROM pgp_keys WHERE uid = $1 AND status = 0",
+        KEY_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .filter(|k| k.expires == 0 || k.expires > now()))
 }
 
 /// Active keys for several members at once.
 pub async fn active_keys(ctx: &Ctx, uids: &[i32]) -> AppResult<Vec<KeyRow>> {
     Ok(sqlx::query_as::<_, KeyRow>(
-        "SELECT * FROM pgp_keys WHERE uid = ANY($1) AND status = 0 AND (expires = 0 OR expires > $2)",
+        &format!("SELECT {} FROM pgp_keys WHERE uid = ANY($1) AND status = 0 AND (expires = 0 OR expires > $2)", KEY_COLUMNS),
     )
     .bind(uids)
     .bind(now())
@@ -139,9 +143,10 @@ pub async fn active_keys(ctx: &Ctx, uids: &[i32]) -> AppResult<Vec<KeyRow>> {
 }
 
 async fn history(ctx: &Ctx, uid: i32) -> AppResult<Vec<KeyRow>> {
-    Ok(sqlx::query_as(
-        "SELECT * FROM pgp_keys WHERE uid = $1 ORDER BY added DESC, kid DESC LIMIT 50",
-    )
+    Ok(sqlx::query_as(&format!(
+        "SELECT {} FROM pgp_keys WHERE uid = $1 ORDER BY added DESC, kid DESC LIMIT 50",
+        KEY_COLUMNS
+    ))
     .bind(uid)
     .fetch_all(&ctx.app.db)
     .await?)
@@ -270,11 +275,13 @@ async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Resp
         ));
     }
     let old = active_key(&ctx, me.uid).await?;
-    let old_any: Option<KeyRow> =
-        sqlx::query_as("SELECT * FROM pgp_keys WHERE uid = $1 AND status = 0")
-            .bind(me.uid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
+    let old_any: Option<KeyRow> = sqlx::query_as(&format!(
+        "SELECT {} FROM pgp_keys WHERE uid = $1 AND status = 0",
+        KEY_COLUMNS
+    ))
+    .bind(me.uid)
+    .fetch_optional(&ctx.app.db)
+    .await?;
     let source = if f.source == "imported" {
         "imported"
     } else {
@@ -419,11 +426,14 @@ async fn revoke(ctx: Ctx, CsrfForm(f): CsrfForm<RevokeForm>) -> AppResult<Respon
     if !crate::auth::verify_password(&f.password, &me.password).await {
         return Err(AppError::user("The password you entered is incorrect."));
     }
-    let key: KeyRow = sqlx::query_as("SELECT * FROM pgp_keys WHERE uid = $1 AND status = 0")
-        .bind(me.uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::user("You don't have an active key."))?;
+    let key: KeyRow = sqlx::query_as(&format!(
+        "SELECT {} FROM pgp_keys WHERE uid = $1 AND status = 0",
+        KEY_COLUMNS
+    ))
+    .bind(me.uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::user("You don't have an active key."))?;
     sqlx::query("UPDATE pgp_keys SET status = 2, retired = $2, backup = '' WHERE kid = $1")
         .bind(key.kid)
         .bind(now())

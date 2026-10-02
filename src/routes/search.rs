@@ -455,10 +455,13 @@ pub async fn results(
         )
     };
     if kind == "threads" {
-        let threads: Vec<Thread> = sqlx::query_as("SELECT * FROM threads WHERE tid = ANY($1)")
-            .bind(&slice)
-            .fetch_all(&ctx.app.db)
-            .await?;
+        let threads: Vec<Thread> = sqlx::query_as(&format!(
+            "SELECT {} FROM threads WHERE tid = ANY($1)",
+            crate::models::THREAD_COLUMNS
+        ))
+        .bind(&slice)
+        .fetch_all(&ctx.app.db)
+        .await?;
         let mut by_id: HashMap<i32, Thread> = threads.into_iter().map(|t| (t.tid, t)).collect();
         let ordered: Vec<Thread> = slice
             .iter()

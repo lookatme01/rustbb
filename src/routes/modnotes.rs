@@ -203,11 +203,14 @@ pub async fn history(
     Query(q): Query<HistoryQuery>,
 ) -> AppResult<Response> {
     require_staff(&ctx)?;
-    let member: crate::models::User = sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("member"))?;
+    let member: crate::models::User = sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("member"))?;
     let db = &ctx.app.db;
     let t = now();
     let want = |k: &str| q.r#type.is_empty() || q.r#type == k;

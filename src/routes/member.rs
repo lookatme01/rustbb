@@ -41,11 +41,18 @@ pub struct LoginForm {
 async fn find_login_user(ctx: &Ctx, name: &str) -> AppResult<Option<User>> {
     let method = ctx.settings().get("usernamemethod");
     let q = match method {
-        "1" => "SELECT * FROM users WHERE lower(email) = lower($1) ORDER BY uid LIMIT 1",
-        "2" => {
-            "SELECT * FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1) ORDER BY (lower(username) = lower($1)) DESC, uid LIMIT 1"
-        }
-        _ => "SELECT * FROM users WHERE lower(username) = lower($1)",
+        "1" => &format!(
+            "SELECT {} FROM users WHERE lower(email) = lower($1) ORDER BY uid LIMIT 1",
+            crate::models::USER_COLUMNS
+        ),
+        "2" => &format!(
+            "SELECT {} FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1) ORDER BY (lower(username) = lower($1)) DESC, uid LIMIT 1",
+            crate::models::USER_COLUMNS
+        ),
+        _ => &format!(
+            "SELECT {} FROM users WHERE lower(username) = lower($1)",
+            crate::models::USER_COLUMNS
+        ),
     };
     Ok(sqlx::query_as(q)
         .bind(name.trim())
@@ -287,11 +294,14 @@ pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<
             "Your login session expired. Please log in again.",
         ));
     }
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or(AppError::Csrf)?;
+    let user: User = sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or(AppError::Csrf)?;
     let expect = util::hmac_hex(
         &ctx.app.cfg.secret,
         &format!("2fa:{}.{}.{}:{}", uid, exp, parts[2], user.password),
@@ -908,11 +918,14 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
     if !ctx.perms.canviewprofiles {
         return Err(AppError::no_perm());
     }
-    let mut user: User = sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("user"))?;
+    let mut user: User = sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("user"))?;
     if user.is_system {
         // Always online: System has no session, so its activity is "now".
         user.lastactive = now();

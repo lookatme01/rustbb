@@ -159,11 +159,13 @@ pub async fn process(app: &App, pid: i32) -> AppResult<()> {
                 && tvis == 1
                 && !closed.starts_with("moved|")
             {
-                let user: Option<crate::models::User> =
-                    sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-                        .bind(uid)
-                        .fetch_optional(&mut *tx)
-                        .await?;
+                let user: Option<crate::models::User> = sqlx::query_as(&format!(
+                    "SELECT {} FROM users WHERE uid = $1",
+                    crate::models::USER_COLUMNS
+                ))
+                .bind(uid)
+                .fetch_optional(&mut *tx)
+                .await?;
                 let cache = app.cache();
                 let (protected, count) = if let Some(u) = user {
                     let mut groups = u.additionalgroups.clone();

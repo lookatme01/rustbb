@@ -52,6 +52,9 @@ fn require_pm(ctx: &Ctx) -> AppResult<User> {
     Ok(me)
 }
 
+/// Columns of `privatemessages` read into [`PmRow`].
+const PM_COLUMNS: &str = "pmid, uid, toid, fromid, recipients, folder, subject, icon, message, dateline, status, statustime, includesig, smilieoff, receipt, readtime, pgp, pgp_fpr, pgp_payload, pgp_sig";
+
 #[derive(FromRow, serde::Serialize, Clone)]
 struct PmRow {
     pmid: i32,
@@ -215,12 +218,14 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
     let mut pmid = 0;
     let mut pgp_compose = PgpCompose::default();
     if let Some(id) = q.pmid {
-        let pm: Option<PmRow> =
-            sqlx::query_as("SELECT * FROM privatemessages WHERE pmid = $1 AND uid = $2")
-                .bind(id)
-                .bind(me.uid)
-                .fetch_optional(&ctx.app.db)
-                .await?;
+        let pm: Option<PmRow> = sqlx::query_as(&format!(
+            "SELECT {} FROM privatemessages WHERE pmid = $1 AND uid = $2",
+            PM_COLUMNS
+        ))
+        .bind(id)
+        .bind(me.uid)
+        .fetch_optional(&ctx.app.db)
+        .await?;
         if let Some(pm) = pm {
             let from_name: String = sqlx::query_scalar("SELECT username FROM users WHERE uid = $1")
                 .bind(pm.fromid)
@@ -874,12 +879,15 @@ pub async fn send_system_pm(app: &App, uid: i32, subject: &str, msg: &str) -> Ap
 
 pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
     let me = require_pm(&ctx)?;
-    let pm: PmRow = sqlx::query_as("SELECT * FROM privatemessages WHERE pmid = $1 AND uid = $2")
-        .bind(pmid)
-        .bind(me.uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("message"))?;
+    let pm: PmRow = sqlx::query_as(&format!(
+        "SELECT {} FROM privatemessages WHERE pmid = $1 AND uid = $2",
+        PM_COLUMNS
+    ))
+    .bind(pmid)
+    .bind(me.uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("message"))?;
     if pm.folder == 3 {
         return Ok(ctx.redirect(&format!("/pm/send?pmid={pmid}&mode=draft"), ""));
     }

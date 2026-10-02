@@ -406,3 +406,38 @@ pub struct Calendar {
     pub allowvideocode: bool,
     pub allowsmilies: bool,
 }
+
+// Explicit column lists for each model (queries never use `SELECT *`, so adding a column to a
+// table cannot change or break what existing queries read). `tests/columns.rs` checks that every
+// list decodes into its struct.
+pub const USER_COLUMNS: &str = "uid, username, password, email, usergroup, additionalgroups, displaygroup, usertitle, regdate, lastactive, lastvisit, lastpost, website, avatar, avatardimensions, avatartype, signature, birthday, birthdayprivacy, timezone, postnum, threadnum, reputation, warningpoints, moderateposts, moderationtime, suspendposting, suspensiontime, suspendsignature, suspendsigtime, regip, lastip, language, style, away, awaydate, returndate, awayreason, pmnotice, pmnotify, receivepms, receivefrombuddy, buddylist, ignorelist, hideemail, allownotices, subscriptionmethod, invisible, showsigs, showavatars, showimages, showvideos, showquickreply, showredirect, tpp, ppp, threadmode, daysprune, dateformat, timeformat, colormode, referrer, referrals, usernotes, notepad, pmfolders, unreadpms, totalpms, unreadalerts, timeonline, loginattempts, loginlockoutexpiry, totp_secret, session_version, coppauser, is_system";
+pub const THREAD_COLUMNS: &str = "tid, fid, subject, prefix, icon, poll, uid, username, dateline, firstpost, lastpost, lastposter, lastposteruid, views, replies, closed, sticky, numratings, totalratings, notes, visible, unapprovedposts, deletedposts, attachmentcount, deletetime, redirect_expires";
+pub const GROUP_COLUMNS: &str = "gid, type, title, description, namestyle, usertitle, stars, starimage, image, disporder, isbannedgroup, perms, is_system";
+pub const THEME_COLUMNS: &str = "tid, name, pid, def, properties, stylesheet, allowedgroups";
+pub const ICON_COLUMNS: &str = "iid, name, path";
+pub const PREFIX_COLUMNS: &str = "pid, prefix, displaystyle, forums, groups";
+pub const MODERATOR_COLUMNS: &str = "mid, fid, id, isgroup, perms";
+pub const ATTACHTYPE_COLUMNS: &str =
+    "atid, name, mimetype, extension, maxsize, icon, enabled, groups, forums, avatarfile";
+pub const PROFILEFIELD_COLUMNS: &str = "fid, name, description, disporder, type, options, regex, length, maxlength, required, registration, profile, postbit, viewableby, editableby, postnum, allowhtml, allowmycode, allowsmilies";
+pub const USERTITLE_COLUMNS: &str = "utid, posts, title, stars, starimage";
+pub const SMILIE_COLUMNS: &str = "sid, name, find, image, disporder, showclickable";
+pub const ANNOUNCEMENT_COLUMNS: &str =
+    "aid, fid, uid, subject, message, startdate, enddate, allowhtml, allowmycode, allowsmilies";
+pub const REPORTREASON_COLUMNS: &str = "rid, title, appliesto, extra, disporder";
+pub const CALENDAR_COLUMNS: &str = "cid, name, disporder, startofweek, showbirthdays, eventlimit, moderation, allowhtml, allowmycode, allowimgcode, allowvideocode, allowsmilies";
+
+/// `cols` with every column qualified by `alias` (for joins).
+pub fn prefixed(alias: &str, cols: &str) -> String {
+    cols.split(", ")
+        .map(|c| format!("{alias}.{c}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// User columns qualified with `u.` (built once).
+pub static USER_COLUMNS_U: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| prefixed("u", USER_COLUMNS));
+/// Thread columns qualified with `t.` (built once).
+pub static THREAD_COLUMNS_T: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| prefixed("t", THREAD_COLUMNS));

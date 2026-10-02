@@ -45,10 +45,13 @@ pub struct InlineForm {
 }
 
 async fn load_threads(ctx: &Ctx, tids: &[i32]) -> AppResult<Vec<Thread>> {
-    Ok(sqlx::query_as("SELECT * FROM threads WHERE tid = ANY($1)")
-        .bind(tids)
-        .fetch_all(&ctx.app.db)
-        .await?)
+    Ok(sqlx::query_as(&format!(
+        "SELECT {} FROM threads WHERE tid = ANY($1)",
+        crate::models::THREAD_COLUMNS
+    ))
+    .bind(tids)
+    .fetch_all(&ctx.app.db)
+    .await?)
 }
 
 /// Ensure the moderator has `check` permission in every thread's forum.

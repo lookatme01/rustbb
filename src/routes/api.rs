@@ -233,7 +233,7 @@ pub async fn forum_threads(
         0
     };
     let threads: Vec<Thread> = sqlx::query_as(
-        "SELECT * FROM threads WHERE fid = $1 AND visible = ANY($2) AND ($5 = 0 OR uid = $5) ORDER BY sticky DESC, lastpost DESC, tid DESC LIMIT $3 OFFSET $4",
+        &format!("SELECT {} FROM threads WHERE fid = $1 AND visible = ANY($2) AND ($5 = 0 OR uid = $5) ORDER BY sticky DESC, lastpost DESC, tid DESC LIMIT $3 OFFSET $4", crate::models::THREAD_COLUMNS),
     )
     .bind(fid)
     .bind(&states)

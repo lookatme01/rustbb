@@ -95,10 +95,11 @@ impl Cache {
                 self.settings = Arc::new(s);
             }
             "groups" => {
-                let rows: Vec<UserGroup> =
-                    sqlx::query_as("SELECT * FROM usergroups ORDER BY disporder, gid")
-                        .fetch_all(db)
-                        .await?;
+                let rows: Vec<UserGroup> = sqlx::query_as(&format!(
+                    "SELECT {GROUP_COLUMNS} FROM usergroups ORDER BY disporder, gid"
+                ))
+                .fetch_all(db)
+                .await?;
                 self.system_gid = rows
                     .iter()
                     .find(|g| g.is_system)
@@ -160,16 +161,17 @@ impl Cache {
             }
             "moderators" => {
                 self.moderators = Arc::new(
-                    sqlx::query_as("SELECT * FROM moderators")
+                    sqlx::query_as(&format!("SELECT {MODERATOR_COLUMNS} FROM moderators"))
                         .fetch_all(db)
                         .await?,
                 );
             }
             "parser" => {
-                let smilies: Vec<SmilieRow> =
-                    sqlx::query_as("SELECT * FROM smilies ORDER BY disporder, sid")
-                        .fetch_all(db)
-                        .await?;
+                let smilies: Vec<SmilieRow> = sqlx::query_as(&format!(
+                    "SELECT {SMILIE_COLUMNS} FROM smilies ORDER BY disporder, sid"
+                ))
+                .fetch_all(db)
+                .await?;
                 let bad: Vec<(String, bool, String)> =
                     sqlx::query_as("SELECT badword, regex, replacement FROM badwords")
                         .fetch_all(db)
@@ -197,22 +199,25 @@ impl Cache {
             }
             "icons" => {
                 self.icons = Arc::new(
-                    sqlx::query_as("SELECT * FROM icons ORDER BY name")
+                    sqlx::query_as(&format!("SELECT {ICON_COLUMNS} FROM icons ORDER BY name"))
                         .fetch_all(db)
                         .await?,
                 )
             }
             "prefixes" => {
                 self.prefixes = Arc::new(
-                    sqlx::query_as("SELECT * FROM threadprefixes ORDER BY prefix")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {PREFIX_COLUMNS} FROM threadprefixes ORDER BY prefix"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "themes" => {
-                let themes: Vec<Theme> = sqlx::query_as("SELECT * FROM themes ORDER BY tid")
-                    .fetch_all(db)
-                    .await?;
+                let themes: Vec<Theme> =
+                    sqlx::query_as(&format!("SELECT {THEME_COLUMNS} FROM themes ORDER BY tid"))
+                        .fetch_all(db)
+                        .await?;
                 // The version covers the stylesheet and the properties (brand colour, banner…).
                 self.theme_versions = Arc::new(
                     themes
@@ -261,44 +266,56 @@ impl Cache {
             }
             "attachtypes" => {
                 self.attachtypes = Arc::new(
-                    sqlx::query_as("SELECT * FROM attachtypes ORDER BY extension")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {ATTACHTYPE_COLUMNS} FROM attachtypes ORDER BY extension"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "profilefields" => {
                 self.profilefields = Arc::new(
-                    sqlx::query_as("SELECT * FROM profilefields ORDER BY disporder, fid")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {PROFILEFIELD_COLUMNS} FROM profilefields ORDER BY disporder, fid"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "usertitles" => {
                 self.usertitles = Arc::new(
-                    sqlx::query_as("SELECT * FROM usertitles ORDER BY posts DESC")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {USERTITLE_COLUMNS} FROM usertitles ORDER BY posts DESC"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "reportreasons" => {
                 self.reportreasons = Arc::new(
-                    sqlx::query_as("SELECT * FROM reportreasons ORDER BY disporder, rid")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {REPORTREASON_COLUMNS} FROM reportreasons ORDER BY disporder, rid"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "announcements" => {
                 self.announcements = Arc::new(
-                    sqlx::query_as("SELECT * FROM announcements ORDER BY startdate DESC")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {ANNOUNCEMENT_COLUMNS} FROM announcements ORDER BY startdate DESC"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             "calendars" => {
                 self.calendars = Arc::new(
-                    sqlx::query_as("SELECT * FROM calendars ORDER BY disporder, cid")
-                        .fetch_all(db)
-                        .await?,
+                    sqlx::query_as(&format!(
+                        "SELECT {CALENDAR_COLUMNS} FROM calendars ORDER BY disporder, cid"
+                    ))
+                    .fetch_all(db)
+                    .await?,
                 )
             }
             other => anyhow::bail!("unknown cache part {other}"),

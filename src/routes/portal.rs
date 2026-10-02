@@ -26,7 +26,7 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
             .filter(|f| ann_fids.contains(f))
             .collect()
     };
-    let threads: Vec<Thread> = sqlx::query_as("SELECT * FROM threads WHERE fid = ANY($1) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY dateline DESC LIMIT $2")
+    let threads: Vec<Thread> = sqlx::query_as(&format!("SELECT {} FROM threads WHERE fid = ANY($1) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY dateline DESC LIMIT $2", crate::models::THREAD_COLUMNS))
         .bind(&ann_forums)
         .bind(s.int("portal_numannouncements").max(1))
         .fetch_all(&ctx.app.db)

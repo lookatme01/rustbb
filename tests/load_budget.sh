@@ -38,8 +38,13 @@ while read -r name path p95b p99b qb; do
   rps=$(echo "$out" | awk '/Requests\/sec/ {printf "%.0f", $2}')
   p95=$(echo "$out" | awk '/95%% in/ {printf "%.1f", $3*1000}')
   p99=$(echo "$out" | awk '/99%% in/ {printf "%.1f", $3*1000}')
-  total=$(echo "$out" | awk '/\[[0-9]+\]/ {gsub(/[^0-9 ]/,"",$0); split($0,a," "); t+=a[2]} END {print t+0}')
-  errs=$(echo "$out" | awk '/\[[45][0-9][0-9]\]/ {gsub(/[^0-9 ]/,"",$0); split($0,a," "); e+=a[2]} END {print e+0}')
+  # Status codes come from hey's "Status code distribution"; connection failures from its
+  # "Error distribution" (counted as errors too: the client could not get an answer).
+  codes=$(echo "$out" | awk '/Status code distribution/ {on=1; next} /Error distribution/ {on=0} on && /\[[0-9]+\]/')
+  total=$(echo "$codes" | awk '{gsub(/[][]/," "); t+=$2} END {print t+0}')
+  errs=$(echo "$codes" | awk '{gsub(/[][]/," "); if ($1 >= 400) e+=$2} END {print e+0}')
+  conn=$(echo "$out" | awk '/Error distribution/ {on=1; next} on && /\[[0-9]+\]/ {gsub(/[][]/," "); c+=$1} END {print c+0}')
+  errs=$((errs + conn)); total=$((total + conn))
   route=$(echo "$path" | sed 's/?.*//; s/{HOT}/{fid}/; s/{THREAD}/{tid}/; s/{MEGA}/{tid}/; s/{USER}/{uid}/')
   queries=$(metric_avg rbb_db_queries_per_request "$route")
   printf "%-16s %8s %8s %8s %4s/%-5s %8s\n" "$name" "$rps" "$p95" "$p99" "$errs" "$total" "$queries"
@@ -61,7 +66,8 @@ out=$("$HEY" -z 10s -c "${OVERLOAD_CONCURRENCY:-400}" "$BASE/thread/$THREAD" 2>&
 dist=$(echo "$out" | awk '/Status code distribution/,0' | grep -o '\[[0-9]*\][^[]*responses' | tr -s ' ' | paste -sd' ' -)
 p99=$(echo "$out" | awk '/99%% in/ {printf "%.0f", $3*1000}')
 echo "  $dist; p99 ${p99} ms"
-echo "$out" | grep -qE '\[5(0[0-2]|0[4-9]|[1-9][0-9])\]' && bad "server errors under overload (only 429/503 are acceptable)"
+echo "$out" | awk '/Status code distribution/ {on=1; next} /Error distribution/ {on=0} on' \
+  | grep -qE '\[5(0[0-2]|0[4-9]|[1-9][0-9])\]' && bad "server errors under overload (only 429/503 are acceptable)"
 kill -0 "$PID" 2>/dev/null || bad "the server died under overload"
 curl -fsS "$BASE/livez" >/dev/null || bad "not alive after overload"
 

@@ -756,11 +756,14 @@ pub async fn finduser(ctx: Ctx, Query(q): Query<FindQuery>) -> AppResult<Respons
 }
 
 async fn load_user(ctx: &Ctx, uid: i32) -> AppResult<User> {
-    sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("user"))
+    sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("user"))
 }
 
 /// Moderators may not edit/ban users in groups with more power (admins, super mods).

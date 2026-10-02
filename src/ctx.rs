@@ -595,10 +595,10 @@ pub fn avatar_url(avatar: &str, _email: &str, _cache: &Cache) -> String {
 /// was last used, at most once a minute (in the background).
 async fn load_api_token(app: &App, hash: &str, ip: &str) -> Option<(User, i64, Vec<String>)> {
     let row = sqlx::query(
-        "SELECT u.*, t.id AS api_token_id, t.scopes AS api_scopes,
+        &format!("SELECT {}, t.id AS api_token_id, t.scopes AS api_scopes,
                 (t.last_used_at IS NULL OR t.last_used_at < now() - interval '60 seconds') AS api_touch
          FROM api_tokens t JOIN users u ON u.uid = t.uid
-         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.expires_at > now() AND t.audience = 'api/v1'",
+         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.expires_at > now() AND t.audience = 'api/v1'", crate::models::USER_COLUMNS_U.as_str()),
     )
     .bind(hash)
     .fetch_optional(&app.db)
@@ -624,8 +624,8 @@ async fn load_api_token(app: &App, hash: &str, ip: &str) -> Option<(User, i64, V
 
 async fn load_user(app: &App, token_hash: &str) -> Option<(User, String, i64)> {
     let row = sqlx::query(
-        "SELECT u.*, l.csrf AS login_csrf, l.acp_verified AS login_acp FROM logins l JOIN users u ON u.uid = l.uid
-         WHERE l.token_hash = $1 AND l.expires > $2",
+        &format!("SELECT {}, l.csrf AS login_csrf, l.acp_verified AS login_acp FROM logins l JOIN users u ON u.uid = l.uid
+         WHERE l.token_hash = $1 AND l.expires > $2", crate::models::USER_COLUMNS_U.as_str()),
     )
     .bind(token_hash)
     .bind(now())

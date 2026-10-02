@@ -48,11 +48,14 @@ pub struct PostView {
 }
 
 pub async fn load_thread(ctx: &Ctx, tid: i32) -> AppResult<Thread> {
-    sqlx::query_as::<_, Thread>("SELECT * FROM threads WHERE tid = $1")
-        .bind(tid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("thread"))
+    sqlx::query_as::<_, Thread>(&format!(
+        "SELECT {} FROM threads WHERE tid = $1",
+        crate::models::THREAD_COLUMNS
+    ))
+    .bind(tid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("thread"))
 }
 
 /// Load a thread and verify the viewer may see it. Returns (thread, forum, forum perms).

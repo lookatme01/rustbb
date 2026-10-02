@@ -96,7 +96,7 @@ async fn page(
 pub async fn home(ctx: Ctx) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let threads: Vec<crate::models::Thread> = sqlx::query_as(
-        "SELECT t.* FROM threadsubscriptions s JOIN threads t ON t.tid = s.tid WHERE s.uid = $1 AND t.visible = 1 ORDER BY t.lastpost DESC LIMIT 10",
+        &format!("SELECT {} FROM threadsubscriptions s JOIN threads t ON t.tid = s.tid WHERE s.uid = $1 AND t.visible = 1 ORDER BY t.lastpost DESC LIMIT 10", crate::models::THREAD_COLUMNS_T.as_str()),
     )
     .bind(me.uid)
     .fetch_all(&ctx.app.db)
@@ -106,9 +106,10 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
         .filter(|t| ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()))
         .collect();
     let rows = crate::routes::forumdisplay::thread_rows(&ctx, threads).await?;
-    let latest: Vec<crate::models::Thread> = sqlx::query_as(
-        "SELECT * FROM threads WHERE uid = $1 AND visible = 1 ORDER BY lastpost DESC LIMIT 5",
-    )
+    let latest: Vec<crate::models::Thread> = sqlx::query_as(&format!(
+        "SELECT {} FROM threads WHERE uid = $1 AND visible = 1 ORDER BY lastpost DESC LIMIT 5",
+        crate::models::THREAD_COLUMNS
+    ))
     .bind(me.uid)
     .fetch_all(&ctx.app.db)
     .await?;
@@ -947,7 +948,7 @@ pub async fn subscriptions(
     );
     let rows: Vec<(crate::models::Thread, i16)> = {
         let threads: Vec<crate::models::Thread> = sqlx::query_as(
-            "SELECT t.* FROM threadsubscriptions s JOIN threads t ON t.tid = s.tid WHERE s.uid = $1 ORDER BY t.lastpost DESC LIMIT $2 OFFSET $3",
+            &format!("SELECT {} FROM threadsubscriptions s JOIN threads t ON t.tid = s.tid WHERE s.uid = $1 ORDER BY t.lastpost DESC LIMIT $2 OFFSET $3", crate::models::THREAD_COLUMNS_T.as_str()),
         )
         .bind(me.uid)
         .bind(per)

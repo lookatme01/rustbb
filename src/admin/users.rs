@@ -214,11 +214,14 @@ pub async fn new_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
 }
 
 async fn load(ctx: &Ctx, uid: i32) -> AppResult<User> {
-    sqlx::query_as("SELECT * FROM users WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("user"))
+    sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("user"))
 }
 
 pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
