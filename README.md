@@ -44,8 +44,9 @@ cargo build --release && ./target/release/rbb serve
   and view tracking, parsed post HTML cached in the database, permission and configuration caches
   in memory, and an index behind every hot page.
 * **Horizontally scalable.** App nodes are stateless (sessions live in Postgres). Caches are
-  invalidated across nodes with `LISTEN/NOTIFY`, scheduled tasks use advisory locks, and live
-  events fan out through Postgres too. No Redis or message broker needed.
+  invalidated across nodes through a durable log in Postgres (woken by `NOTIFY`), scheduled tasks
+  and background jobs are leased, live events fan out through Postgres too, and web, worker and
+  scheduler roles scale separately. No Redis or message broker needed.
 * **Secure by default.** Argon2id passwords, CSRF on every form, a strict Content Security Policy
   with no inline script, auto-escaping templates, an allow-list MyCode renderer, rate limiting,
   TOTP two-factor authentication, Admin CP re-authentication, login lockout, and registration
@@ -226,10 +227,21 @@ Admin CP and stored in the database.
 | `RBB_LISTEN` | `127.0.0.1:8080` | Address and port to listen on. |
 | `RBB_SECRET` | – | Long random secret for CSRF tokens, captchas, signed cookies and 2FA challenges. Must be identical on all nodes. rbb refuses to start with a placeholder or anything under 32 characters. |
 | `RBB_DB_MAX_CONNECTIONS` | `32` | Database connections per node. |
-| `RBB_UPLOAD_DIR` | `uploads` | Attachments and avatars. Share it between nodes (NFS, EFS…). |
-| `RBB_TRUST_PROXY` | `false` | Read client IPs from `X-Forwarded-For` (the proxy-appended entry) behind a reverse proxy. |
+| `RBB_UPLOAD_DIR` | `uploads` | Attachments and avatars (and temporary uploads). With `local` storage, share it between nodes (NFS, EFS…). |
+| `RBB_STORAGE` | `local` | `local` or `s3` (then `RBB_S3_BUCKET`, `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX`, AWS credentials). |
+| `RBB_MAX_UPLOAD_MB` | `25` | Largest upload; other requests are limited to 2 MiB. |
+| `RBB_TRUST_PROXY` | `false` | Believe `X-Forwarded-For` / `X-Real-IP` from trusted proxies (loopback unless `RBB_TRUSTED_PROXIES` is set). |
+| `RBB_TRUSTED_PROXIES` | – | Addresses/CIDRs of your reverse proxies, e.g. `10.0.0.0/8`. |
 | `RBB_SECURE_COOKIES` | `false` | Mark cookies `Secure` and send HSTS when served over HTTPS. |
-| `RBB_RUN_TASKS` | `true` | Run scheduled tasks on this node (safe on every node: tasks take advisory locks). |
+| `RBB_ROLE` | `all` | `all`, or a comma-separated list of `web`, `worker`, `scheduler`. |
+| `RBB_ADMIN_LISTEN` | – | Internal listener for `/metrics`, `/livez`, `/readyz`. |
+| `RBB_MIGRATE_ON_START` | `true` | Apply migrations at start (turn off with several nodes; run `rbb migrate`). |
+| `RBB_SHUTDOWN_DRAIN_SECS` | `0` | Keep serving this long after SIGTERM while reporting not ready. |
+| `RBB_QUERY_SAMPLE_RATE` | `0.01` | Fraction of requests whose statements are measured for metrics. |
+| `RBB_SLOW_QUERY_MS` | `250` | Log statements slower than this. |
+| `RBB_SSE_MAX`, `RBB_SSE_MAX_PER_IP`, `RBB_SSE_MAX_PER_USER` | `10000`, `20`, `8` | Live-update stream caps per node. |
+| `RBB_PLUGINS_TRUSTED` | `false` | Don't sanitize HTML produced by plugins. |
+| `RBB_RUN_TASKS` | `true` | Deprecated: use `RBB_ROLE` without `scheduler`. |
 | `RBB_PLUGINS_DIR` | `plugins` | Directory of Rhai plugins. |
 | `RBB_PAGE_CACHE_MB` | `64` | Memory for the guest page cache; `0` turns it off. |
 | `RBB_LOG_JSON` | `false` | JSON log lines for log shipping. |
@@ -257,11 +269,11 @@ Admin CP and stored in the database.
             │ axum + tokio│   │             │   │             │
             │ caches, SSE │   │             │   │             │
             └──────┬──────┘   └──────┬──────┘   └──────┬──────┘
-                   │  SQL · LISTEN/NOTIFY · advisory locks │
+                   │ SQL · cluster log + NOTIFY · leases   │
                    └───────────────┬───────────────────────┘
                             ┌──────▼──────┐        ┌──────────────┐
-                            │ PostgreSQL  │        │ shared upload│
-                            └─────────────┘        │  directory   │
+                            │ PostgreSQL  │        │ upload dir or│
+                            └─────────────┘        │ object store │
                                                    └──────────────┘
 ```
 
@@ -275,15 +287,20 @@ Admin CP and stored in the database.
 * **Permissions:** typed permission structs stored as JSONB, so new permissions need no migration.
   A member's effective permissions merge all of their groups. Booleans OR together, and limits take
   the most generous value.
+* **Layers:** HTTP handlers call use cases that own one transaction each (`usecase::Uow`);
+  authorization lives in `domain` (`ForumAccess`, staff capabilities); side effects after commit
+  go through a transactional outbox. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 * **Caching:** board configuration (settings, forums, groups, themes, templates, parser data) lives
-  in an atomically swapped in-memory cache, reloaded on every node via `NOTIFY`. Parsed post HTML
+  in an atomically swapped in-memory cache, reloaded on every node from a durable invalidation log
+  (`cluster_events`, woken by `NOTIFY`). Parsed post HTML
   is stored with a parser revision and re-rendered lazily when MyCode, smilies or filters change.
   Finished guest pages are cached in memory.
 * **Templates:** [minijinja](https://github.com/mitsuhiko/minijinja), compiled at start-up, with
   per-theme overrides stored in the database.
-* **Background work:** a scheduler runs tasks (cleanup, ban lifting, warning expiry, promotions,
-  mass mail, automated moderation, closing inactive threads…). Activity and view counts are
-  buffered and flushed in bulk, and outgoing mail is queued and delivered by a worker.
+* **Background work:** worker processes deliver mail (a leased queue) and run outbox jobs; a
+  scheduler runs leased tasks (cleanup, ban lifting, warning expiry, promotions, mass mail,
+  automated moderation…). Activity and view counts are buffered and flushed in bulk without
+  losing data on failure. Web, worker and scheduler roles can run as separate processes.
 * **Live updates:** Server-Sent Events, fanned out across nodes through Postgres.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -292,7 +309,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 src/
-  main.rs            CLI entry point (serve, migrate, install, seed, recount, check, import-mybb)
+  lib.rs             the application as a library (main.rs is a thin CLI)
+  main.rs            CLI entry point (serve, worker, scheduler, migrate, install, healthcheck, …)
+  server.rs          router, runtime roles, health endpoints, graceful shutdown
+  domain/            forum access policy, staff capabilities, theme file validation
+  usecase/           units of work (transaction + after-commit effects), account lifecycle
+  infra/             outbox, cluster log, metrics, health, uploads, storage, stream limits
+  fuzzing.rs         entry points for the fuzz targets in fuzz/
   app.rs             shared state, cache invalidation, activity batching
   ctx.rs             per-request context: viewer, permissions, CSRF, visibility helpers
   config.rs          environment configuration
@@ -326,7 +349,8 @@ lang/                language packs
 plugins/             example Rhai plugin
 deploy/              systemd unit and nginx configuration
 scripts/             development database helper
-tests/               end-to-end, regression and load-test scripts
+tests/               integration tests (disposable databases), shell end-to-end suites, load budgets
+fuzz/                cargo-fuzz targets (parser, forms, theme import, multipart)
 docs/                architecture, performance, import, PGP and automated moderation guides
 ```
 
@@ -374,10 +398,12 @@ realistic browsing traffic. Measured results: [docs/PERFORMANCE.md](docs/PERFORM
 
 ## Scaling out
 
-Run any number of `rbb serve` nodes behind a load balancer, pointing at the same PostgreSQL
-database and a shared upload directory. Sessions live in Postgres; caches and live events are
-synchronized with `LISTEN/NOTIFY`; scheduled tasks take advisory locks so each runs once. For very
-large boards, add PgBouncer and read replicas as usual.
+Run any number of web nodes behind a load balancer, pointing at the same PostgreSQL database and
+shared storage (an S3-compatible bucket, or a shared upload directory). Run workers
+(`rbb worker`) and a scheduler (`rbb scheduler`) as separate processes on busy boards. Sessions
+live in Postgres; caches follow a durable invalidation log; tasks and jobs are leased so each runs
+once. For very large boards, add PgBouncer and read replicas as usual. See
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Deployment
 

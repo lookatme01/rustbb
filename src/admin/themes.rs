@@ -258,32 +258,33 @@ pub async fn export(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
 
 pub async fn import(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "themes");
-    let data: serde_json::Value = serde_json::from_str(&s(f.fields.get("json")))
-        .map_err(|e| AppError::user(format!("Invalid theme file: {e}")))?;
-    if data["rbb_theme"].as_i64() != Some(1) {
-        return Err(AppError::user("This is not an rbb theme export."));
-    }
-    let name = data["name"]
-        .as_str()
-        .unwrap_or("Imported theme")
-        .to_string();
-    let tid: i32 = sqlx::query_scalar("INSERT INTO themes (name, pid, properties, stylesheet) VALUES ($1, 1, $2, $3) RETURNING tid")
-        .bind(format!("{name} (imported)"))
-        .bind(&data["properties"])
-        .bind(data["stylesheet"].as_str().unwrap_or(""))
-        .fetch_one(&ctx.app.db)
+    let t = crate::domain::theme_export::parse(&s(f.fields.get("json")), |n| {
+        crate::templates::default_template(n).is_some()
+    })
+    .map_err(AppError::User)?;
+    // The theme and its templates arrive together or not at all.
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO themes (name, pid, properties, stylesheet) VALUES ($1, 1, $2, $3) RETURNING tid",
+    )
+    .bind(format!("{} (imported)", t.name))
+    .bind(serde_json::Value::Object(t.properties))
+    .bind(&t.stylesheet)
+    .fetch_one(uow.conn())
+    .await?;
+    for (n, src) in &t.templates {
+        sqlx::query(
+            "INSERT INTO templates (title, theme, template, dateline) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(n)
+        .bind(tid)
+        .bind(src)
+        .bind(now())
+        .execute(uow.conn())
         .await?;
-    if let Some(tpls) = data["templates"].as_object() {
-        for (n, src) in tpls {
-            if crate::templates::default_template(n).is_none() {
-                continue;
-            }
-            if let Some(src) = src.as_str() {
-                sqlx::query("INSERT INTO templates (title, theme, template, dateline) VALUES ($1, $2, $3, $4)").bind(n).bind(tid).bind(src).bind(now()).execute(&ctx.app.db).await?;
-            }
-        }
     }
-    ctx.app.invalidate(&["themes", "templates"]).await?;
+    uow.invalidate(&["themes", "templates"]);
+    uow.commit(&ctx.app).await?;
     Ok(ctx.redirect("/admin/themes", "The theme has been imported."))
 }
 

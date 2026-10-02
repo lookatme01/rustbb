@@ -404,4 +404,50 @@ mod tests {
         let admin = GroupPerms::administrator();
         assert!(admin.cancp && !admin.modposts);
     }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn group() -> impl Strategy<Value = GroupPerms> {
+            (
+                any::<bool>(),
+                any::<bool>(),
+                any::<bool>(),
+                0i32..500,
+                0i32..10,
+                any::<bool>(),
+            )
+                .prop_map(|(view, post, modposts, pmquota, rep, cp)| GroupPerms {
+                    canview: view,
+                    canpostthreads: post,
+                    modposts,
+                    pmquota,
+                    reputationpower: rep,
+                    cancp: cp,
+                    ..GroupPerms::default()
+                })
+        }
+
+        proptest! {
+            /// Combining groups does not depend on their order, and adding a group never takes
+            /// a permission away (except moderation requirements, which any exempt group lifts).
+            #[test]
+            fn merging_is_order_independent_and_monotone(a in group(), b in group(), c in group()) {
+                let mut ab = a.clone(); ab.merge_groups(&b);
+                let mut ba = b.clone(); ba.merge_groups(&a);
+                prop_assert_eq!(&ab, &ba);
+                let mut ab_c = ab.clone(); ab_c.merge_groups(&c);
+                let mut bc = b.clone(); bc.merge_groups(&c);
+                let mut a_bc = a.clone(); a_bc.merge_groups(&bc);
+                prop_assert_eq!(&ab_c, &a_bc);
+                prop_assert!(!a.canview || ab.canview);
+                prop_assert!(!a.cancp || ab.cancp);
+                prop_assert!(ab.modposts == (a.modposts && b.modposts));
+                prop_assert!(ab.reputationpower == a.reputationpower.max(b.reputationpower));
+                // 0 means unlimited and wins.
+                prop_assert!((a.pmquota == 0 || b.pmquota == 0) == (ab.pmquota == 0));
+            }
+        }
+    }
 }

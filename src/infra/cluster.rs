@@ -192,4 +192,27 @@ mod tests {
             assert_eq!(Broadcast::parse(b.kind(), &b.payload()), Some(b));
         }
     }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Whatever order events become visible in (and however often they are re-read),
+            /// each is applied exactly once.
+            #[test]
+            fn each_event_applies_once(order in Just((1i64..=40).collect::<Vec<_>>()).prop_shuffle(), repeats in prop::collection::vec(1i64..=40, 0..30)) {
+                let mut c = Cursor::default();
+                let mut applied = std::collections::HashMap::new();
+                for id in order.iter().chain(repeats.iter()) {
+                    if c.mark(*id) {
+                        *applied.entry(*id).or_insert(0) += 1;
+                    }
+                }
+                prop_assert_eq!(applied.len(), 40);
+                prop_assert!(applied.values().all(|n| *n == 1));
+                prop_assert!(c.gaps.is_empty());
+            }
+        }
+    }
 }

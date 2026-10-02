@@ -15,6 +15,7 @@ pub mod debugbar;
 pub mod doctor;
 pub mod domain;
 pub mod error;
+pub mod fuzzing;
 pub mod i18n;
 pub mod import;
 pub mod infra;

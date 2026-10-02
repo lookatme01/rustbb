@@ -79,10 +79,12 @@ an administrator's request.
 
 ## Scaling out
 
-The web tier is stateless. Caches are invalidated across nodes through
-`NOTIFY rbb_cache`, live events fan out over `NOTIFY rbb_live`, and scheduled
-tasks take advisory locks, so any number of `rbb serve` processes can sit
-behind a load balancer. Set `RBB_RUN_TASKS=false` on nodes that should not run tasks.
+The web tier is stateless. Caches are invalidated across nodes through the
+`cluster_events` log (woken by `NOTIFY rbb_cluster`), live events fan out over
+`NOTIFY rbb_live`, and scheduled tasks and background jobs are leased, so any
+number of web processes can sit behind a load balancer, with workers and the
+scheduler scaled separately (`RBB_ROLE`). Performance budgets are enforced by
+`tests/load_budget.sh` (see `tests/load_budgets.txt`).
 
 ## Reproducing
 

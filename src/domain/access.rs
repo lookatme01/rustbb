@@ -361,4 +361,84 @@ mod tests {
             Some(Denied::NotFound)
         );
     }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// A random forest: forum i (1-based) hangs under a random earlier forum or the root,
+        /// with random active / password / guest-viewable flags.
+        fn forest() -> impl Strategy<Value = Vec<(usize, bool, bool, bool)>> {
+            prop::collection::vec(
+                (0usize..100, any::<bool>(), any::<bool>(), any::<bool>()),
+                1..25,
+            )
+        }
+
+        fn build(spec: &[(usize, bool, bool, bool)]) -> Cache {
+            let mut forums = vec![];
+            let mut parents: Vec<Vec<i32>> = vec![];
+            let mut perms = std::collections::HashMap::new();
+            for (i, (p, active, pw, view)) in spec.iter().enumerate() {
+                let fid = i as i32 + 1;
+                let pid = if i == 0 { 0 } else { (*p % (i + 1)) as i32 };
+                let mut pl = if pid == 0 {
+                    vec![]
+                } else {
+                    parents[(pid - 1) as usize].clone()
+                };
+                pl.push(fid);
+                parents.push(pl.clone());
+                let mut f = forum(fid, pid, pl);
+                f.active = *active;
+                if *pw {
+                    f.password = "hash".into();
+                }
+                forums.push(f);
+                let fp = ForumPerms {
+                    canview: *view,
+                    ..ForumPerms::default()
+                };
+                perms.insert((fid, 1), fp);
+            }
+            let mut c = Cache {
+                forum_perms: std::sync::Arc::new(perms),
+                ..Default::default()
+            };
+            c.forums = std::sync::Arc::new(forums);
+            c.reindex_forums();
+            c
+        }
+
+        proptest! {
+            /// Seeing a forum implies every ancestor is active, viewable and unlocked; readable
+            /// forums are always visible; nothing is readable that is not visible.
+            #[test]
+            fn visibility_is_inherited(spec in forest(), unlock_mask in any::<u32>()) {
+                let c = build(&spec);
+                let unlocked = move |fid: i32| unlock_mask & (1 << (fid % 32)) != 0;
+                let a = guest(&c, &unlocked);
+                for f in c.forums.iter() {
+                    if a.can_see(f.fid) {
+                        for anc in &f.parentlist {
+                            let af = c.forum(*anc).unwrap();
+                            prop_assert!(af.active, "inactive ancestor {anc} of visible {}", f.fid);
+                            prop_assert!(c.forum_perms(&[1], *anc).canview);
+                            prop_assert!(!af.has_password() || unlocked(*anc));
+                        }
+                    }
+                }
+                let (all, own) = a.readable(Purpose::Read);
+                for fid in all.iter().chain(own.iter()) {
+                    prop_assert!(a.can_see(*fid));
+                }
+                // A forum that is listed but not visible is locked by its own password only.
+                for f in c.forums.iter() {
+                    if a.listed(f.fid) && !a.can_see(f.fid) {
+                        prop_assert_eq!(a.forum(f.fid).err(), Some(Denied::Password(f.fid)));
+                    }
+                }
+            }
+        }
+    }
 }

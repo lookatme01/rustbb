@@ -1,0 +1,43 @@
+[package]
+name = "rbb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rbb = { path = ".." }
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "form"
+path = "fuzz_targets/form.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "theme_import"
+path = "fuzz_targets/theme_import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "multipart"
+path = "fuzz_targets/multipart.rs"
+test = false
+doc = false
+bench = false
+
+# Keep the fuzz crate out of the main workspace.
+[workspace]

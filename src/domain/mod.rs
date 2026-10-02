@@ -2,3 +2,4 @@
 
 pub mod access;
 pub mod staff;
+pub mod theme_export;
