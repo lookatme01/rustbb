@@ -98,7 +98,12 @@ impl Plugins {
             .flatten()
             .map(|d| d.path())
             .filter(|p| p.extension().map(|x| x == "rhai").unwrap_or(false))
-            .map(|p| (p.display().to_string(), e.compile_file(p).err().map(|err| err.to_string())))
+            .map(|p| {
+                (
+                    p.display().to_string(),
+                    e.compile_file(p).err().map(|err| err.to_string()),
+                )
+            })
             .collect();
         out.sort();
         out

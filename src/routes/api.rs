@@ -59,17 +59,32 @@ pub async fn token_create(ctx: Ctx, Json(r): Json<TokenReq>) -> AppResult<Respon
     }
     // Same checks as the web login: throttling, ban filters, lockout and failed-attempt
     // accounting, constant-time handling of unknown users.
-    let user = match crate::routes::member::check_credentials(&ctx, &r.username, &r.password).await? {
-        Ok(u) => u,
-        Err(msg) => return Err(AppError::NoPermission(msg)),
-    };
-    if ctx.cache.group(user.usergroup).map(|g| g.isbannedgroup).unwrap_or(false) {
-        return Err(AppError::NoPermission(crate::routes::member::LOGIN_FAILED.into()));
+    let user =
+        match crate::routes::member::check_credentials(&ctx, &r.username, &r.password).await? {
+            Ok(u) => u,
+            Err(msg) => return Err(AppError::NoPermission(msg)),
+        };
+    if ctx
+        .cache
+        .group(user.usergroup)
+        .map(|g| g.isbannedgroup)
+        .unwrap_or(false)
+    {
+        return Err(AppError::NoPermission(
+            crate::routes::member::LOGIN_FAILED.into(),
+        ));
     }
     if !user.totp_secret.is_empty()
-        && !crate::routes::member::totp_consume(&ctx.app, user.uid, &user.totp_secret, &r.code).await?
+        && !crate::routes::member::totp_consume(&ctx.app, user.uid, &user.totp_secret, &r.code)
+            .await?
     {
-        crate::audit::log(&ctx, user.uid, "login_2fa_failed", serde_json::json!({"api": true})).await;
+        crate::audit::log(
+            &ctx,
+            user.uid,
+            "login_2fa_failed",
+            serde_json::json!({"api": true}),
+        )
+        .await;
         return Err(AppError::NoPermission(
             "A valid two-factor code is required (field \"code\").".into(),
         ));
@@ -85,7 +100,13 @@ pub async fn token_create(ctx: Ctx, Json(r): Json<TokenReq>) -> AppResult<Respon
         .bind(util::random_token(32))
         .execute(&ctx.app.db)
         .await?;
-    crate::audit::log(&ctx, user.uid, "api_token", serde_json::json!({"days": days})).await;
+    crate::audit::log(
+        &ctx,
+        user.uid,
+        "api_token",
+        serde_json::json!({"days": days}),
+    )
+    .await;
     ok(serde_json::json!({"token": token, "uid": user.uid, "expires": now() + days * 86400}))
 }
 
@@ -252,7 +273,7 @@ pub async fn create_thread(
         smilieoff: false,
         posthash: String::new(),
         replyto: 0,
-                as_system: false,
+        as_system: false,
     };
     crate::posting::validate(&ctx, &input, true)?;
     crate::posting::check_posting_allowed(&ctx).await?;
@@ -317,7 +338,7 @@ pub async fn create_reply(
         smilieoff: false,
         posthash: String::new(),
         replyto: 0,
-                as_system: false,
+        as_system: false,
     };
     crate::posting::validate(&ctx, &input, false)?;
     crate::posting::check_posting_allowed(&ctx).await?;

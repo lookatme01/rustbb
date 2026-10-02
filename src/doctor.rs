@@ -24,38 +24,56 @@ pub struct AppliedMigration {
     pub success: bool,
 }
 
-fn check(group: &'static str, name: &str, status: Status, detail: impl Into<String>, fix: Option<&str>) -> Check {
-    Check { group, name: name.into(), status, detail: detail.into(), fix: fix.map(str::to_string) }
+fn check(
+    group: &'static str,
+    name: &str,
+    status: Status,
+    detail: impl Into<String>,
+    fix: Option<&str>,
+) -> Check {
+    Check {
+        group,
+        name: name.into(),
+        status,
+        detail: detail.into(),
+        fix: fix.map(str::to_string),
+    }
 }
 
 /// A plain-language fix for a known database error message.
 pub fn db_error_hint(msg: &str) -> Option<&'static str> {
     let m = msg.to_ascii_lowercase();
-    Some(if m.contains("ident authentication failed") || m.contains("peer authentication failed") {
-        "PostgreSQL is checking your operating-system user instead of the password (`ident`/`peer` in pg_hba.conf). \
+    Some(
+        if m.contains("ident authentication failed") || m.contains("peer authentication failed") {
+            "PostgreSQL is checking your operating-system user instead of the password (`ident`/`peer` in pg_hba.conf). \
          Change the matching `host`/`local` lines in pg_hba.conf to `scram-sha-256`, then reload PostgreSQL."
-    } else if m.contains("password authentication failed") {
-        "The database password in DATABASE_URL is wrong, or the role doesn't exist. Check the URL, or reset it with \
+        } else if m.contains("password authentication failed") {
+            "The database password in DATABASE_URL is wrong, or the role doesn't exist. Check the URL, or reset it with \
          `ALTER ROLE <name> PASSWORD '...'`."
-    } else if m.contains("connection refused") {
-        "Nothing is listening at the host and port in DATABASE_URL. Check that PostgreSQL is running, `listen_addresses` \
+        } else if m.contains("connection refused") {
+            "Nothing is listening at the host and port in DATABASE_URL. Check that PostgreSQL is running, `listen_addresses` \
          includes this address, and no firewall is in the way."
-    } else if m.contains("does not exist") && m.contains("database") {
-        "The database in DATABASE_URL doesn't exist. Create it with `createdb -O <role> <name>`."
-    } else if m.contains("pg_trgm") && m.contains("not available") {
-        "The pg_trgm extension isn't installed on the database server. Install your distribution's PostgreSQL contrib \
+        } else if m.contains("does not exist") && m.contains("database") {
+            "The database in DATABASE_URL doesn't exist. Create it with `createdb -O <role> <name>`."
+        } else if m.contains("pg_trgm") && m.contains("not available") {
+            "The pg_trgm extension isn't installed on the database server. Install your distribution's PostgreSQL contrib \
          package (for example `postgresql17-contrib` or `postgresql-contrib`)."
-    } else if m.contains("permission denied for schema") || m.contains("permission denied for database") {
-        "The database role can't create tables. Grant it with `GRANT CREATE ON SCHEMA public TO <role>` \
+        } else if m.contains("permission denied for schema")
+            || m.contains("permission denied for database")
+        {
+            "The database role can't create tables. Grant it with `GRANT CREATE ON SCHEMA public TO <role>` \
          (or make the role own the database)."
-    } else {
-        return None;
-    })
+        } else {
+            return None;
+        },
+    )
 }
 
 /// Attach the plain-language fix to a database error from `serve`/`migrate`, when one is known.
 pub fn hinted(e: anyhow::Error) -> anyhow::Error {
-    let Some(fix) = db_error_hint(&format!("{e:#}")) else { return e };
+    let Some(fix) = db_error_hint(&format!("{e:#}")) else {
+        return e;
+    };
     // The error chain, skipping causes a message already includes (sqlx repeats its cause).
     let mut msg = e.to_string();
     for cause in e.chain().skip(1) {
@@ -75,16 +93,40 @@ pub fn check_secret(secret: Option<&str>) -> Check {
         return check("Configuration", NAME, Status::Fail, "not set", Some(FIX));
     }
     if s.len() < 32 {
-        return check("Configuration", NAME, Status::Fail, format!("only {} characters (32 or more required)", s.len()), Some(FIX));
+        return check(
+            "Configuration",
+            NAME,
+            Status::Fail,
+            format!("only {} characters (32 or more required)", s.len()),
+            Some(FIX),
+        );
     }
     if crate::config::KNOWN_SECRETS.contains(&s) {
-        return check("Configuration", NAME, Status::Fail, "still the example value from the docs", Some(FIX));
+        return check(
+            "Configuration",
+            NAME,
+            Status::Fail,
+            "still the example value from the docs",
+            Some(FIX),
+        );
     }
     let distinct = s.chars().collect::<std::collections::HashSet<_>>().len();
     if distinct < 8 {
-        return check("Configuration", NAME, Status::Warn, format!("long enough but uses only {distinct} different characters"), Some(FIX));
+        return check(
+            "Configuration",
+            NAME,
+            Status::Warn,
+            format!("long enough but uses only {distinct} different characters"),
+            Some(FIX),
+        );
     }
-    check("Configuration", NAME, Status::Ok, format!("set ({} characters)", s.len()), None)
+    check(
+        "Configuration",
+        NAME,
+        Status::Ok,
+        format!("set ({} characters)", s.len()),
+        None,
+    )
 }
 
 /// Warnings about cookie and proxy settings for the board URL (empty when consistent).
@@ -92,8 +134,13 @@ pub fn check_proxy_cookies(bburl: &str, secure_cookies: bool, trust_proxy: bool)
     let mut out = vec![];
     if bburl.starts_with("https://") {
         if !secure_cookies {
-            out.push(check("Configuration", "RBB_SECURE_COOKIES", Status::Warn, "the board URL uses https but cookies aren't marked Secure (and no HSTS)",
-                Some("Set RBB_SECURE_COOKIES=true.")));
+            out.push(check(
+                "Configuration",
+                "RBB_SECURE_COOKIES",
+                Status::Warn,
+                "the board URL uses https but cookies aren't marked Secure (and no HSTS)",
+                Some("Set RBB_SECURE_COOKIES=true."),
+            ));
         }
         if !trust_proxy {
             out.push(check("Configuration", "RBB_TRUST_PROXY", Status::Warn, "the board URL uses https, so rbb is probably behind a TLS proxy, but client IPs are not read from X-Forwarded-For",
@@ -108,8 +155,20 @@ pub fn check_server_version(num: i32) -> Check {
     let (major, minor) = (num / 10000, num % 10000);
     let v = format!("PostgreSQL {major}.{minor}");
     match major {
-        m if m < 12 => check("Database", "PostgreSQL version", Status::Fail, format!("{v}; 12 or newer is required"), Some("Upgrade PostgreSQL (17 recommended).")),
-        m if m < 17 => check("Database", "PostgreSQL version", Status::Warn, format!("{v}; supported but untested (rbb is tested on 17)"), None),
+        m if m < 12 => check(
+            "Database",
+            "PostgreSQL version",
+            Status::Fail,
+            format!("{v}; 12 or newer is required"),
+            Some("Upgrade PostgreSQL (17 recommended)."),
+        ),
+        m if m < 17 => check(
+            "Database",
+            "PostgreSQL version",
+            Status::Warn,
+            format!("{v}; supported but untested (rbb is tested on 17)"),
+            None,
+        ),
         _ => check("Database", "PostgreSQL version", Status::Ok, v, None),
     }
 }
@@ -132,13 +191,27 @@ pub fn compare_migrations(embedded: &[(i64, Vec<u8>)], applied: &[AppliedMigrati
             Some(_) => {}
         }
     }
-    let pending = embedded.iter().filter(|(v, _)| !applied.iter().any(|a| a.version == *v)).count();
+    let pending = embedded
+        .iter()
+        .filter(|(v, _)| !applied.iter().any(|a| a.version == *v))
+        .count();
     if pending > 0 {
-        out.push(check("Database", NAME, Status::Warn, format!("{pending} pending"),
-            Some("They're applied automatically by `rbb serve`, or run `rbb migrate`.")));
+        out.push(check(
+            "Database",
+            NAME,
+            Status::Warn,
+            format!("{pending} pending"),
+            Some("They're applied automatically by `rbb serve`, or run `rbb migrate`."),
+        ));
     }
     if out.is_empty() {
-        out.push(check("Database", NAME, Status::Ok, format!("all {} applied", embedded.len()), None));
+        out.push(check(
+            "Database",
+            NAME,
+            Status::Ok,
+            format!("all {} applied", embedded.len()),
+            None,
+        ));
     }
     out
 }
@@ -148,11 +221,26 @@ pub fn check_pool(pool: u32, max_connections: i32, reserved: i32) -> Check {
     const NAME: &str = "Connection limit";
     let usable = (max_connections - reserved).max(0) as u32;
     let nodes = if pool == 0 { 0 } else { usable / pool };
-    let detail = format!("RBB_DB_MAX_CONNECTIONS={pool}, server allows {usable}: room for {nodes} nodes");
+    let detail =
+        format!("RBB_DB_MAX_CONNECTIONS={pool}, server allows {usable}: room for {nodes} nodes");
     if pool > usable {
-        check("Database", NAME, Status::Fail, detail, Some("Lower RBB_DB_MAX_CONNECTIONS or raise max_connections (or add PgBouncer)."))
+        check(
+            "Database",
+            NAME,
+            Status::Fail,
+            detail,
+            Some("Lower RBB_DB_MAX_CONNECTIONS or raise max_connections (or add PgBouncer)."),
+        )
     } else if nodes < 2 {
-        check("Database", NAME, Status::Warn, detail, Some("Every app node opens its own pool; leave room for a second node, migrations and admin tools."))
+        check(
+            "Database",
+            NAME,
+            Status::Warn,
+            detail,
+            Some(
+                "Every app node opens its own pool; leave room for a second node, migrations and admin tools.",
+            ),
+        )
     } else {
         check("Database", NAME, Status::Ok, detail, None)
     }
@@ -181,12 +269,35 @@ fn config_checks(out: &mut Vec<Check>) {
 
     let listen = env("RBB_LISTEN").unwrap_or_else(|| DEFAULT_LISTEN.into());
     out.push(match listen.parse::<std::net::SocketAddr>() {
-        Err(e) => check("Configuration", "RBB_LISTEN", Status::Fail, format!("“{listen}” is not an address: {e}"), Some("Use host:port, e.g. 127.0.0.1:8080 or 0.0.0.0:8080.")),
+        Err(e) => check(
+            "Configuration",
+            "RBB_LISTEN",
+            Status::Fail,
+            format!("“{listen}” is not an address: {e}"),
+            Some("Use host:port, e.g. 127.0.0.1:8080 or 0.0.0.0:8080."),
+        ),
         Ok(addr) => match std::net::TcpListener::bind(addr) {
-            Ok(_) => check("Configuration", "RBB_LISTEN", Status::Ok, format!("{addr} is free"), None),
-            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => check("Configuration", "RBB_LISTEN", Status::Warn,
-                format!("{addr} is already in use (is rbb already running?)"), Some("Stop the other process or choose another port.")),
-            Err(e) => check("Configuration", "RBB_LISTEN", Status::Fail, format!("can't listen on {addr}: {e}"), Some("Ports below 1024 need extra privileges; use 8080 behind a proxy.")),
+            Ok(_) => check(
+                "Configuration",
+                "RBB_LISTEN",
+                Status::Ok,
+                format!("{addr} is free"),
+                None,
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => check(
+                "Configuration",
+                "RBB_LISTEN",
+                Status::Warn,
+                format!("{addr} is already in use (is rbb already running?)"),
+                Some("Stop the other process or choose another port."),
+            ),
+            Err(e) => check(
+                "Configuration",
+                "RBB_LISTEN",
+                Status::Fail,
+                format!("can't listen on {addr}: {e}"),
+                Some("Ports below 1024 need extra privileges; use 8080 behind a proxy."),
+            ),
         },
     });
 
@@ -203,10 +314,19 @@ fn config_checks(out: &mut Vec<Check>) {
         }
     });
 
-    for (key, default) in [("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS), ("RBB_PAGE_CACHE_MB", DEFAULT_PAGE_CACHE_MB)] {
+    for (key, default) in [
+        ("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS),
+        ("RBB_PAGE_CACHE_MB", DEFAULT_PAGE_CACHE_MB),
+    ] {
         let v = env(key).unwrap_or_else(|| default.into());
         if v.parse::<u64>().is_err() {
-            out.push(check("Configuration", key, Status::Fail, format!("“{v}” is not a number"), None));
+            out.push(check(
+                "Configuration",
+                key,
+                Status::Fail,
+                format!("“{v}” is not a number"),
+                None,
+            ));
         }
     }
     if let Some(dir) = env("RBB_DEV_TEMPLATES") {
@@ -218,11 +338,22 @@ fn config_checks(out: &mut Vec<Check>) {
     let plugins = crate::plugins::Plugins::check_dir(&pdir);
     let broken: Vec<_> = plugins.iter().filter(|(_, e)| e.is_some()).collect();
     for (file, err) in &broken {
-        out.push(check("Plugins", "Plugin", Status::Warn, format!("{file} doesn't compile: {}", err.as_deref().unwrap_or("")),
-            Some("Fix the script or rename it (e.g. add .disabled); rbb skips it until then.")));
+        out.push(check(
+            "Plugins",
+            "Plugin",
+            Status::Warn,
+            format!("{file} doesn't compile: {}", err.as_deref().unwrap_or("")),
+            Some("Fix the script or rename it (e.g. add .disabled); rbb skips it until then."),
+        ));
     }
     if broken.is_empty() {
-        out.push(check("Plugins", "Plugins", Status::Ok, format!("{} loaded from {pdir}", plugins.len()), None));
+        out.push(check(
+            "Plugins",
+            "Plugins",
+            Status::Ok,
+            format!("{} loaded from {pdir}", plugins.len()),
+            None,
+        ));
     }
 }
 
@@ -234,12 +365,24 @@ async fn database_checks(out: &mut Vec<Check>) {
         .connect(&url);
     let db = match tokio::time::timeout(std::time::Duration::from_secs(8), connect).await {
         Ok(Ok(db)) => {
-            out.push(check("Database", "Connection", Status::Ok, redacted(&url), None));
+            out.push(check(
+                "Database",
+                "Connection",
+                Status::Ok,
+                redacted(&url),
+                None,
+            ));
             db
         }
         Ok(Err(e)) => {
             let msg = format!("{e}");
-            out.push(check("Database", "Connection", Status::Fail, format!("{}: {msg}", redacted(&url)), db_error_hint(&msg)));
+            out.push(check(
+                "Database",
+                "Connection",
+                Status::Fail,
+                format!("{}: {msg}", redacted(&url)),
+                db_error_hint(&msg),
+            ));
             return;
         }
         Err(_) => {
@@ -249,7 +392,10 @@ async fn database_checks(out: &mut Vec<Check>) {
         }
     };
 
-    if let Ok(num) = sqlx::query_scalar::<_, String>("SHOW server_version_num").fetch_one(&db).await {
+    if let Ok(num) = sqlx::query_scalar::<_, String>("SHOW server_version_num")
+        .fetch_one(&db)
+        .await
+    {
         out.push(check_server_version(num.parse().unwrap_or(0)));
     }
     let (available, installed): (bool, bool) = sqlx::query_as(
@@ -260,28 +406,72 @@ async fn database_checks(out: &mut Vec<Check>) {
     .await
     .unwrap_or((false, false));
     out.push(match (available, installed) {
-        (_, true) => check("Database", "Extension pg_trgm", Status::Ok, "installed", None),
-        (true, false) => check("Database", "Extension pg_trgm", Status::Ok, "available (the first migration installs it)", None),
-        (false, false) => check("Database", "Extension pg_trgm", Status::Fail, "not available on the server",
-            db_error_hint("extension \"pg_trgm\" is not available")),
+        (_, true) => check(
+            "Database",
+            "Extension pg_trgm",
+            Status::Ok,
+            "installed",
+            None,
+        ),
+        (true, false) => check(
+            "Database",
+            "Extension pg_trgm",
+            Status::Ok,
+            "available (the first migration installs it)",
+            None,
+        ),
+        (false, false) => check(
+            "Database",
+            "Extension pg_trgm",
+            Status::Fail,
+            "not available on the server",
+            db_error_hint("extension \"pg_trgm\" is not available"),
+        ),
     });
-    let can_create: bool = sqlx::query_scalar("SELECT has_schema_privilege('public', 'CREATE')").fetch_one(&db).await.unwrap_or(false);
+    let can_create: bool = sqlx::query_scalar("SELECT has_schema_privilege('public', 'CREATE')")
+        .fetch_one(&db)
+        .await
+        .unwrap_or(false);
     out.push(if can_create {
-        check("Database", "Privileges", Status::Ok, "the role can create tables", None)
+        check(
+            "Database",
+            "Privileges",
+            Status::Ok,
+            "the role can create tables",
+            None,
+        )
     } else {
-        check("Database", "Privileges", Status::Fail, "the role can't create tables in schema public", db_error_hint("permission denied for schema public"))
+        check(
+            "Database",
+            "Privileges",
+            Status::Fail,
+            "the role can't create tables in schema public",
+            db_error_hint("permission denied for schema public"),
+        )
     });
 
-    let embedded: Vec<(i64, Vec<u8>)> = sqlx::migrate!("./migrations").iter().map(|m| (m.version, m.checksum.to_vec())).collect();
-    let has_table: bool = sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations') IS NOT NULL").fetch_one(&db).await.unwrap_or(false);
+    let embedded: Vec<(i64, Vec<u8>)> = sqlx::migrate!("./migrations")
+        .iter()
+        .map(|m| (m.version, m.checksum.to_vec()))
+        .collect();
+    let has_table: bool = sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations') IS NOT NULL")
+        .fetch_one(&db)
+        .await
+        .unwrap_or(false);
     let applied: Vec<AppliedMigration> = if has_table {
-        sqlx::query_as::<_, (i64, Vec<u8>, bool)>("SELECT version, checksum, success FROM _sqlx_migrations ORDER BY version")
-            .fetch_all(&db)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(version, checksum, success)| AppliedMigration { version, checksum, success })
-            .collect()
+        sqlx::query_as::<_, (i64, Vec<u8>, bool)>(
+            "SELECT version, checksum, success FROM _sqlx_migrations ORDER BY version",
+        )
+        .fetch_all(&db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(version, checksum, success)| AppliedMigration {
+            version,
+            checksum,
+            success,
+        })
+        .collect()
     } else {
         vec![]
     };
@@ -301,26 +491,65 @@ async fn database_checks(out: &mut Vec<Check>) {
 }
 
 async fn board_checks(out: &mut Vec<Check>, db: &sqlx::PgPool) {
-    let installed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM usergroups").fetch_one(db).await.unwrap_or(0);
+    let installed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM usergroups")
+        .fetch_one(db)
+        .await
+        .unwrap_or(0);
     if installed == 0 {
         out.push(check("Board", "Installation", Status::Warn, "no board data yet",
             Some("Run `rbb install …`, or start `rbb serve`, which installs itself on an empty database.")));
         return;
     }
-    out.push(check("Board", "Installation", Status::Ok, format!("{installed} user groups"), None));
-    out.push(match sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE is_system").fetch_optional(db).await {
-        Ok(Some(name)) => check("Board", "System account", Status::Ok, format!("present (“{name}”)"), None),
-        _ => check("Board", "System account", Status::Warn, "missing", Some("`rbb serve` creates it on start-up.")),
-    });
-    let rows: Vec<(String, String)> = sqlx::query_as("SELECT name, value FROM settings").fetch_all(db).await.unwrap_or_default();
+    out.push(check(
+        "Board",
+        "Installation",
+        Status::Ok,
+        format!("{installed} user groups"),
+        None,
+    ));
+    out.push(
+        match sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE is_system")
+            .fetch_optional(db)
+            .await
+        {
+            Ok(Some(name)) => check(
+                "Board",
+                "System account",
+                Status::Ok,
+                format!("present (“{name}”)"),
+                None,
+            ),
+            _ => check(
+                "Board",
+                "System account",
+                Status::Warn,
+                "missing",
+                Some("`rbb serve` creates it on start-up."),
+            ),
+        },
+    );
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT name, value FROM settings")
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
     let s = crate::settings::Settings::from_rows(rows);
     let bburl = s.get("bburl").trim();
     if bburl.is_empty() {
-        out.push(check("Board", "Board URL", Status::Warn, "not set", Some("Admin CP → Settings → General → Board URL (used in emails and feeds).")));
+        out.push(check(
+            "Board",
+            "Board URL",
+            Status::Warn,
+            "not set",
+            Some("Admin CP → Settings → General → Board URL (used in emails and feeds)."),
+        ));
     } else {
         out.push(check("Board", "Board URL", Status::Ok, bburl, None));
     }
-    out.extend(check_proxy_cookies(bburl, env("RBB_SECURE_COOKIES").as_deref() == Some("true"), env("RBB_TRUST_PROXY").as_deref() == Some("true")));
+    out.extend(check_proxy_cookies(
+        bburl,
+        env("RBB_SECURE_COOKIES").as_deref() == Some("true"),
+        env("RBB_TRUST_PROXY").as_deref() == Some("true"),
+    ));
     match s.get("mail_handler") {
         "smtp" if s.get("smtp_host").trim().is_empty() => out.push(check("Board", "Mail", Status::Fail, "SMTP is selected but no host is set",
             Some("Admin CP → Settings → Mail: set the SMTP host."))),
@@ -358,8 +587,17 @@ pub async fn run(strict: bool) -> i32 {
     }
     let count = |s: Status| checks.iter().filter(|c| c.status == s).count();
     let (warns, fails) = (count(Status::Warn), count(Status::Fail));
-    println!("\n{} ok, {warns} warning{}, {fails} failure{}", count(Status::Ok), if warns == 1 { "" } else { "s" }, if fails == 1 { "" } else { "s" });
-    if fails > 0 || (strict && warns > 0) { 1 } else { 0 }
+    println!(
+        "\n{} ok, {warns} warning{}, {fails} failure{}",
+        count(Status::Ok),
+        if warns == 1 { "" } else { "s" },
+        if fails == 1 { "" } else { "s" }
+    );
+    if fails > 0 || (strict && warns > 0) {
+        1
+    } else {
+        0
+    }
 }
 
 #[cfg(test)]
@@ -368,26 +606,68 @@ mod tests {
 
     #[test]
     fn hints_for_known_database_errors() {
-        let ident = db_error_hint("error returned from database: Ident authentication failed for user \"rbb\"").unwrap();
-        assert!(ident.contains("pg_hba.conf") && ident.contains("scram-sha-256"), "{ident}");
-        assert!(db_error_hint("Peer authentication failed for user \"rbb\"").unwrap().contains("pg_hba.conf"));
-        assert!(db_error_hint("password authentication failed for user \"rbb\"").unwrap().contains("password"));
-        assert!(db_error_hint("error communicating with database: Connection refused (os error 61)").unwrap().contains("running"));
-        assert!(db_error_hint("database \"rbbx\" does not exist").unwrap().contains("createdb"));
-        let trgm = db_error_hint("while executing migration 1: extension \"pg_trgm\" is not available").unwrap();
+        let ident = db_error_hint(
+            "error returned from database: Ident authentication failed for user \"rbb\"",
+        )
+        .unwrap();
+        assert!(
+            ident.contains("pg_hba.conf") && ident.contains("scram-sha-256"),
+            "{ident}"
+        );
+        assert!(
+            db_error_hint("Peer authentication failed for user \"rbb\"")
+                .unwrap()
+                .contains("pg_hba.conf")
+        );
+        assert!(
+            db_error_hint("password authentication failed for user \"rbb\"")
+                .unwrap()
+                .contains("password")
+        );
+        assert!(
+            db_error_hint("error communicating with database: Connection refused (os error 61)")
+                .unwrap()
+                .contains("running")
+        );
+        assert!(
+            db_error_hint("database \"rbbx\" does not exist")
+                .unwrap()
+                .contains("createdb")
+        );
+        let trgm =
+            db_error_hint("while executing migration 1: extension \"pg_trgm\" is not available")
+                .unwrap();
         assert!(trgm.contains("contrib"), "{trgm}");
-        assert!(db_error_hint("permission denied for schema public").unwrap().contains("CREATE"));
+        assert!(
+            db_error_hint("permission denied for schema public")
+                .unwrap()
+                .contains("CREATE")
+        );
         assert_eq!(db_error_hint("something nobody has seen before"), None);
     }
 
     #[test]
     fn known_database_errors_get_a_fix_attached() {
-        let e = format!("{:#}", hinted(anyhow::anyhow!("Ident authentication failed for user \"rbb\"")));
-        assert!(e.contains("Ident authentication failed") && e.contains("pg_hba.conf"), "{e}");
-        assert_eq!(format!("{:#}", hinted(anyhow::anyhow!("disk full"))), "disk full");
+        let e = format!(
+            "{:#}",
+            hinted(anyhow::anyhow!(
+                "Ident authentication failed for user \"rbb\""
+            ))
+        );
+        assert!(
+            e.contains("Ident authentication failed") && e.contains("pg_hba.conf"),
+            "{e}"
+        );
+        assert_eq!(
+            format!("{:#}", hinted(anyhow::anyhow!("disk full"))),
+            "disk full"
+        );
         let wrapped = anyhow::anyhow!("database \"x\" does not exist").context("connecting");
         let shown = format!("{:#}", hinted(wrapped));
-        assert!(shown.starts_with("connecting: database \"x\" does not exist"), "keeps the cause: {shown}");
+        assert!(
+            shown.starts_with("connecting: database \"x\" does not exist"),
+            "keeps the cause: {shown}"
+        );
         assert_eq!(shown.matches("does not exist").count(), 1, "{shown}");
     }
 
@@ -396,24 +676,47 @@ mod tests {
         assert_eq!(check_secret(None).status, Status::Fail);
         assert_eq!(check_secret(Some("")).status, Status::Fail);
         assert_eq!(check_secret(Some("short")).status, Status::Fail);
-        assert_eq!(check_secret(Some("change-me-to-a-long-random-string")).status, Status::Fail);
-        assert_eq!(check_secret(Some(&"a".repeat(40))).status, Status::Warn, "long but trivially guessable");
-        let ok = check_secret(Some("0cd49e2f52c5f60e0d1b60da6d4cbd5f61675a1b7343576d08861fd4f60fb753"));
+        assert_eq!(
+            check_secret(Some("change-me-to-a-long-random-string")).status,
+            Status::Fail
+        );
+        assert_eq!(
+            check_secret(Some(&"a".repeat(40))).status,
+            Status::Warn,
+            "long but trivially guessable"
+        );
+        let ok = check_secret(Some(
+            "0cd49e2f52c5f60e0d1b60da6d4cbd5f61675a1b7343576d08861fd4f60fb753",
+        ));
         assert_eq!(ok.status, Status::Ok);
-        assert!(!ok.detail.contains("0cd49e2f"), "the secret itself is never printed");
-        assert!(check_secret(None).fix.unwrap().contains("openssl rand -hex 32"));
+        assert!(
+            !ok.detail.contains("0cd49e2f"),
+            "the secret itself is never printed"
+        );
+        assert!(
+            check_secret(None)
+                .fix
+                .unwrap()
+                .contains("openssl rand -hex 32")
+        );
     }
 
     #[test]
     fn https_board_needs_secure_cookies() {
         let w = check_proxy_cookies("https://forum.example.com", false, true);
-        assert!(w.iter().any(|c| c.name.contains("RBB_SECURE_COOKIES") && c.status == Status::Warn));
+        assert!(
+            w.iter()
+                .any(|c| c.name.contains("RBB_SECURE_COOKIES") && c.status == Status::Warn)
+        );
     }
 
     #[test]
     fn https_board_usually_sits_behind_a_proxy() {
         let w = check_proxy_cookies("https://forum.example.com", true, false);
-        assert!(w.iter().any(|c| c.name.contains("RBB_TRUST_PROXY") && c.status == Status::Warn));
+        assert!(
+            w.iter()
+                .any(|c| c.name.contains("RBB_TRUST_PROXY") && c.status == Status::Warn)
+        );
     }
 
     #[test]
@@ -432,7 +735,11 @@ mod tests {
     }
 
     fn applied(version: i64, checksum: &[u8], success: bool) -> AppliedMigration {
-        AppliedMigration { version, checksum: checksum.to_vec(), success }
+        AppliedMigration {
+            version,
+            checksum: checksum.to_vec(),
+            success,
+        }
     }
 
     #[test]
@@ -446,33 +753,55 @@ mod tests {
     fn pending_migrations_warn() {
         let emb = vec![(1, vec![1]), (2, vec![2]), (3, vec![3])];
         let c = compare_migrations(&emb, &[applied(1, &[1], true)]);
-        let p = c.iter().find(|c| c.status == Status::Warn).expect("pending warning");
+        let p = c
+            .iter()
+            .find(|c| c.status == Status::Warn)
+            .expect("pending warning");
         assert!(p.detail.contains("2 pending"), "{}", p.detail);
     }
 
     #[test]
     fn migrations_from_a_newer_rbb_fail() {
-        let c = compare_migrations(&[(1, vec![1])], &[applied(1, &[1], true), applied(9, &[9], true)]);
-        assert!(c.iter().any(|c| c.status == Status::Fail && c.detail.contains("9")));
+        let c = compare_migrations(
+            &[(1, vec![1])],
+            &[applied(1, &[1], true), applied(9, &[9], true)],
+        );
+        assert!(
+            c.iter()
+                .any(|c| c.status == Status::Fail && c.detail.contains("9"))
+        );
     }
 
     #[test]
     fn changed_migration_fails() {
         let c = compare_migrations(&[(1, vec![1])], &[applied(1, &[7], true)]);
-        assert!(c.iter().any(|c| c.status == Status::Fail && c.detail.contains("changed")));
+        assert!(
+            c.iter()
+                .any(|c| c.status == Status::Fail && c.detail.contains("changed"))
+        );
     }
 
     #[test]
     fn failed_migration_fails() {
         let c = compare_migrations(&[(1, vec![1])], &[applied(1, &[1], false)]);
-        assert!(c.iter().any(|c| c.status == Status::Fail && c.detail.contains("failed")));
+        assert!(
+            c.iter()
+                .any(|c| c.status == Status::Fail && c.detail.contains("failed"))
+        );
     }
 
     #[test]
     fn pool_against_server_limit() {
         assert_eq!(check_pool(32, 100, 3).status, Status::Ok);
-        assert_eq!(check_pool(80, 100, 3).status, Status::Warn, "one node uses most of the server's connections");
+        assert_eq!(
+            check_pool(80, 100, 3).status,
+            Status::Warn,
+            "one node uses most of the server's connections"
+        );
         assert_eq!(check_pool(120, 100, 3).status, Status::Fail);
-        assert!(check_pool(32, 100, 3).detail.contains("3 nodes"), "says how many nodes fit");
+        assert!(
+            check_pool(32, 100, 3).detail.contains("3 nodes"),
+            "says how many nodes fit"
+        );
     }
 }

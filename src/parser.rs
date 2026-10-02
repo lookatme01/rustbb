@@ -1244,9 +1244,17 @@ pub fn sanitize_html(input: &str) -> String {
                     let v = html_unescape(val).to_ascii_lowercase();
                     // No external loads, legacy script hooks, or layout that can escape the
                     // post body to overlay the page (fake login boxes, hidden click targets).
-                    !["url(", "expression", "@import", "behavior", "position", "\\", "/*"]
-                        .iter()
-                        .any(|bad| v.contains(bad))
+                    ![
+                        "url(",
+                        "expression",
+                        "@import",
+                        "behavior",
+                        "position",
+                        "\\",
+                        "/*",
+                    ]
+                    .iter()
+                    .any(|bad| v.contains(bad))
                 }
                 "target" | "rel" | "allowfullscreen" | "referrerpolicy" | "sandbox" | "data-ts" => {
                     true
@@ -1284,7 +1292,13 @@ fn html_unescape(s: &str) -> String {
 /// each `[` on its own, is wrapped in `[noparse]`, so no segment can contain a closing tag.
 pub fn literal(text: &str) -> String {
     text.split('[')
-        .map(|seg| if seg.is_empty() { String::new() } else { format!("[noparse]{seg}[/noparse]") })
+        .map(|seg| {
+            if seg.is_empty() {
+                String::new()
+            } else {
+                format!("[noparse]{seg}[/noparse]")
+            }
+        })
         .collect::<Vec<_>>()
         .join("[noparse][[/noparse]")
 }
@@ -1428,9 +1442,22 @@ mod tests {
 
     #[test]
     fn literal_text_cannot_open_tags() {
-        for evil in ["[url=https://evil.example]Admin[/url]", "[img]https://evil.example/x.png[/img]", "a[/noparse][b]x[/b]", "[[b]]", "https://evil.example", "x[/NOPARSE][url]https://e.example[/url]"] {
+        for evil in [
+            "[url=https://evil.example]Admin[/url]",
+            "[img]https://evil.example/x.png[/img]",
+            "a[/noparse][b]x[/b]",
+            "[[b]]",
+            "https://evil.example",
+            "x[/NOPARSE][url]https://e.example[/url]",
+        ] {
             let html = p(&literal(evil));
-            assert!(!html.contains("<a") && !html.contains("<img") && !html.contains("<strong") && !html.contains("<b>"), "{evil} -> {html}");
+            assert!(
+                !html.contains("<a")
+                    && !html.contains("<img")
+                    && !html.contains("<strong")
+                    && !html.contains("<b>"),
+                "{evil} -> {html}"
+            );
             assert_eq!(html, escape_html(evil), "{evil} renders verbatim");
         }
         assert_eq!(p(&literal("Plain Name")), "Plain Name");
@@ -1554,8 +1581,12 @@ mod tests {
     #[test]
     fn html_forum_posts_are_safe() {
         let data = ParserData::default();
-        let o = ParseOptions { allow_html: true, ..Default::default() };
-        let h = Parser::new(&data, &o).parse("hi <meta http-equiv=refresh content=\"0;url=//evil.example/x\"");
+        let o = ParseOptions {
+            allow_html: true,
+            ..Default::default()
+        };
+        let h = Parser::new(&data, &o)
+            .parse("hi <meta http-equiv=refresh content=\"0;url=//evil.example/x\"");
         assert!(!h.contains("<meta"), "{h}");
     }
 

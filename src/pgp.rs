@@ -115,14 +115,18 @@ pub fn parse_public_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Key
             "That is a private key. Only your public key is ever sent to the board.",
         ));
     }
-    let (mut key, _) = SignedPublicKey::from_string(armored)
-        .map_err(|e| err(format!("That doesn't look like an OpenPGP public key ({e}).")))?;
+    let (mut key, _) = SignedPublicKey::from_string(armored).map_err(|e| {
+        err(format!(
+            "That doesn't look like an OpenPGP public key ({e})."
+        ))
+    })?;
     // Drop what the board has no use for: photo IDs and certifications made by other keys.
     key.details.user_attributes.clear();
     let primary_id = key.primary_key.legacy_key_id();
     for u in key.details.users.iter_mut() {
-        u.signatures
-            .retain(|s| s.issuer_key_id().iter().any(|id| **id == primary_id) || s.issuer_key_id().is_empty());
+        u.signatures.retain(|s| {
+            s.issuer_key_id().iter().any(|id| **id == primary_id) || s.issuer_key_id().is_empty()
+        });
     }
     key.verify_bindings()
         .map_err(|e| err(format!("The key's self-signatures are invalid ({e}).")))?;
@@ -135,7 +139,9 @@ pub fn parse_public_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Key
 
     let created = key.primary_key.created_at().as_secs() as i64;
     if created > now + MAX_CLOCK_SKEW {
-        return Err(err("That key was created in the future. Check your device's clock."));
+        return Err(err(
+            "That key was created in the future. Check your device's clock.",
+        ));
     }
     let algorithm = algorithm_label(key.primary_key.public_params(), key.primary_key.algorithm())?;
 
@@ -163,7 +169,9 @@ pub fn parse_public_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Key
         encryption_key_ids.push(kid(&key.primary_key.legacy_key_id()));
     }
     for sk in &key.public_subkeys {
-        let Some(binding) = newest(sk.signatures.iter()) else { continue };
+        let Some(binding) = newest(sk.signatures.iter()) else {
+            continue;
+        };
         let sub_created = sk.key.created_at().as_secs() as i64;
         let sub_expired = binding
             .key_expiration_time()
@@ -182,7 +190,9 @@ pub fn parse_public_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Key
         }
     }
     if !can_sign {
-        return Err(err("That key can't make signatures (it has no signing key)."));
+        return Err(err(
+            "That key can't make signatures (it has no signing key).",
+        ));
     }
     if encryption_key_ids.is_empty() {
         return Err(err(
@@ -193,7 +203,12 @@ pub fn parse_public_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Key
         .details
         .users
         .iter()
-        .map(|u| String::from_utf8_lossy(u.id.id()).chars().take(200).collect())
+        .map(|u| {
+            String::from_utf8_lossy(u.id.id())
+                .chars()
+                .take(200)
+                .collect()
+        })
         .collect();
     let normalised = key
         .to_armored_string(Default::default())
@@ -224,7 +239,10 @@ pub fn check_backup(armored: &str, fingerprint: &str) -> Result<(), String> {
         return Err(err("The key backup is for a different key."));
     }
     let locked = key.primary_key.secret_params().is_encrypted()
-        && key.secret_subkeys.iter().all(|k| k.key.secret_params().is_encrypted());
+        && key
+            .secret_subkeys
+            .iter()
+            .all(|k| k.key.secret_params().is_encrypted());
     if !locked {
         return Err(err(
             "Refusing to store a private key that isn't protected by a passphrase.",
@@ -236,7 +254,11 @@ pub fn check_backup(armored: &str, fingerprint: &str) -> Result<(), String> {
 /// Verify a detached signature over `data`, made by the primary key or a signing subkey of `key`.
 /// The signature must be binary-mode (`createMessage({ binary })` in OpenPGP.js) or text-mode
 /// over already-canonical text; both are accepted since both are unambiguous for our payloads.
-pub fn verify_detached(key: &SignedPublicKey, armored_sig: &str, data: &[u8]) -> Result<(), String> {
+pub fn verify_detached(
+    key: &SignedPublicKey,
+    armored_sig: &str,
+    data: &[u8],
+) -> Result<(), String> {
     if armored_sig.len() > MAX_SIG_LEN {
         return Err(err("That signature is too large."));
     }
@@ -284,7 +306,9 @@ pub fn encrypted_recipients(armored: &str) -> Result<Vec<String>, String> {
         return Err(err("That encrypted message is too large."));
     }
     if !armored.starts_with("-----BEGIN PGP MESSAGE-----") {
-        return Err(err("The encrypted message is not an armored OpenPGP message."));
+        return Err(err(
+            "The encrypted message is not an armored OpenPGP message.",
+        ));
     }
     let mut dearmor = pgp::armor::Dearmor::new(BufReader::new(armored.as_bytes()));
     dearmor
@@ -320,7 +344,11 @@ pub fn encrypted_recipients(armored: &str) -> Result<Vec<String>, String> {
 
 /// True if a PKESK recipient entry (key ID or fingerprint) addresses one of `key_ids`.
 pub fn recipient_matches(entry: &str, key_ids: &[String]) -> bool {
-    key_ids.iter().any(|id| entry == id || (entry.len() > 16 && (entry.ends_with(id.as_str()) || entry.starts_with(id.as_str()))))
+    key_ids.iter().any(|id| {
+        entry == id
+            || (entry.len() > 16
+                && (entry.ends_with(id.as_str()) || entry.starts_with(id.as_str())))
+    })
 }
 
 // ------------------------------------------------------------------ signed statements
@@ -386,8 +414,12 @@ pub fn make_challenge(secret: &str, uid: i32, ts: i64) -> String {
 }
 
 pub fn check_challenge(secret: &str, uid: i32, challenge: &str, now: i64) -> bool {
-    let Some((ts, _)) = challenge.split_once('.') else { return false };
-    let Ok(ts) = ts.parse::<i64>() else { return false };
+    let Some((ts, _)) = challenge.split_once('.') else {
+        return false;
+    };
+    let Ok(ts) = ts.parse::<i64>() else {
+        return false;
+    };
     if now - ts > 1800 || ts - now > MAX_CLOCK_SKEW {
         return false;
     }
@@ -440,9 +472,17 @@ mod tests {
     fn reads_encrypted_recipients() {
         let (_, info) = parse_public_key(PUB, NOW).unwrap();
         let ids = encrypted_recipients(ENC).expect("encrypted message");
-        assert!(ids.iter().any(|e| recipient_matches(e, &info.encryption_key_ids)), "{ids:?} vs {:?}", info.encryption_key_ids);
+        assert!(
+            ids.iter()
+                .any(|e| recipient_matches(e, &info.encryption_key_ids)),
+            "{ids:?} vs {:?}",
+            info.encryption_key_ids
+        );
         assert!(encrypted_recipients(PUB).is_err());
-        assert!(encrypted_recipients("-----BEGIN PGP MESSAGE-----\n\nAAAA\n-----END PGP MESSAGE-----").is_err());
+        assert!(
+            encrypted_recipients("-----BEGIN PGP MESSAGE-----\n\nAAAA\n-----END PGP MESSAGE-----")
+                .is_err()
+        );
     }
 
     #[test]
@@ -452,16 +492,40 @@ mod tests {
         assert!(check_backup(SEC, "00").is_err());
         assert!(check_backup(PUB, &fpr).is_err());
         let plain = include_str!("../tests/fixtures/pgp/sec_unlocked.asc");
-        assert!(check_backup(plain, &fpr).unwrap_err().contains("passphrase"));
+        assert!(
+            check_backup(plain, &fpr)
+                .unwrap_err()
+                .contains("passphrase")
+        );
     }
 
     #[test]
     fn challenges_expire_and_bind_uid() {
         let c = make_challenge("s3cret-s3cret-s3cret-s3cret", 7, NOW);
-        assert!(check_challenge("s3cret-s3cret-s3cret-s3cret", 7, &c, NOW + 60));
-        assert!(!check_challenge("s3cret-s3cret-s3cret-s3cret", 8, &c, NOW + 60));
-        assert!(!check_challenge("s3cret-s3cret-s3cret-s3cret", 7, &c, NOW + 3600));
-        assert!(!check_challenge("s3cret-s3cret-s3cret-s3cret", 7, "garbage", NOW));
+        assert!(check_challenge(
+            "s3cret-s3cret-s3cret-s3cret",
+            7,
+            &c,
+            NOW + 60
+        ));
+        assert!(!check_challenge(
+            "s3cret-s3cret-s3cret-s3cret",
+            8,
+            &c,
+            NOW + 60
+        ));
+        assert!(!check_challenge(
+            "s3cret-s3cret-s3cret-s3cret",
+            7,
+            &c,
+            NOW + 3600
+        ));
+        assert!(!check_challenge(
+            "s3cret-s3cret-s3cret-s3cret",
+            7,
+            "garbage",
+            NOW
+        ));
     }
 
     #[test]

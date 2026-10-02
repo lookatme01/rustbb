@@ -149,7 +149,8 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         Some(d) => {
             let r = tokio::task::spawn_blocking(move || -> Result<Option<Vec<u8>>, String> {
                 let img = crate::util::decode_image(&d).map_err(|_| {
-                    "The image appears to be corrupt, too large, or is not a supported format.".to_string()
+                    "The image appears to be corrupt, too large, or is not a supported format."
+                        .to_string()
                 })?;
                 if img.width() <= tw && img.height() <= th {
                     return Ok(None);

@@ -363,7 +363,14 @@ pub async fn erasurelog(ctx: Ctx) -> AppResult<Response> {
     )
     .fetch_all(&ctx.app.db)
     .await?;
-    crate::admin::page(&ctx, "admin/erasurelog.html", "tools", "Erasure Log", minijinja::context! { rows => rows }).await
+    crate::admin::page(
+        &ctx,
+        "admin/erasurelog.html",
+        "tools",
+        "Erasure Log",
+        minijinja::context! { rows => rows },
+    )
+    .await
 }
 
 pub async fn maillogs(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {

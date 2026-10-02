@@ -63,7 +63,9 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
             .await?
             .ok_or_else(|| AppError::not_found("message"))?;
             if from == 0 || ctx.cache.is_system(from) {
-                return Err(AppError::user("Automated messages from the System account can't be reported."));
+                return Err(AppError::user(
+                    "Automated messages from the System account can't be reported.",
+                ));
             }
             Ok((id, from, 0, "a private message".into()))
         }

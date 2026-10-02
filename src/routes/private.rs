@@ -238,13 +238,19 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                 };
                 pgp_compose = PgpCompose {
                     mode: "encrypt".into(),
-                    source: Some(serde_json::json!({ "mode": mode, "armored": pm.message, "from": from_name, "fromid": pm.fromid })),
+                    source: Some(
+                        serde_json::json!({ "mode": mode, "armored": pm.message, "from": from_name, "fromid": pm.fromid }),
+                    ),
                 };
             }
             match q.mode.as_deref() {
                 Some("forward") => {
                     subject = format!("Fw: {}", pm.subject.trim_start_matches("Fw: "));
-                    message = if pm.pgp == 2 { String::new() } else { format!("\n\n[quote='{from_name}']\n{}\n[/quote]", pm.message) };
+                    message = if pm.pgp == 2 {
+                        String::new()
+                    } else {
+                        format!("\n\n[quote='{from_name}']\n{}\n[/quote]", pm.message)
+                    };
                 }
                 Some("replyall") => {
                     subject = format!("Re: {}", pm.subject.trim_start_matches("Re: "));
@@ -268,11 +274,19 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                     }
                     names.dedup();
                     to = names.join(", ");
-                    message = if pm.pgp == 2 { String::new() } else { format!("[quote='{from_name}']\n{}\n[/quote]\n", pm.message) };
+                    message = if pm.pgp == 2 {
+                        String::new()
+                    } else {
+                        format!("[quote='{from_name}']\n{}\n[/quote]\n", pm.message)
+                    };
                 }
                 Some("draft") if pm.folder == 3 => {
                     subject = pm.subject.clone();
-                    message = if pm.pgp == 2 { String::new() } else { pm.message.clone() };
+                    message = if pm.pgp == 2 {
+                        String::new()
+                    } else {
+                        pm.message.clone()
+                    };
                     let ids: Vec<i32> = pm.recipients.0["to"]
                         .as_array()
                         .map(|a| {
@@ -292,8 +306,16 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                 _ => {
                     subject = format!("Re: {}", pm.subject.trim_start_matches("Re: "));
                     // System messages are automated: there is nobody to reply to.
-                    to = if ctx.cache.is_system(pm.fromid) { String::new() } else { from_name.clone() };
-                    message = if pm.pgp == 2 { String::new() } else { format!("[quote='{from_name}']\n{}\n[/quote]\n", pm.message) };
+                    to = if ctx.cache.is_system(pm.fromid) {
+                        String::new()
+                    } else {
+                        from_name.clone()
+                    };
+                    message = if pm.pgp == 2 {
+                        String::new()
+                    } else {
+                        format!("[quote='{from_name}']\n{}\n[/quote]\n", pm.message)
+                    };
                 }
             }
         }
@@ -374,10 +396,15 @@ async fn check_pgp(
         .map_err(|e| e.to_string())?
         .ok_or("You need an encryption key to sign or encrypt messages. Set one up under User CP → Encryption & identity.")?;
     if !f.bcc.trim().is_empty() {
-        return Err("BCC can't be used with signed or encrypted messages; add everyone to “To”.".into());
+        return Err(
+            "BCC can't be used with signed or encrypted messages; add everyone to “To”.".into(),
+        );
     }
     match f.pgp_mode.as_str() {
-        "sign" if draft => Ok(PgpStored { body: pgp::normalize_body(&f.message), ..Default::default() }),
+        "sign" if draft => Ok(PgpStored {
+            body: pgp::normalize_body(&f.message),
+            ..Default::default()
+        }),
         "sign" => {
             let p: pgp::MessagePayload = serde_json::from_str(&f.pgp_payload)
                 .map_err(|_| "The message signature is malformed.".to_string())?;
@@ -402,7 +429,9 @@ async fn check_pgp(
                 None
             };
             if let Some(why) = problem {
-                return Err(format!("The signature doesn't match this message ({why}). Please try again."));
+                return Err(format!(
+                    "The signature doesn't match this message ({why}). Please try again."
+                ));
             }
             let (key, _) = pgp::parse_public_key(&mine.armored, now)?;
             pgp::verify_detached(&key, &f.pgp_sig, f.pgp_payload.as_bytes())
@@ -419,22 +448,40 @@ async fn check_pgp(
             let entries = pgp::encrypted_recipients(&f.message)?;
             let addressed = |ids: &[String]| entries.iter().any(|e| pgp::recipient_matches(e, ids));
             if !addressed(&mine.enc_keyids) {
-                return Err("The message isn't encrypted to your own key, so you couldn't read your copy.".into());
+                return Err(
+                    "The message isn't encrypted to your own key, so you couldn't read your copy."
+                        .into(),
+                );
             }
             if !draft {
                 let uids: Vec<i32> = recipients.iter().map(|r| r.uid).collect();
-                let keys = crate::routes::pgp::active_keys(ctx, &uids).await.map_err(|e| e.to_string())?;
+                let keys = crate::routes::pgp::active_keys(ctx, &uids)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 for r in recipients {
                     match keys.iter().find(|k| k.uid == r.uid) {
-                        None => return Err(format!("{} doesn't have an encryption key, so they couldn't read an encrypted message.", r.username)),
+                        None => {
+                            return Err(format!(
+                                "{} doesn't have an encryption key, so they couldn't read an encrypted message.",
+                                r.username
+                            ));
+                        }
                         Some(k) if !addressed(&k.enc_keyids) => {
-                            return Err(format!("{}'s key changed while you were writing. Please send again.", r.username));
+                            return Err(format!(
+                                "{}'s key changed while you were writing. Please send again.",
+                                r.username
+                            ));
                         }
                         _ => {}
                     }
                 }
             }
-            Ok(PgpStored { level: 2, fpr: mine.fingerprint, body: f.message.trim().to_string(), ..Default::default() })
+            Ok(PgpStored {
+                level: 2,
+                fpr: mine.fingerprint,
+                body: f.message.trim().to_string(),
+                ..Default::default()
+            })
         }
         _ => Err("Unknown message protection.".into()),
     }
@@ -482,7 +529,12 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
         if !f.savedraft.is_empty() {
             errors.push("Messages sent as System can't be saved as drafts. Untick “Send as System” to save a draft.".into());
         }
-        if f.preview.is_empty() && f.savedraft.is_empty() && !ctx.app.rate_check(&format!("pmassystem:{}", me.uid), 60, 3600) {
+        if f.preview.is_empty()
+            && f.savedraft.is_empty()
+            && !ctx
+                .app
+                .rate_check(&format!("pmassystem:{}", me.uid), 60, 3600)
+        {
             return Err(AppError::RateLimited);
         }
         crate::system::identity(&ctx.app).await?
@@ -579,7 +631,10 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
         .filter(|r| to_names.iter().any(|n| n.eq_ignore_ascii_case(&r.username)))
         .map(|r| r.uid)
         .collect();
-    let mut stored = PgpStored { body: f.message.clone(), ..Default::default() };
+    let mut stored = PgpStored {
+        body: f.message.clone(),
+        ..Default::default()
+    };
     if !f.pgp_mode.is_empty() && f.preview.is_empty() && errors.is_empty() {
         match check_pgp(&ctx, &me, &f, &recipients, &to_ids, !f.savedraft.is_empty()).await {
             Ok(x) => stored = x,
@@ -596,10 +651,14 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
     };
     if !f.preview.is_empty() || !errors.is_empty() {
         // An encrypted body can't go back into the form as-is: the browser decrypts it again.
-        let encrypted = f.pgp_mode == "encrypt" && f.message.trim_start().starts_with("-----BEGIN PGP MESSAGE-----");
+        let encrypted = f.pgp_mode == "encrypt"
+            && f.message
+                .trim_start()
+                .starts_with("-----BEGIN PGP MESSAGE-----");
         let pgp_compose = PgpCompose {
             mode: f.pgp_mode.clone(),
-            source: encrypted.then(|| serde_json::json!({ "mode": "resume", "armored": f.message })),
+            source: encrypted
+                .then(|| serde_json::json!({ "mode": "resume", "armored": f.message })),
         };
         let preview = if errors.is_empty() && !encrypted {
             Some(crate::render::parse_with(
@@ -617,7 +676,11 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             f.to.clone(),
             f.bcc.clone(),
             f.subject.clone(),
-            if encrypted { String::new() } else { f.message.clone() },
+            if encrypted {
+                String::new()
+            } else {
+                f.message.clone()
+            },
             f.pmid,
             errors,
             preview,
@@ -694,7 +757,14 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             let summary = format!("to {}: {subject}", r.username);
             crate::system::record(
                 &mut tx,
-                crate::system::Authorship { kind: "pm", ref_id: pmid, actor: me.uid, actor_name: &me.username, ip: &ctx.ip, summary: &summary },
+                crate::system::Authorship {
+                    kind: "pm",
+                    ref_id: pmid,
+                    actor: me.uid,
+                    actor_name: &me.username,
+                    ip: &ctx.ip,
+                    summary: &summary,
+                },
             )
             .await?;
         }
@@ -885,7 +955,9 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
     // Senders who have a key but didn't sign: worth a quiet note.
     let sender_has_key = pm.pgp == 0
         && pm.fromid > 0
-        && crate::routes::pgp::active_key(&ctx, pm.fromid).await?.is_some();
+        && crate::routes::pgp::active_key(&ctx, pm.fromid)
+            .await?
+            .is_some();
     let r = ctx
         .render(
             "pm/read.html",

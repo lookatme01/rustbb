@@ -382,7 +382,13 @@ pub async fn signature_save(ctx: Ctx, CsrfForm(f): CsrfForm<SigForm>) -> AppResu
         .bind(&sig)
         .execute(&ctx.app.db)
         .await?;
-    crate::audit::log(&ctx, ctx.uid(), "signature_changed", serde_json::Value::Null).await;
+    crate::audit::log(
+        &ctx,
+        ctx.uid(),
+        "signature_changed",
+        serde_json::Value::Null,
+    )
+    .await;
     Ok(ctx.redirect("/usercp/signature", "Your signature has been updated."))
 }
 
@@ -538,7 +544,7 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
                 .await?;
             remove_old(me.avatar.clone()).await;
             crate::audit::log(&ctx, ctx.uid(), "avatar_changed", serde_json::Value::Null).await;
-    Ok(ctx.redirect("/usercp/avatar", "Your avatar has been uploaded."))
+            Ok(ctx.redirect("/usercp/avatar", "Your avatar has been uploaded."))
         }
     }
 }
@@ -1338,7 +1344,9 @@ pub fn describe_alert(
             format!("/reputation/{object_id}"),
         ),
         "pgp_keychange" => (
-            format!("{from} has a new encryption key. Verify them again before trusting their messages."),
+            format!(
+                "{from} has a new encryption key. Verify them again before trusting their messages."
+            ),
             format!("/pm/verify/{object_id}"),
         ),
         "pgp_keyrevoked" => (
@@ -1663,7 +1671,13 @@ pub async fn usergroups_action(
             match g.kind {
                 3 => {
                     add_to_group(&ctx.app.db, me.uid, g.gid).await?;
-                    crate::audit::log(&ctx, me.uid, "group_joined", serde_json::json!({"gid": g.gid, "title": g.title})).await;
+                    crate::audit::log(
+                        &ctx,
+                        me.uid,
+                        "group_joined",
+                        serde_json::json!({"gid": g.gid, "title": g.title}),
+                    )
+                    .await;
                     "You have joined the group."
                 }
                 4 => {
@@ -1684,11 +1698,21 @@ pub async fn usergroups_action(
                 return Err(AppError::user("You cannot leave your primary group."));
             }
             // Only publicly joinable groups can be left; staff-assigned groups stay put.
-            if !group.as_ref().map(|g| g.kind == 3 || g.kind == 4).unwrap_or(false) {
+            if !group
+                .as_ref()
+                .map(|g| g.kind == 3 || g.kind == 4)
+                .unwrap_or(false)
+            {
                 return Err(AppError::no_perm());
             }
             remove_from_group(&ctx.app.db, me.uid, f.gid).await?;
-            crate::audit::log(&ctx, me.uid, "group_left", serde_json::json!({"gid": f.gid})).await;
+            crate::audit::log(
+                &ctx,
+                me.uid,
+                "group_left",
+                serde_json::json!({"gid": f.gid}),
+            )
+            .await;
             "You have left the group."
         }
         "display" => {
@@ -1797,15 +1821,34 @@ pub async fn delete_user(app: &crate::app::App, uid: i32, delete_posts: bool) ->
 
 /// Delete an account. With `anonymize`, what the member leaves behind (kept posts, votes,
 /// messages in other inboxes, mail and search logs) loses their name and IP addresses.
-pub async fn delete_user_with(app: &crate::app::App, uid: i32, delete_posts: bool, anonymize: bool) -> AppResult<()> {
+pub async fn delete_user_with(
+    app: &crate::app::App,
+    uid: i32,
+    delete_posts: bool,
+    anonymize: bool,
+) -> AppResult<()> {
     crate::system::guard(&app.cache(), uid, "deleted")?;
     if delete_posts {
         delete_user_content(app, uid).await?;
     }
     let mut tx = app.db.begin().await?;
     if anonymize {
-        let name = app.cache().settings.get("privacy_deleted_name").trim().to_string();
-        crate::privacy::anonymize_member(&mut tx, uid, if name.is_empty() { "Former member" } else { &name }).await?;
+        let name = app
+            .cache()
+            .settings
+            .get("privacy_deleted_name")
+            .trim()
+            .to_string();
+        crate::privacy::anonymize_member(
+            &mut tx,
+            uid,
+            if name.is_empty() {
+                "Former member"
+            } else {
+                &name
+            },
+        )
+        .await?;
     }
     sqlx::query("UPDATE posts SET uid = 0 WHERE uid = $1")
         .bind(uid)
@@ -1912,14 +1955,26 @@ pub struct ActivityQuery {
 }
 
 /// Rows of the account audit log shaped for templates (shared with the Admin CP view).
-pub async fn audit_rows(ctx: &Ctx, uid: i32, kind: &str, page: Option<i64>, base: &str) -> AppResult<(Vec<minijinja::Value>, util::Pagination)> {
-    let actions: Vec<&str> = crate::audit::ACTIONS.iter().filter(|a| kind.is_empty() || a.2 == kind).map(|a| a.0).collect();
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_audit WHERE uid = $1 AND ($2 = '' OR action = ANY($3))")
-        .bind(uid)
-        .bind(kind)
-        .bind(&actions)
-        .fetch_one(&ctx.app.db)
-        .await?;
+pub async fn audit_rows(
+    ctx: &Ctx,
+    uid: i32,
+    kind: &str,
+    page: Option<i64>,
+    base: &str,
+) -> AppResult<(Vec<minijinja::Value>, util::Pagination)> {
+    let actions: Vec<&str> = crate::audit::ACTIONS
+        .iter()
+        .filter(|a| kind.is_empty() || a.2 == kind)
+        .map(|a| a.0)
+        .collect();
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_audit WHERE uid = $1 AND ($2 = '' OR action = ANY($3))",
+    )
+    .bind(uid)
+    .bind(kind)
+    .bind(&actions)
+    .fetch_one(&ctx.app.db)
+    .await?;
     let per = 30;
     let pagination = util::paginate(total, per, util::clamp_page(page), base);
     let rows: Vec<(i64, String, String, String, i32, serde_json::Value, Option<String>)> = sqlx::query_as(

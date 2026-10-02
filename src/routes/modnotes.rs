@@ -28,7 +28,13 @@ pub fn router() -> Router<App> {
 }
 
 /// Whether `viewer` may retract a note written by `author` at `created`.
-pub fn can_retract(author: i32, created: i64, viewer: i32, viewer_is_admin: bool, now: i64) -> bool {
+pub fn can_retract(
+    author: i32,
+    created: i64,
+    viewer: i32,
+    viewer_is_admin: bool,
+    now: i64,
+) -> bool {
     viewer_is_admin || (author > 0 && author == viewer && now - created <= RETRACT_WINDOW_SECS)
 }
 
@@ -44,14 +50,19 @@ fn require_staff(ctx: &Ctx) -> AppResult<()> {
 
 /// Live (not retracted) notes about a member, for the staff link on profiles.
 pub async fn note_count(app: &App, uid: i32) -> AppResult<i64> {
-    Ok(sqlx::query_scalar("SELECT COUNT(*) FROM moderator_notes WHERE uid = $1 AND retracted_at = 0")
-        .bind(uid)
-        .fetch_one(&app.db)
-        .await?)
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*) FROM moderator_notes WHERE uid = $1 AND retracted_at = 0",
+    )
+    .bind(uid)
+    .fetch_one(&app.db)
+    .await?)
 }
 
 /// The most recent live note about each of `uids` (for report and queue rows).
-pub async fn latest_notes(app: &App, uids: &[i32]) -> AppResult<std::collections::HashMap<i32, String>> {
+pub async fn latest_notes(
+    app: &App,
+    uids: &[i32],
+) -> AppResult<std::collections::HashMap<i32, String>> {
     let rows: Vec<(i32, String)> = sqlx::query_as(
         "SELECT DISTINCT ON (uid) uid, note FROM moderator_notes WHERE uid = ANY($1) AND retracted_at = 0 ORDER BY uid, id DESC",
     )
@@ -67,14 +78,20 @@ pub struct NoteForm {
     pub note: String,
 }
 
-pub async fn add_note(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<NoteForm>) -> AppResult<Response> {
+pub async fn add_note(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    CsrfForm(f): CsrfForm<NoteForm>,
+) -> AppResult<Response> {
     require_staff(&ctx)?;
     let note = f.note.trim();
     if note.is_empty() {
         return Err(AppError::user("Please write a note."));
     }
     if note.chars().count() > MAX_NOTE_CHARS {
-        return Err(AppError::user(format!("Notes can be at most {MAX_NOTE_CHARS} characters.")));
+        return Err(AppError::user(format!(
+            "Notes can be at most {MAX_NOTE_CHARS} characters."
+        )));
     }
     let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE uid = $1)")
         .bind(uid)
@@ -93,18 +110,24 @@ pub async fn add_note(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<Note
     Ok(ctx.redirect(&format!("/modcp/member/{uid}"), "Your note has been added."))
 }
 
-pub async fn retract(ctx: Ctx, Path(id): Path<i64>, CsrfForm(_f): CsrfForm<NoteForm>) -> AppResult<Response> {
+pub async fn retract(
+    ctx: Ctx,
+    Path(id): Path<i64>,
+    CsrfForm(_f): CsrfForm<NoteForm>,
+) -> AppResult<Response> {
     require_staff(&ctx)?;
-    let (uid, author, created, retracted): (i32, i32, i64, i64) =
-        sqlx::query_as("SELECT uid, author, created, retracted_at FROM moderator_notes WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&ctx.app.db)
-            .await?
-            .ok_or_else(|| AppError::not_found("note"))?;
+    let (uid, author, created, retracted): (i32, i32, i64, i64) = sqlx::query_as(
+        "SELECT uid, author, created, retracted_at FROM moderator_notes WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("note"))?;
     if retracted == 0 {
         if !can_retract(author, created, ctx.uid(), ctx.is_admin(), now()) {
             return Err(AppError::NoPermission(
-                "Only the author (within 15 minutes) or an administrator can retract a note.".into(),
+                "Only the author (within 15 minutes) or an administrator can retract a note."
+                    .into(),
             ));
         }
         sqlx::query("UPDATE moderator_notes SET retracted_by = $2, retracted_at = $3 WHERE id = $1 AND retracted_at = 0")
@@ -114,7 +137,10 @@ pub async fn retract(ctx: Ctx, Path(id): Path<i64>, CsrfForm(_f): CsrfForm<NoteF
             .execute(&ctx.app.db)
             .await?;
     }
-    Ok(ctx.redirect(&format!("/modcp/member/{uid}"), "The note has been retracted."))
+    Ok(ctx.redirect(
+        &format!("/modcp/member/{uid}"),
+        "The note has been retracted.",
+    ))
 }
 
 /// One entry on the member's timeline.
@@ -134,7 +160,17 @@ struct Event {
 
 impl Event {
     fn new(kind: &'static str, when: i64, title: impl Into<String>) -> Self {
-        Event { kind, when, title: title.into(), detail: String::new(), actor: None, link: None, note_id: 0, retracted_by: None, can_retract: false }
+        Event {
+            kind,
+            when,
+            title: title.into(),
+            detail: String::new(),
+            actor: None,
+            link: None,
+            note_id: 0,
+            retracted_by: None,
+            can_retract: false,
+        }
     }
 }
 
@@ -153,7 +189,11 @@ const KINDS: &[(&str, &str)] = &[
     ("appeals", "Ban appeals"),
 ];
 
-pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuery>) -> AppResult<Response> {
+pub async fn history(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    Query(q): Query<HistoryQuery>,
+) -> AppResult<Response> {
     require_staff(&ctx)?;
     let member: crate::models::User = sqlx::query_as("SELECT * FROM users WHERE uid = $1")
         .bind(uid)
@@ -178,7 +218,11 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         for (id, author, note, created, retracted_at, author_name, retracted_name) in rows {
             let mut e = Event::new("notes", created, "Note");
             e.detail = note;
-            e.actor = Some(if author == 0 { "Imported".into() } else { author_name.unwrap_or_else(|| "Deleted member".into()) });
+            e.actor = Some(if author == 0 {
+                "Imported".into()
+            } else {
+                author_name.unwrap_or_else(|| "Deleted member".into())
+            });
             e.note_id = id;
             if retracted_at > 0 {
                 e.retracted_by = Some(retracted_name.unwrap_or_else(|| "Deleted member".into()));
@@ -201,8 +245,27 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         .bind(SOURCE_LIMIT)
         .fetch_all(db)
         .await?;
-        for (_wid, title, points, dateline, expires, expired, revoked, revokereason, issuer, revoker) in rows {
-            let mut e = Event::new("warnings", dateline, format!("Warned: {title} ({points} point{})", if points == 1 { "" } else { "s" }));
+        for (
+            _wid,
+            title,
+            points,
+            dateline,
+            expires,
+            expired,
+            revoked,
+            revokereason,
+            issuer,
+            revoker,
+        ) in rows
+        {
+            let mut e = Event::new(
+                "warnings",
+                dateline,
+                format!(
+                    "Warned: {title} ({points} point{})",
+                    if points == 1 { "" } else { "s" }
+                ),
+            );
             e.actor = issuer;
             e.link = Some(format!("/warnings/{uid}"));
             e.detail = if revoked > 0 {
@@ -222,7 +285,12 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         // Staff actions on the account from the audit log ("warned" comes from the warnings table).
         let actions: Vec<&str> = crate::audit::ACTIONS
             .iter()
-            .filter(|a| a.2 == "staff" && a.0 != "warned" && !a.0.starts_with("appeal_") && (warnings_visible || a.0 != "warning_revoked"))
+            .filter(|a| {
+                a.2 == "staff"
+                    && a.0 != "warned"
+                    && !a.0.starts_with("appeal_")
+                    && (warnings_visible || a.0 != "warning_revoked")
+            })
             .map(|a| a.0)
             .collect();
         let rows: Vec<(String, i64, serde_json::Value, Option<String>)> = sqlx::query_as(
@@ -237,7 +305,11 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         for (action, dateline, details, actor) in rows {
             let mut e = Event::new("bans", dateline, crate::audit::describe(&action).0);
             e.actor = actor;
-            if let Some(reason) = details.get("reason").and_then(|r| r.as_str()).filter(|r| !r.is_empty()) {
+            if let Some(reason) = details
+                .get("reason")
+                .and_then(|r| r.as_str())
+                .filter(|r| !r.is_empty())
+            {
                 e.detail = format!("Reason: {reason}");
             }
             events.push(e);
@@ -263,10 +335,37 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
         .fetch_all(db)
         .await?;
         for (_rid, kind, comment, reasonid, dateline, count, status, reporter, id) in rows {
-            let reason = ctx.cache.reportreasons.iter().find(|r| r.rid == reasonid).map(|r| r.title.clone()).unwrap_or_default();
-            let what = match kind.as_str() { "post" => "post", "profile" => "profile", "reputation" => "reputation comment", _ => "private message" };
-            let mut e = Event::new("reports", dateline, format!("Reported {what}: {reason}{}", if count > 1 { format!(" ({count} reports)") } else { String::new() }));
-            e.detail = format!("{comment}{}", if status == 0 { " (open)" } else { " (closed)" }).trim().to_string();
+            let reason = ctx
+                .cache
+                .reportreasons
+                .iter()
+                .find(|r| r.rid == reasonid)
+                .map(|r| r.title.clone())
+                .unwrap_or_default();
+            let what = match kind.as_str() {
+                "post" => "post",
+                "profile" => "profile",
+                "reputation" => "reputation comment",
+                _ => "private message",
+            };
+            let mut e = Event::new(
+                "reports",
+                dateline,
+                format!(
+                    "Reported {what}: {reason}{}",
+                    if count > 1 {
+                        format!(" ({count} reports)")
+                    } else {
+                        String::new()
+                    }
+                ),
+            );
+            e.detail = format!(
+                "{comment}{}",
+                if status == 0 { " (open)" } else { " (closed)" }
+            )
+            .trim()
+            .to_string();
             e.actor = reporter;
             if kind == "post" {
                 e.link = Some(format!("/post/{id}"));
@@ -294,7 +393,13 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
             let mut e = Event::new("moderation", dateline, action);
             e.actor = actor;
             e.detail = subject.unwrap_or_default();
-            e.link = if pid > 0 { Some(format!("/post/{pid}")) } else if tid > 0 { Some(format!("/thread/{tid}")) } else { None };
+            e.link = if pid > 0 {
+                Some(format!("/post/{pid}"))
+            } else if tid > 0 {
+                Some(format!("/thread/{tid}"))
+            } else {
+                None
+            };
             events.push(e);
         }
     }
@@ -315,8 +420,15 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
             e.link = Some(format!("/modcp/appeals/{id}"));
             events.push(e);
             if status != crate::routes::appeals::PENDING {
-                let mut d = Event::new("appeals", decided_at,
-                    if status == crate::routes::appeals::ACCEPTED { "Ban appeal accepted" } else { "Ban appeal rejected" });
+                let mut d = Event::new(
+                    "appeals",
+                    decided_at,
+                    if status == crate::routes::appeals::ACCEPTED {
+                        "Ban appeal accepted"
+                    } else {
+                        "Ban appeal rejected"
+                    },
+                );
                 d.detail = response;
                 d.actor = decider;
                 d.link = Some(format!("/modcp/appeals/{id}"));
@@ -326,17 +438,24 @@ pub async fn history(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<HistoryQuer
     }
 
     events.sort_by(|a, b| b.when.cmp(&a.when));
-    let ban: Option<(String, i64)> = sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
-        .bind(uid)
-        .fetch_optional(db)
-        .await?;
-    let warn_pct = (member.warningpoints as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1)).min(100);
+    let ban: Option<(String, i64)> =
+        sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
+            .bind(uid)
+            .fetch_optional(db)
+            .await?;
+    let warn_pct = (member.warningpoints as i64 * 100
+        / ctx.settings().int("maxwarningpoints").max(1))
+    .min(100);
     let kinds: Vec<_> = KINDS
         .iter()
         .filter(|k| k.0 != "warnings" || warnings_visible)
         .map(|k| minijinja::context! { key => k.0, label => k.1 })
         .collect();
-    let group = ctx.cache.group(member.usergroup).map(|g| g.title.clone()).unwrap_or_default();
+    let group = ctx
+        .cache
+        .group(member.usergroup)
+        .map(|g| g.title.clone())
+        .unwrap_or_default();
     ctx.render(
         "modcp/member.html",
         minijinja::context! {
@@ -363,7 +482,13 @@ mod tests {
     #[test]
     fn author_may_retract_within_the_window() {
         assert!(can_retract(5, 1_000, 5, false, 1_000 + RETRACT_WINDOW_SECS));
-        assert!(!can_retract(5, 1_000, 5, false, 1_000 + RETRACT_WINDOW_SECS + 1));
+        assert!(!can_retract(
+            5,
+            1_000,
+            5,
+            false,
+            1_000 + RETRACT_WINDOW_SECS + 1
+        ));
     }
 
     #[test]
@@ -374,7 +499,10 @@ mod tests {
     #[test]
     fn administrators_may_always_retract() {
         assert!(can_retract(5, 1_000, 6, true, 1_000 + 365 * 86_400));
-        assert!(can_retract(0, 1_000, 6, true, 2_000), "including imported notes");
+        assert!(
+            can_retract(0, 1_000, 6, true, 2_000),
+            "including imported notes"
+        );
     }
 
     #[test]

@@ -158,7 +158,9 @@ pub fn build_env(cache: Arc<ArcSwap<Cache>>, dev_dir: Option<String>) -> Environ
         url_user(uid, name.as_deref())
     });
     env.add_function("now", util::now);
-    env.add_function("asset", |path: String| -> String { crate::assets::url(&path) });
+    env.add_function("asset", |path: String| -> String {
+        crate::assets::url(&path)
+    });
     env
 }
 

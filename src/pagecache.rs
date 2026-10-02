@@ -47,7 +47,9 @@ impl PageCache {
         PageCache {
             entries: moka::sync::Cache::builder()
                 .time_to_live(TTL)
-                .weigher(|k: &String, v: &Arc<Entry>| (k.len() + v.html.len()).min(u32::MAX as usize) as u32)
+                .weigher(|k: &String, v: &Arc<Entry>| {
+                    (k.len() + v.html.len()).min(u32::MAX as usize) as u32
+                })
                 .max_capacity(max_mb.max(1) * 1024 * 1024)
                 .build(),
             epoch: AtomicU64::new(0),
@@ -80,7 +82,9 @@ impl PageCache {
 
     /// Snapshot of the tags' generations, taken before rendering a page that depends on them.
     pub fn snapshot(&self, tags: &[String]) -> Vec<(String, u64)> {
-        tags.iter().map(|t| (t.clone(), self.generation(t))).collect()
+        tags.iter()
+            .map(|t| (t.clone(), self.generation(t)))
+            .collect()
     }
 
     /// Invalidate every page tagged with any of `tags`.
@@ -141,9 +145,21 @@ pub fn key(path: &str, query: &str, theme: i32, lang: &str, colormode: &str, bot
 /// Writes that don't change what guests see, so they needn't flush the cache.
 pub fn write_is_private(path: &str) -> bool {
     const PRIVATE: &[&str] = &[
-        "/member/login", "/member/logout", "/colormode", "/theme/", "/lang/", "/preview",
-        "/drafts/save", "/usercp/alerts", "/pgp/", "/pm", "/captcha", "/member/checkname",
-        "/attachment/upload", "/usercp/notepad", "/admin/verify",
+        "/member/login",
+        "/member/logout",
+        "/colormode",
+        "/theme/",
+        "/lang/",
+        "/preview",
+        "/drafts/save",
+        "/usercp/alerts",
+        "/pgp/",
+        "/pm",
+        "/captcha",
+        "/member/checkname",
+        "/attachment/upload",
+        "/usercp/notepad",
+        "/admin/verify",
     ];
     PRIVATE.iter().any(|p| path.starts_with(p))
 }
@@ -165,10 +181,31 @@ mod tests {
         let c = PageCache::new(4);
         let e = c.epoch();
         c.clear();
-        c.put("k".into(), Entry { html: Bytes::from_static(b"x"), tags: vec![], fid: 0, tid: 0 }, e);
-        assert!(c.get("k").is_none(), "a page rendered before a write must not be stored");
+        c.put(
+            "k".into(),
+            Entry {
+                html: Bytes::from_static(b"x"),
+                tags: vec![],
+                fid: 0,
+                tid: 0,
+            },
+            e,
+        );
+        assert!(
+            c.get("k").is_none(),
+            "a page rendered before a write must not be stored"
+        );
         let e = c.epoch();
-        c.put("k".into(), Entry { html: Bytes::from_static(b"x"), tags: vec![], fid: 0, tid: 0 }, e);
+        c.put(
+            "k".into(),
+            Entry {
+                html: Bytes::from_static(b"x"),
+                tags: vec![],
+                fid: 0,
+                tid: 0,
+            },
+            e,
+        );
         assert!(c.get("k").is_some());
         c.clear();
         assert!(c.get("k").is_none());
@@ -178,14 +215,41 @@ mod tests {
     fn tags_invalidate_only_their_pages() {
         let c = PageCache::new(4);
         let tags = |t: &[&str]| c.snapshot(&t.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        c.put("t1".into(), Entry { html: Bytes::from_static(b"1"), tags: tags(&["thread:1"]), fid: 0, tid: 1 }, c.epoch());
-        c.put("t2".into(), Entry { html: Bytes::from_static(b"2"), tags: tags(&["thread:2"]), fid: 0, tid: 2 }, c.epoch());
+        c.put(
+            "t1".into(),
+            Entry {
+                html: Bytes::from_static(b"1"),
+                tags: tags(&["thread:1"]),
+                fid: 0,
+                tid: 1,
+            },
+            c.epoch(),
+        );
+        c.put(
+            "t2".into(),
+            Entry {
+                html: Bytes::from_static(b"2"),
+                tags: tags(&["thread:2"]),
+                fid: 0,
+                tid: 2,
+            },
+            c.epoch(),
+        );
         let stale = tags(&["thread:1"]);
         c.invalidate_tags(&["thread:1"]);
         assert!(c.get("t1").is_none());
         assert!(c.get("t2").is_some(), "other threads stay cached");
         // A page rendered before the invalidation but stored after it is rejected on read.
-        c.put("t1".into(), Entry { html: Bytes::from_static(b"old"), tags: stale, fid: 0, tid: 1 }, c.epoch());
+        c.put(
+            "t1".into(),
+            Entry {
+                html: Bytes::from_static(b"old"),
+                tags: stale,
+                fid: 0,
+                tid: 1,
+            },
+            c.epoch(),
+        );
         assert!(c.get("t1").is_none());
     }
 
@@ -193,16 +257,34 @@ mod tests {
     fn personalizes_every_slot() {
         let html = format!("<meta content=\"{CSRF_SLOT}\"><input value=\"{CSRF_SLOT}\">");
         let out = personalize(html.as_bytes(), "abc123");
-        assert_eq!(&out[..], b"<meta content=\"abc123\"><input value=\"abc123\">");
+        assert_eq!(
+            &out[..],
+            b"<meta content=\"abc123\"><input value=\"abc123\">"
+        );
     }
 
     #[test]
     fn keys_separate_what_guests_see() {
-        assert_ne!(key("/", "", 1, "en", "auto", false), key("/", "", 1, "de", "auto", false));
-        assert_ne!(key("/", "", 1, "en", "auto", false), key("/", "", 1, "en", "dark", false));
-        assert_ne!(key("/", "", 1, "en", "auto", false), key("/", "", 2, "en", "auto", false));
-        assert_ne!(key("/", "", 1, "en", "auto", false), key("/", "", 1, "en", "auto", true));
-        assert_ne!(key("/forum/2", "page=2", 1, "en", "auto", false), key("/forum/2", "page=3", 1, "en", "auto", false));
+        assert_ne!(
+            key("/", "", 1, "en", "auto", false),
+            key("/", "", 1, "de", "auto", false)
+        );
+        assert_ne!(
+            key("/", "", 1, "en", "auto", false),
+            key("/", "", 1, "en", "dark", false)
+        );
+        assert_ne!(
+            key("/", "", 1, "en", "auto", false),
+            key("/", "", 2, "en", "auto", false)
+        );
+        assert_ne!(
+            key("/", "", 1, "en", "auto", false),
+            key("/", "", 1, "en", "auto", true)
+        );
+        assert_ne!(
+            key("/forum/2", "page=2", 1, "en", "auto", false),
+            key("/forum/2", "page=3", 1, "en", "auto", false)
+        );
     }
 }
 

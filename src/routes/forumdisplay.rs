@@ -70,7 +70,10 @@ pub fn prefix_html(ctx: &Ctx, pid: i32) -> String {
 /// Decorate threads with unread/dot/hot/multipage info for listings.
 pub async fn thread_rows(ctx: &Ctx, threads: Vec<Thread>) -> AppResult<Vec<ThreadRow>> {
     let s = ctx.settings();
-    let people: Vec<i32> = threads.iter().flat_map(|t| [t.uid, t.lastposteruid]).collect();
+    let people: Vec<i32> = threads
+        .iter()
+        .flat_map(|t| [t.uid, t.lastposteruid])
+        .collect();
     let avatars = crate::render::avatars(ctx, &people).await?;
     let tids: Vec<i32> = threads.iter().map(|t| t.tid).collect();
     let uid = ctx.uid();
@@ -180,8 +183,14 @@ pub async fn thread_rows(ctx: &Ctx, threads: Vec<Thread>) -> AppResult<Vec<Threa
             unapprovedposts: t.unapprovedposts,
             preview: previews.get(&t.tid).cloned().unwrap_or_default(),
             forum_name: forum.map(|f| f.name.clone()).unwrap_or_default(),
-            author_avatar: avatars.get(&t.uid).map(|a| a.to_string()).unwrap_or_default(),
-            lastposter_avatar: avatars.get(&t.lastposteruid).map(|a| a.to_string()).unwrap_or_default(),
+            author_avatar: avatars
+                .get(&t.uid)
+                .map(|a| a.to_string())
+                .unwrap_or_default(),
+            lastposter_avatar: avatars
+                .get(&t.lastposteruid)
+                .map(|a| a.to_string())
+                .unwrap_or_default(),
             forum_url: url_forum(t.fid as i64, forum.map(|f| f.name.as_str())),
             subject: vsubject,
         });
@@ -350,11 +359,23 @@ pub async fn forumdisplay(
         // Deep pages: scan from the far end of the index so OFFSET stays small.
         let reverse = offset > total / 2;
         let (order_sql, limit, off) = if reverse {
-            let flip = if dir.eq_ignore_ascii_case("DESC") { "ASC" } else { "DESC" };
+            let flip = if dir.eq_ignore_ascii_case("DESC") {
+                "ASC"
+            } else {
+                "DESC"
+            };
             let end = (offset + tpp).min(total);
-            (format!("sticky ASC, {sort_col} {flip}, tid ASC"), (end - offset).max(0), (total - end).max(0))
+            (
+                format!("sticky ASC, {sort_col} {flip}, tid ASC"),
+                (end - offset).max(0),
+                (total - end).max(0),
+            )
         } else {
-            (format!("sticky DESC, {sort_col} {dir}, tid DESC"), tpp, offset)
+            (
+                format!("sticky DESC, {sort_col} {dir}, tid DESC"),
+                tpp,
+                offset,
+            )
         };
         let mut threads: Vec<Thread> = sqlx::query_as(&format!(
             "SELECT * FROM threads WHERE fid = $1 AND visible = ANY($2) AND ($3 = 0 OR uid = $3) AND ($4 = 0 OR lastpost >= $4)
@@ -391,12 +412,16 @@ pub async fn forumdisplay(
         // Who's here, refreshed at most every 30 s per forum (sessions are only flushed every
         // few seconds anyway); each viewer's permissions are still applied below.
         let key = format!("browsing:{fid}");
-        let (rows, guests): (Vec<(i32, String, i32, i32, bool)>, i64) =
-            match ctx.app.short_cache.get(&key).and_then(|v| serde_json::from_value(v).ok()) {
-                Some(x) => x,
-                None => {
-                    let cutoff = now() - s.int("wolcutoffmins").max(1) * 60;
-                    let rows: Vec<(i32, String, i32, i32, bool)> = sqlx::query_as(
+        let (rows, guests): (Vec<(i32, String, i32, i32, bool)>, i64) = match ctx
+            .app
+            .short_cache
+            .get(&key)
+            .and_then(|v| serde_json::from_value(v).ok())
+        {
+            Some(x) => x,
+            None => {
+                let cutoff = now() - s.int("wolcutoffmins").max(1) * 60;
+                let rows: Vec<(i32, String, i32, i32, bool)> = sqlx::query_as(
                         "SELECT DISTINCT u.uid, u.username, u.usergroup, u.displaygroup, u.invisible FROM sessions s JOIN users u ON u.uid = s.uid
                          WHERE s.time > $1 AND s.location1 = $2 AND s.uid > 0 LIMIT 100",
                     )
@@ -404,17 +429,19 @@ pub async fn forumdisplay(
                     .bind(fid)
                     .fetch_all(&ctx.app.db)
                     .await?;
-                    let guests: i64 = sqlx::query_scalar(
-                        "SELECT COUNT(*) FROM sessions WHERE time > $1 AND location1 = $2 AND uid = 0",
-                    )
-                    .bind(cutoff)
-                    .bind(fid)
-                    .fetch_one(&ctx.app.db)
-                    .await?;
-                    ctx.app.short_cache.insert(key, serde_json::json!([rows, guests]));
-                    (rows, guests)
-                }
-            };
+                let guests: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM sessions WHERE time > $1 AND location1 = $2 AND uid = 0",
+                )
+                .bind(cutoff)
+                .bind(fid)
+                .fetch_one(&ctx.app.db)
+                .await?;
+                ctx.app
+                    .short_cache
+                    .insert(key, serde_json::json!([rows, guests]));
+                (rows, guests)
+            }
+        };
         let users: Vec<(i32, String)> = rows
             .into_iter()
             .filter(|r| !r.4 || ctx.perms.canviewwolinvis || r.0 == ctx.uid())
@@ -423,7 +450,11 @@ pub async fn forumdisplay(
         let mut users = users;
         if let Some(me) = &ctx.user {
             if !users.iter().any(|u| u.0 == me.uid) {
-                users.push((me.uid, ctx.cache.format_name(&me.username, me.usergroup, me.displaygroup)));
+                users.push((
+                    me.uid,
+                    ctx.cache
+                        .format_name(&me.username, me.usergroup, me.displaygroup),
+                ));
             }
         }
         Some(minijinja::context! { users => users, guests => guests })

@@ -844,16 +844,36 @@ pub async fn check_counters(db: &sqlx::PgPool) -> anyhow::Result<Vec<String>> {
 
 /// Automod calls this inside the same transaction as its durable audit record.
 /// Caller holds the thread and post locks. Only public ↔ pending transitions are allowed.
-pub async fn automod_visibility(c: &mut PgConnection, pid: i32, tid: i32, first: bool, vis: i16) -> AppResult<()> {
+pub async fn automod_visibility(
+    c: &mut PgConnection,
+    pid: i32,
+    tid: i32,
+    first: bool,
+    vis: i16,
+) -> AppResult<()> {
     let before = snapshot(c, &[tid]).await?;
-    let pids = if first { all_pids_of_threads(c, &[tid]).await? } else { vec![pid] };
+    let pids = if first {
+        all_pids_of_threads(c, &[tid]).await?
+    } else {
+        vec![pid]
+    };
     adjust_user_postcounts(c, &pids, -1).await?;
     if first {
         adjust_user_threadcounts(c, &[tid], -1).await?;
-        sqlx::query("UPDATE threads SET visible = $2 WHERE tid = $1").bind(tid).bind(vis).execute(&mut *c).await?;
+        sqlx::query("UPDATE threads SET visible = $2 WHERE tid = $1")
+            .bind(tid)
+            .bind(vis)
+            .execute(&mut *c)
+            .await?;
     }
-    sqlx::query("UPDATE posts SET visible = $2 WHERE pid = $1").bind(pid).bind(vis).execute(&mut *c).await?;
+    sqlx::query("UPDATE posts SET visible = $2 WHERE pid = $1")
+        .bind(pid)
+        .bind(vis)
+        .execute(&mut *c)
+        .await?;
     adjust_user_postcounts(c, &pids, 1).await?;
-    if first { adjust_user_threadcounts(c, &[tid], 1).await?; }
+    if first {
+        adjust_user_threadcounts(c, &[tid], 1).await?;
+    }
     settle(c, before).await
 }

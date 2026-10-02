@@ -163,7 +163,11 @@ pub async fn run_batch(app: &App) -> anyhow::Result<String> {
     let s = app.cache().settings.clone();
     for (uid, name, email) in &users {
         // PMs are MyCode: a member's name must not be able to add markup to them.
-        let shown_name = if kind == 1 { crate::parser::literal(name) } else { name.clone() };
+        let shown_name = if kind == 1 {
+            crate::parser::literal(name)
+        } else {
+            name.clone()
+        };
         let body = message
             .replace("{username}", &shown_name)
             .replace("{bbname}", s.get("bbname"))

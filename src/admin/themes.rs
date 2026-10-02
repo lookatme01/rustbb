@@ -340,7 +340,14 @@ pub async fn template_form(
     let source = crate::templates::resolve_source(&ctx.cache, tid, &q.name, None)
         .unwrap_or_else(|| default.clone());
     let own = ctx.cache.templates.contains_key(&(tid, q.name.clone()));
-    crate::admin::page(&ctx, "admin/template_edit.html", "themes", &format!("{} — {}", q.name, t.name), minijinja::context! { th => &t, name => q.name, source => source, own => own, error => "" }).await
+    crate::admin::page(
+        &ctx,
+        "admin/template_edit.html",
+        "themes",
+        &format!("{} — {}", q.name, t.name),
+        minijinja::context! { th => &t, name => q.name, source => source, own => own, error => "" },
+    )
+    .await
 }
 
 pub async fn template_save(
@@ -412,7 +419,6 @@ pub async fn template_revert(
     ))
 }
 
-
 /// A brand colour must be `#rrggbb`.
 pub fn valid_brand(c: &str) -> bool {
     c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|x| x.is_ascii_hexdigit())
@@ -423,11 +429,18 @@ pub fn valid_brand(c: &str) -> bool {
 pub fn valid_banner(u: &str) -> bool {
     (u.starts_with('/') && !u.starts_with("//") || u.starts_with("https://"))
         && u.len() < 500
-        && !u.chars().any(|c| matches!(c, '\'' | '"' | '(' | ')' | '\\' | '<' | '>' | ';') || c.is_whitespace() || c.is_control())
+        && !u.chars().any(|c| {
+            matches!(c, '\'' | '"' | '(' | ')' | '\\' | '<' | '>' | ';')
+                || c.is_whitespace()
+                || c.is_control()
+        })
 }
 
 /// Merge the Branding fields of the theme form into the properties JSON.
-fn apply_branding(props: &mut serde_json::Value, fl: &std::collections::HashMap<String, serde_json::Value>) -> AppResult<()> {
+fn apply_branding(
+    props: &mut serde_json::Value,
+    fl: &std::collections::HashMap<String, serde_json::Value>,
+) -> AppResult<()> {
     if !fl.contains_key("branding") {
         return Ok(());
     }
@@ -449,32 +462,64 @@ fn apply_branding(props: &mut serde_json::Value, fl: &std::collections::HashMap<
     }
     set("brand", if use_brand { brand } else { String::new() });
     let mode = s(fl.get("colormode"));
-    set("colormode", if matches!(mode.as_str(), "light" | "dark") { mode } else { String::new() });
+    set(
+        "colormode",
+        if matches!(mode.as_str(), "light" | "dark") {
+            mode
+        } else {
+            String::new()
+        },
+    );
     let banner = s(fl.get("banner")).trim().to_string();
     if !banner.is_empty() && !valid_banner(&banner) {
-        return Err(AppError::user("The banner must be a site path (/uploads/…) or an https:// URL."));
+        return Err(AppError::user(
+            "The banner must be a site path (/uploads/…) or an https:// URL.",
+        ));
     }
     set("banner", banner);
-    set("hero_title", s(fl.get("hero_title")).trim().chars().take(80).collect());
-    set("hero_text", s(fl.get("hero_text")).trim().chars().take(240).collect());
+    set(
+        "hero_title",
+        s(fl.get("hero_title")).trim().chars().take(80).collect(),
+    );
+    set(
+        "hero_text",
+        s(fl.get("hero_text")).trim().chars().take(240).collect(),
+    );
     let logo = s(fl.get("logo")).trim().to_string();
     if !logo.is_empty() && !valid_banner(&logo) {
-        return Err(AppError::user("The logo must be a site path or an https:// URL."));
+        return Err(AppError::user(
+            "The logo must be a site path or an https:// URL.",
+        ));
     }
     set("logo", logo);
     Ok(())
 }
 
 /// Upload a banner image for a theme: resized to at most 2400 px wide and stored as JPEG.
-pub async fn banner_upload(ctx: Ctx, Path(tid): Path<i32>, mut mp: axum::extract::Multipart) -> AppResult<Response> {
+pub async fn banner_upload(
+    ctx: Ctx,
+    Path(tid): Path<i32>,
+    mut mp: axum::extract::Multipart,
+) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "themes");
-    let theme = ctx.cache.theme(tid).cloned().ok_or_else(|| AppError::not_found("theme"))?;
+    let theme = ctx
+        .cache
+        .theme(tid)
+        .cloned()
+        .ok_or_else(|| AppError::not_found("theme"))?;
     let mut token = String::new();
     let mut file: Option<Vec<u8>> = None;
-    while let Some(field) = mp.next_field().await.map_err(|e| AppError::user(format!("Upload failed: {e}")))? {
+    while let Some(field) = mp
+        .next_field()
+        .await
+        .map_err(|e| AppError::user(format!("Upload failed: {e}")))?
+    {
         match field.name().unwrap_or("") {
             "file" => {
-                let data = field.bytes().await.map_err(|_| AppError::user("Upload failed."))?;
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|_| AppError::user("Upload failed."))?;
                 if data.len() > 12 * 1024 * 1024 {
                     return Err(AppError::user("The banner is too large (12 MB at most)."));
                 }
@@ -489,33 +534,61 @@ pub async fn banner_upload(ctx: Ctx, Path(tid): Path<i32>, mut mp: axum::extract
     ctx.check_csrf(&token)?;
     let data = file.ok_or_else(|| AppError::user("Please choose an image."))?;
     let jpeg = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let img = crate::util::decode_image(&data).map_err(|_| "The file is not a supported image (PNG, JPEG, GIF, WebP).".to_string())?;
-        let img = if img.width() > 2400 { img.resize(2400, 2400, image::imageops::FilterType::Lanczos3) } else { img };
+        let img = crate::util::decode_image(&data)
+            .map_err(|_| "The file is not a supported image (PNG, JPEG, GIF, WebP).".to_string())?;
+        let img = if img.width() > 2400 {
+            img.resize(2400, 2400, image::imageops::FilterType::Lanczos3)
+        } else {
+            img
+        };
         let mut out = std::io::Cursor::new(Vec::new());
         let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 84);
-        img.to_rgb8().write_with_encoder(enc).map_err(|e| e.to_string())?;
+        img.to_rgb8()
+            .write_with_encoder(enc)
+            .map_err(|e| e.to_string())?;
         Ok(out.into_inner())
     })
     .await
     .map_err(|e| AppError::Other(e.into()))?
     .map_err(AppError::User)?;
     let dir = format!("{}/banners", ctx.app.cfg.upload_dir);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| AppError::Other(e.into()))?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| AppError::Other(e.into()))?;
     let name = format!("banner_{tid}_{}.jpg", crate::util::random_token(8));
-    tokio::fs::write(format!("{dir}/{name}"), &jpeg).await.map_err(|e| AppError::Other(e.into()))?;
+    tokio::fs::write(format!("{dir}/{name}"), &jpeg)
+        .await
+        .map_err(|e| AppError::Other(e.into()))?;
     let mut props = theme.properties.0.clone();
     if !props.is_object() {
         props = serde_json::json!({});
     }
-    let old = props.get("banner").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let old = props
+        .get("banner")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     props["banner"] = serde_json::Value::String(format!("/uploads/banners/{name}"));
-    sqlx::query("UPDATE themes SET properties = $2 WHERE tid = $1").bind(tid).bind(&props).execute(&ctx.app.db).await?;
-    if let Some(old) = old.and_then(|o| o.strip_prefix("/uploads/banners/").map(|x| x.to_string())) {
+    sqlx::query("UPDATE themes SET properties = $2 WHERE tid = $1")
+        .bind(tid)
+        .bind(&props)
+        .execute(&ctx.app.db)
+        .await?;
+    if let Some(old) = old.and_then(|o| o.strip_prefix("/uploads/banners/").map(|x| x.to_string()))
+    {
         if !old.contains('/') && !old.contains("..") {
             let _ = tokio::fs::remove_file(format!("{dir}/{old}")).await;
         }
     }
     ctx.app.invalidate(&["themes"]).await?;
-    crate::admin::log(&ctx, "themes", "Uploaded theme banner", serde_json::json!({"tid": tid})).await;
-    Ok(ctx.redirect(&format!("/admin/themes/edit?tid={tid}"), "The banner has been uploaded."))
+    crate::admin::log(
+        &ctx,
+        "themes",
+        "Uploaded theme banner",
+        serde_json::json!({"tid": tid}),
+    )
+    .await;
+    Ok(ctx.redirect(
+        &format!("/admin/themes/edit?tid={tid}"),
+        "The banner has been uploaded.",
+    ))
 }

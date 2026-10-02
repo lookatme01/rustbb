@@ -864,7 +864,9 @@ pub async fn editpost_submit(
         )
         .await;
     }
-    ctx.write_scope(crate::pagecache::post_tags(&ctx.cache, thread.fid, thread.tid));
+    ctx.write_scope(crate::pagecache::post_tags(
+        &ctx.cache, thread.fid, thread.tid,
+    ));
     if moderated {
         Ok(ctx.redirect(
             &url_thread(thread.tid as i64, None),

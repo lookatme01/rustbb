@@ -96,9 +96,20 @@ pub fn post_html(ctx: &CtxInner, post: &Post, stale: &mut Vec<Parsed>) -> String
     if !viewer_restrict {
         let hash = source_hash(&post.message);
         if !post.smilieoff {
-            ctx.app.parsed_cache.insert(post.pid, (cache.parser_rev, Arc::from(hash.as_slice()), Arc::from(html.as_str())));
+            ctx.app.parsed_cache.insert(
+                post.pid,
+                (
+                    cache.parser_rev,
+                    Arc::from(hash.as_slice()),
+                    Arc::from(html.as_str()),
+                ),
+            );
         }
-        stale.push(Parsed { pid: post.pid, html: html.clone(), source_hash: hash });
+        stale.push(Parsed {
+            pid: post.pid,
+            html: html.clone(),
+            source_hash: hash,
+        });
     }
     html
 }
@@ -111,7 +122,10 @@ pub fn store_parsed(ctx: &CtxInner, stale: Vec<Parsed>) {
     // Many visitors can open the same cold page at once: write each post back only once, and
     // only a few batches at a time, so warming the cache never starves page views of connections.
     let app = ctx.app.clone();
-    let stale: Vec<Parsed> = stale.into_iter().filter(|p| app.parse_inflight.insert(p.pid)).collect();
+    let stale: Vec<Parsed> = stale
+        .into_iter()
+        .filter(|p| app.parse_inflight.insert(p.pid))
+        .collect();
     if stale.is_empty() {
         return;
     }
@@ -214,10 +228,11 @@ pub async fn avatars(ctx: &CtxInner, uids: &[i32]) -> AppResult<HashMap<i32, Arc
     missing.sort_unstable();
     missing.dedup();
     if !missing.is_empty() {
-        let rows: Vec<(i32, String)> = sqlx::query_as("SELECT uid, avatar FROM users WHERE uid = ANY($1)")
-            .bind(&missing)
-            .fetch_all(&ctx.app.db)
-            .await?;
+        let rows: Vec<(i32, String)> =
+            sqlx::query_as("SELECT uid, avatar FROM users WHERE uid = ANY($1)")
+                .bind(&missing)
+                .fetch_all(&ctx.app.db)
+                .await?;
         for (u, a) in rows {
             let a: Arc<str> = Arc::from(a.as_str());
             ctx.app.avatar_cache.insert(u, a.clone());

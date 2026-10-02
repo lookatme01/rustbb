@@ -48,8 +48,13 @@ pub struct LiveHub {
 }
 
 impl LiveHub {
-    fn subscribe(map: &DashMap<i32, broadcast::Sender<LiveEvent>>, key: i32) -> broadcast::Receiver<LiveEvent> {
-        map.entry(key).or_insert_with(|| broadcast::channel(64).0).subscribe()
+    fn subscribe(
+        map: &DashMap<i32, broadcast::Sender<LiveEvent>>,
+        key: i32,
+    ) -> broadcast::Receiver<LiveEvent> {
+        map.entry(key)
+            .or_insert_with(|| broadcast::channel(64).0)
+            .subscribe()
     }
     pub fn thread(&self, tid: i32) -> broadcast::Receiver<LiveEvent> {
         Self::subscribe(&self.threads, tid)
@@ -78,7 +83,10 @@ impl LiveHub {
         self.users.retain(|_, s| s.receiver_count() > 0);
     }
     pub fn subscribers(&self) -> usize {
-        self.threads.iter().map(|s| s.receiver_count()).sum::<usize>()
+        self.threads
+            .iter()
+            .map(|s| s.receiver_count())
+            .sum::<usize>()
             + self.users.iter().map(|s| s.receiver_count()).sum::<usize>()
     }
 }
@@ -127,7 +135,11 @@ impl AppState {
         let cache = Arc::new(ArcSwap::from_pointee(Cache::load_all(&db).await?));
         let tpl = Templates::new(cache.clone(), cfg.dev_templates.clone());
         let plugins = crate::plugins::Plugins::load(&cfg.plugins_dir);
-        let page_cache_mb = if cfg.dev_templates.is_some() { 0 } else { cfg.page_cache_mb };
+        let page_cache_mb = if cfg.dev_templates.is_some() {
+            0
+        } else {
+            cfg.page_cache_mb
+        };
         Ok(Arc::new(AppState {
             cfg,
             db,
@@ -181,7 +193,8 @@ impl AppState {
     /// (notifications are coalesced so a burst of writes costs one NOTIFY, not one per write).
     pub fn content_changed(&self) {
         self.page_cache.clear();
-        self.page_cache_dirty.store(true, std::sync::atomic::Ordering::Release);
+        self.page_cache_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 
     /// Only pages tagged with `tags` changed (here now, on other nodes within 50 ms).
@@ -209,13 +222,18 @@ impl AppState {
         // Another node's scoped page-cache invalidation.
         if let [p] = parts {
             if let Some(tags) = p.strip_prefix("pagetags|") {
-                self.page_cache.invalidate_tags(&tags.split(',').collect::<Vec<_>>());
+                self.page_cache
+                    .invalidate_tags(&tags.split(',').collect::<Vec<_>>());
                 return Ok(());
             }
         }
         // Settings, forums, themes… all change what guests see.
         self.page_cache.clear();
-        let parts: Vec<&str> = parts.iter().copied().filter(|p| *p != "pagecache").collect();
+        let parts: Vec<&str> = parts
+            .iter()
+            .copied()
+            .filter(|p| *p != "pagecache")
+            .collect();
         if parts.is_empty() {
             return Ok(());
         }
@@ -353,7 +371,9 @@ pub fn spawn_flushers(app: App) {
         loop {
             tick.tick().await;
             let tags: Vec<String> = a.page_cache_dirty_tags.lock().unwrap().drain().collect();
-            let everything = a.page_cache_dirty.swap(false, std::sync::atomic::Ordering::AcqRel)
+            let everything = a
+                .page_cache_dirty
+                .swap(false, std::sync::atomic::Ordering::AcqRel)
                 || tags.iter().map(|t| t.len() + 1).sum::<usize>() > 7000; // NOTIFY payload limit
             let payload = if everything {
                 Some(format!("{}:pagecache", a.node_id))
@@ -363,7 +383,10 @@ pub fn spawn_flushers(app: App) {
                 None
             };
             if let Some(p) = payload {
-                let _ = sqlx::query("SELECT pg_notify('rbb_cache', $1)").bind(p).execute(&a.db).await;
+                let _ = sqlx::query("SELECT pg_notify('rbb_cache', $1)")
+                    .bind(p)
+                    .execute(&a.db)
+                    .await;
             }
         }
     });

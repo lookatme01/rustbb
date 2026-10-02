@@ -95,7 +95,11 @@ impl Cache {
                     sqlx::query_as("SELECT * FROM usergroups ORDER BY disporder, gid")
                         .fetch_all(db)
                         .await?;
-                self.system_gid = rows.iter().find(|g| g.is_system).map(|g| g.gid).unwrap_or(0);
+                self.system_gid = rows
+                    .iter()
+                    .find(|g| g.is_system)
+                    .map(|g| g.gid)
+                    .unwrap_or(0);
                 self.groups = Arc::new(rows.into_iter().map(|g| (g.gid, g)).collect());
                 self.system_uid = sqlx::query_scalar("SELECT uid FROM users WHERE is_system")
                     .fetch_optional(db)
@@ -220,10 +224,13 @@ impl Cache {
                     themes
                         .iter()
                         .map(|t| {
-                            let (mut brand, mut css, mut cur, mut n) = (String::new(), false, Some(t), 0);
+                            let (mut brand, mut css, mut cur, mut n) =
+                                (String::new(), false, Some(t), 0);
                             while let Some(x) = cur {
                                 if brand.is_empty() {
-                                    if let Some(b) = x.properties.0.get("brand").and_then(|v| v.as_str()) {
+                                    if let Some(b) =
+                                        x.properties.0.get("brand").and_then(|v| v.as_str())
+                                    {
                                         if crate::admin::themes::valid_brand(b) {
                                             brand = b.to_string();
                                         }
@@ -231,7 +238,11 @@ impl Cache {
                                 }
                                 css |= !x.stylesheet.trim().is_empty();
                                 n += 1;
-                                cur = if x.pid > 0 && n < 16 { by_id.get(&x.pid).copied() } else { None };
+                                cur = if x.pid > 0 && n < 16 {
+                                    by_id.get(&x.pid).copied()
+                                } else {
+                                    None
+                                };
                             }
                             (t.tid, (brand, css))
                         })

@@ -251,7 +251,13 @@ pub async fn warn_submit(
     )
     .await;
     crate::ops::log_moderator_action(&ctx.app, me.uid, &ctx.ip, 0, 0, f.pid, "Warned user", serde_json::json!({"uid": uid, "username": user.username, "points": points, "title": title})).await;
-    crate::audit::log(&ctx, uid, "warned", serde_json::json!({"points": points, "wid": wid})).await;
+    crate::audit::log(
+        &ctx,
+        uid,
+        "warned",
+        serde_json::json!({"points": points, "wid": wid}),
+    )
+    .await;
     Ok(ctx.redirect(
         &format!("/warnings/{uid}"),
         &format!("The warning has been issued. {applied}"),
@@ -307,7 +313,13 @@ pub async fn revoke(
         .fetch_optional(&ctx.app.db)
         .await?;
     if let Some((uid, points, expired)) = row {
-        crate::audit::log(&ctx, uid, "warning_revoked", serde_json::json!({"wid": wid})).await;
+        crate::audit::log(
+            &ctx,
+            uid,
+            "warning_revoked",
+            serde_json::json!({"wid": wid}),
+        )
+        .await;
         if !expired {
             sqlx::query(
                 "UPDATE users SET warningpoints = GREATEST(warningpoints - $2, 0) WHERE uid = $1",

@@ -380,7 +380,9 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         serde_json::to_value(p).unwrap_or_default(),
     )
     .await?;
-    ctx.app.short_cache.insert(cache_key, serde_json::Value::String(sid.clone()));
+    ctx.app
+        .short_cache
+        .insert(cache_key, serde_json::Value::String(sid.clone()));
     Ok(Redirect::to(&format!("/search/results/{sid}")).into_response())
 }
 

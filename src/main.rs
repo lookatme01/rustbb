@@ -4,8 +4,8 @@ mod admin;
 mod app;
 mod assets;
 mod audit;
-mod automod;
 mod auth;
+mod automod;
 mod cache;
 mod config;
 mod ctx;
@@ -19,8 +19,8 @@ mod mail;
 mod models;
 mod notify;
 mod ops;
-mod parser;
 mod pagecache;
+mod parser;
 mod perms;
 mod pgp;
 mod plugins;
@@ -173,7 +173,10 @@ async fn connect(cfg: &config::Config) -> anyhow::Result<sqlx::PgPool> {
 }
 
 async fn migrate(db: &sqlx::PgPool) -> anyhow::Result<()> {
-    sqlx::migrate!("./migrations").run(db).await.map_err(|e| doctor::hinted(e.into()))?;
+    sqlx::migrate!("./migrations")
+        .run(db)
+        .await
+        .map_err(|e| doctor::hinted(e.into()))?;
     Ok(())
 }
 
@@ -336,7 +339,10 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "rbb=info,tower_http=warn,sqlx=warn".into());
     use tracing_subscriber::prelude::*;
     let fmt_layer = if json_logs {
-        tracing_subscriber::fmt::layer().json().with_filter(filter).boxed()
+        tracing_subscriber::fmt::layer()
+            .json()
+            .with_filter(filter)
+            .boxed()
     } else {
         tracing_subscriber::fmt::layer().with_filter(filter).boxed()
     };
@@ -411,23 +417,47 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1)
             }
         }
-        Cmd::ImportMybb { mysql_url, prefix, uploads_prefix, yes } => {
+        Cmd::ImportMybb {
+            mysql_url,
+            prefix,
+            uploads_prefix,
+            yes,
+        } => {
             if !yes {
-                anyhow::bail!("importing replaces all users, forums and posts in this database; re-run with --yes to continue");
+                anyhow::bail!(
+                    "importing replaces all users, forums and posts in this database; re-run with --yes to continue"
+                );
             }
             let db = connect(&cfg).await?;
             migrate(&db).await?;
-            if sqlx::query_scalar::<_, i32>("SELECT gid FROM usergroups LIMIT 1").fetch_optional(&db).await?.is_none() {
-                install::install(&db, "admin", &util::random_token(16), "admin@example.com", "rbb Community Forums", "http://127.0.0.1:8080").await?;
+            if sqlx::query_scalar::<_, i32>("SELECT gid FROM usergroups LIMIT 1")
+                .fetch_optional(&db)
+                .await?
+                .is_none()
+            {
+                install::install(
+                    &db,
+                    "admin",
+                    &util::random_token(16),
+                    "admin@example.com",
+                    "rbb Community Forums",
+                    "http://127.0.0.1:8080",
+                )
+                .await?;
             }
             // Load with foreign-key triggers off (when permitted); orphans are repaired afterwards.
-            let is_super: bool = sqlx::query_scalar("SELECT rolsuper FROM pg_roles WHERE rolname = current_user").fetch_one(&db).await?;
+            let is_super: bool =
+                sqlx::query_scalar("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+                    .fetch_one(&db)
+                    .await?;
             let load_db = if is_super {
                 PgPoolOptions::new()
                     .max_connections(2)
                     .after_connect(|c, _| {
                         Box::pin(async move {
-                            sqlx::query("SET session_replication_role = replica").execute(c).await?;
+                            sqlx::query("SET session_replication_role = replica")
+                                .execute(c)
+                                .await?;
                             Ok(())
                         })
                     })
@@ -442,7 +472,9 @@ async fn main() -> anyhow::Result<()> {
             install::upgrade(&db).await?;
             println!("rebuilding counters…");
             let app = app::AppState::new(cfg, db).await?;
-            ops::rebuild_all_counters(&app).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+            ops::rebuild_all_counters(&app)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
             app.bump_parser_rev().await?;
             println!("import complete. MyBB passwords work as-is and are upgraded on first login.");
             Ok(())

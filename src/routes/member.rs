@@ -70,18 +70,30 @@ async fn dummy_hash() -> &'static str {
 /// Check a username/password pair for the web login and the API alike: per-IP and
 /// per-account throttling, IP ban filters, account lockout, constant work for unknown users,
 /// failed-attempt accounting and audit logging. Returns the user on success.
-pub async fn check_credentials(ctx: &Ctx, username: &str, password: &str) -> AppResult<Result<User, String>> {
+pub async fn check_credentials(
+    ctx: &Ctx,
+    username: &str,
+    password: &str,
+) -> AppResult<Result<User, String>> {
     let name_key = username.trim().to_lowercase();
     if !ctx.app.rate_check(&format!("login:{}", ctx.ip), 20, 300)
-        || !ctx.app.rate_check(&format!("login-name:{name_key}"), 30, 900)
+        || !ctx
+            .app
+            .rate_check(&format!("login-name:{name_key}"), 30, 900)
     {
-        return Ok(Err("Too many login attempts. Please wait a few minutes and try again.".into()));
+        return Ok(Err(
+            "Too many login attempts. Please wait a few minutes and try again.".into(),
+        ));
     }
     if auth::is_filtered(&ctx.app, 1, &ctx.ip).await? {
-        return Ok(Err("Your IP address has been banned from this board.".into()));
+        return Ok(Err(
+            "Your IP address has been banned from this board.".into()
+        ));
     }
     let s = ctx.settings();
-    let user = find_login_user(ctx, username).await?.filter(|u| !u.is_system);
+    let user = find_login_user(ctx, username)
+        .await?
+        .filter(|u| !u.is_system);
     let dummy = dummy_hash().await;
     let stored = user.as_ref().map(|u| u.password.as_str()).unwrap_or(dummy);
     let pw_ok = auth::verify_password(password, stored).await;
@@ -98,13 +110,25 @@ pub async fn check_credentials(ctx: &Ctx, username: &str, password: &str) -> App
             } else {
                 0
             };
-            sqlx::query("UPDATE users SET loginattempts = $2, loginlockoutexpiry = $3 WHERE uid = $1")
-                .bind(user.uid)
-                .bind(if lock > 0 { 0 } else { attempts })
-                .bind(lock)
-                .execute(&ctx.app.db)
-                .await?;
-            crate::audit::log(ctx, user.uid, if lock > 0 { "login_locked" } else { "login_failed" }, serde_json::json!({"attempts": attempts})).await;
+            sqlx::query(
+                "UPDATE users SET loginattempts = $2, loginlockoutexpiry = $3 WHERE uid = $1",
+            )
+            .bind(user.uid)
+            .bind(if lock > 0 { 0 } else { attempts })
+            .bind(lock)
+            .execute(&ctx.app.db)
+            .await?;
+            crate::audit::log(
+                ctx,
+                user.uid,
+                if lock > 0 {
+                    "login_locked"
+                } else {
+                    "login_failed"
+                },
+                serde_json::json!({"attempts": attempts}),
+            )
+            .await;
         }
         return Ok(Err(LOGIN_FAILED.into()));
     }
@@ -155,7 +179,13 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
             .await;
     }
     auth::create_login(&ctx, user.uid, f.remember).await?;
-    crate::audit::log(&ctx, user.uid, "login", serde_json::json!({"remember": f.remember})).await;
+    crate::audit::log(
+        &ctx,
+        user.uid,
+        "login",
+        serde_json::json!({"remember": f.remember}),
+    )
+    .await;
     let to = if f.return_to.starts_with('/') && !f.return_to.starts_with("/member/") {
         f.return_to.clone()
     } else {
@@ -182,7 +212,9 @@ pub struct TwoFaForm {
 
 /// The TOTP time step (±1 step of clock skew) that `code` is valid for, if any.
 pub fn totp_step(secret: &str, code: &str) -> Option<i64> {
-    let bytes = totp_rs::Secret::Encoded(secret.to_string()).to_bytes().ok()?;
+    let bytes = totp_rs::Secret::Encoded(secret.to_string())
+        .to_bytes()
+        .ok()?;
     let t = totp_rs::TOTP::new(
         totp_rs::Algorithm::SHA1,
         6,
@@ -207,18 +239,24 @@ pub fn totp_check(secret: &str, code: &str, _account: &str) -> bool {
 
 /// Verify a user's two-factor code and burn it, so each code signs in at most once (an
 /// intercepted or shoulder-surfed code can't be replayed). Attempts are limited per account.
-pub async fn totp_consume(app: &crate::app::App, uid: i32, secret: &str, code: &str) -> AppResult<bool> {
+pub async fn totp_consume(
+    app: &crate::app::App,
+    uid: i32,
+    secret: &str,
+    code: &str,
+) -> AppResult<bool> {
     if !app.rate_check(&format!("2fa-uid:{uid}"), 5, 300) {
         return Err(AppError::RateLimited);
     }
     let Some(step) = totp_step(secret, code) else {
         return Ok(false);
     };
-    let r = sqlx::query("UPDATE users SET totp_last_step = $2 WHERE uid = $1 AND totp_last_step < $2")
-        .bind(uid)
-        .bind(step)
-        .execute(&app.db)
-        .await?;
+    let r =
+        sqlx::query("UPDATE users SET totp_last_step = $2 WHERE uid = $1 AND totp_last_step < $2")
+            .bind(uid)
+            .bind(step)
+            .execute(&app.db)
+            .await?;
     Ok(r.rows_affected() == 1)
 }
 
@@ -265,7 +303,13 @@ pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<
             .await;
     }
     auth::create_login(&ctx, uid, remember).await?;
-    crate::audit::log(&ctx, uid, "login", serde_json::json!({"remember": remember, "twofa": true})).await;
+    crate::audit::log(
+        &ctx,
+        uid,
+        "login",
+        serde_json::json!({"remember": remember, "twofa": true}),
+    )
+    .await;
     let to = if f.return_to.starts_with('/') {
         f.return_to.clone()
     } else {
@@ -680,7 +724,13 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
             .execute(&mut *tx)
             .await?;
     }
-    crate::audit::log(&ctx, uid, "registered", serde_json::json!({"username": f.username.trim()})).await;
+    crate::audit::log(
+        &ctx,
+        uid,
+        "registered",
+        serde_json::json!({"username": f.username.trim()}),
+    )
+    .await;
     if referrer_uid > 0 {
         sqlx::query("UPDATE users SET referrals = referrals + 1 WHERE uid = $1")
             .bind(referrer_uid)
@@ -792,7 +842,13 @@ pub async fn activate(ctx: Ctx, Query(q): Query<ActivateQuery>) -> AppResult<Res
             .bind(&misc)
             .execute(&ctx.app.db)
             .await?;
-        crate::audit::log(&ctx, q.uid, "email_changed", serde_json::json!({"confirmed": true})).await;
+        crate::audit::log(
+            &ctx,
+            q.uid,
+            "email_changed",
+            serde_json::json!({"confirmed": true}),
+        )
+        .await;
         return Ok(ctx.redirect("/usercp", "Your new email address has been confirmed."));
     }
     if ctx.settings().get("regtype") == "both" {
@@ -806,11 +862,12 @@ pub async fn activate(ctx: Ctx, Query(q): Query<ActivateQuery>) -> AppResult<Res
         .await?;
         return Ok(ctx.redirect("/", "Your email address has been verified. An administrator must now activate your account."));
     }
-    let activated: Option<String> =
-        sqlx::query_scalar("UPDATE users SET usergroup = 2 WHERE uid = $1 AND usergroup = 5 RETURNING username")
-            .bind(q.uid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
+    let activated: Option<String> = sqlx::query_scalar(
+        "UPDATE users SET usergroup = 2 WHERE uid = $1 AND usergroup = 5 RETURNING username",
+    )
+    .bind(q.uid)
+    .fetch_optional(&ctx.app.db)
+    .await?;
     crate::audit::log(&ctx, q.uid, "activated", serde_json::Value::Null).await;
     if let Some(name) = activated {
         crate::system::welcome(&ctx.app, &[(q.uid, name)]).await;
@@ -874,18 +931,25 @@ pub async fn lostpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppRes
     if !ctx.app.rate_check(&format!("lostpw:{}", ctx.ip), 5, 3600) {
         return Err(AppError::RateLimited);
     }
-    let users: Vec<(i32, String, String)> =
-        sqlx::query_as("SELECT uid, username, email FROM users WHERE lower(email) = lower($1) AND NOT is_system")
-            .bind(f.email.trim())
-            .fetch_all(&ctx.app.db)
-            .await?;
+    let users: Vec<(i32, String, String)> = sqlx::query_as(
+        "SELECT uid, username, email FROM users WHERE lower(email) = lower($1) AND NOT is_system",
+    )
+    .bind(f.email.trim())
+    .fetch_all(&ctx.app.db)
+    .await?;
     let s = ctx.settings();
     let (bbname, bburl) = (
         s.get("bbname").to_string(),
         s.get("bburl").trim_end_matches('/').to_string(),
     );
     for (uid, username, email) in users {
-        crate::audit::log(&ctx, uid, "password_reset_requested", serde_json::Value::Null).await;
+        crate::audit::log(
+            &ctx,
+            uid,
+            "password_reset_requested",
+            serde_json::Value::Null,
+        )
+        .await;
         let code = util::random_token(30);
         sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type = 'p'")
             .bind(uid)
@@ -1147,7 +1211,8 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
     .bind(now())
     .fetch_optional(&ctx.app.db)
     .await?;
-    let is_staff = ctx.uid() > 0 && (ctx.is_any_mod() || ctx.perms.canmodcp || ctx.perms.canbanusers);
+    let is_staff =
+        ctx.uid() > 0 && (ctx.is_any_mod() || ctx.perms.canmodcp || ctx.perms.canbanusers);
     let ban = ban.map(|(reason, since, until, by_uid, by)| {
         let by = by.filter(|_| is_staff);
         minijinja::context! { reason => reason, since => since, until => until, by_uid => if by.is_some() { by_uid } else { 0 }, by => by }
@@ -1157,7 +1222,11 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
     } else {
         None
     };
-    let system_activity = if user.is_system { Some(system_activity(&ctx, user.uid).await?) } else { None };
+    let system_activity = if user.is_system {
+        Some(system_activity(&ctx, user.uid).await?)
+    } else {
+        None
+    };
     let additional: Vec<String> = user
         .additionalgroups
         .iter()
@@ -1223,13 +1292,16 @@ async fn system_activity(ctx: &Ctx, uid: i32) -> AppResult<minijinja::Value> {
     .bind(uid)
     .fetch_one(&ctx.app.db)
     .await?;
-    let can_see_log = ctx.uid() > 0 && (ctx.is_any_mod() || (ctx.perms.canmodcp && ctx.perms.canviewmodlogs));
+    let can_see_log =
+        ctx.uid() > 0 && (ctx.is_any_mod() || (ctx.perms.canmodcp && ctx.perms.canviewmodlogs));
     let recent = if can_see_log {
         Some(crate::routes::modcp::load_logs(ctx, uid, 0, 10, 0).await?)
     } else {
         None
     };
-    Ok(minijinja::context! { quarantined => quarantined, messages => messages, closed => closed, staff_posts => staff_posts, recent => recent })
+    Ok(
+        minijinja::context! { quarantined => quarantined, messages => messages, closed => closed, staff_posts => staff_posts, recent => recent },
+    )
 }
 
 pub fn format_duration(secs: i64) -> String {
@@ -1323,9 +1395,18 @@ pub async fn email_submit(
         return Err(AppError::user("Please enter both a subject and a message."));
     }
     // Enforced in memory too: the maillogs count below only works when mail logging is on.
-    let daily = if ctx.perms.maxemails > 0 { ctx.perms.maxemails as u32 } else { 50 };
-    if !ctx.app.rate_check(&format!("useremail:{}", me.uid), daily, 86400) {
-        return Err(AppError::user(format!("You may only send {daily} emails per day.")));
+    let daily = if ctx.perms.maxemails > 0 {
+        ctx.perms.maxemails as u32
+    } else {
+        50
+    };
+    if !ctx
+        .app
+        .rate_check(&format!("useremail:{}", me.uid), daily, 86400)
+    {
+        return Err(AppError::user(format!(
+            "You may only send {daily} emails per day."
+        )));
     }
     if ctx.perms.maxemails > 0 {
         let n: i64 = sqlx::query_scalar(

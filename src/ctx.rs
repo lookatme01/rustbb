@@ -295,7 +295,10 @@ impl CtxInner {
     /// Only for post listings and their page arithmetic, never to decide access to content.
     pub fn listed_states(&self, fid: i32) -> Vec<i16> {
         let mut v = self.visible_states(fid);
-        if !v.contains(&-1) && self.mod_perms(fid).is_none() && self.forum_perms(fid).canviewdeletionnotice {
+        if !v.contains(&-1)
+            && self.mod_perms(fid).is_none()
+            && self.forum_perms(fid).canviewdeletionnotice
+        {
             v.push(-1);
         }
         v
@@ -447,7 +450,10 @@ impl CtxInner {
             .unwrap_or((0, 0)),
         };
         let appeals: i64 = if self.perms.canbanusers {
-            sqlx::query_scalar("SELECT COUNT(*) FROM ban_appeals WHERE status = 0").fetch_one(&self.app.db).await.unwrap_or(0)
+            sqlx::query_scalar("SELECT COUNT(*) FROM ban_appeals WHERE status = 0")
+                .fetch_one(&self.app.db)
+                .await
+                .unwrap_or(0)
         } else {
             0
         };
@@ -764,16 +770,30 @@ pub async fn context_middleware(
         && !path.starts_with("/static")
     {
         banned_page(&ctx).await
-    } else if let Some(hit) = ctx.guest_cache.as_deref().and_then(|k| app.page_cache.get(k)) {
+    } else if let Some(hit) = ctx
+        .guest_cache
+        .as_deref()
+        .and_then(|k| app.page_cache.get(k))
+    {
         // Served from the guest page cache: replay the handler's side effects that matter.
         ctx.set_location(hit.fid, hit.tid);
         if hit.tid > 0 && !ctx.is_prefetch() {
             *app.thread_views.entry(hit.tid).or_insert(0) += 1;
         }
-        let mut r = (StatusCode::OK, crate::pagecache::personalize(&hit.html, &ctx.csrf)).into_response();
+        let mut r = (
+            StatusCode::OK,
+            crate::pagecache::personalize(&hit.html, &ctx.csrf),
+        )
+            .into_response();
         let h = r.headers_mut();
-        h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
-        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
+        h.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        );
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-cache"),
+        );
         h.insert("x-rbb-cache", HeaderValue::from_static("hit"));
         r
     } else if let Some(p) = profile.clone() {
@@ -804,28 +824,41 @@ pub async fn context_middleware(
             .is_some_and(|v| v.starts_with("text/html"));
         if is_html && resp.headers().get("x-rbb-cache").is_none() {
             let (mut parts, body) = resp.into_parts();
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+            let bytes = axum::body::to_bytes(body, usize::MAX)
+                .await
+                .unwrap_or_default();
             if parts.status == StatusCode::OK && ctx.guest_cacheable.load(Ordering::Relaxed) {
                 app.page_cache.put(
                     key.clone(),
                     crate::pagecache::Entry {
                         html: bytes.clone(),
-                        tags: app.page_cache.snapshot(&ctx.guest_cache_tags.lock().unwrap()),
+                        tags: app
+                            .page_cache
+                            .snapshot(&ctx.guest_cache_tags.lock().unwrap()),
                         fid: ctx.location.0.load(Ordering::Relaxed),
                         tid: ctx.location.1.load(Ordering::Relaxed),
                     },
                     cache_epoch,
                 );
-                parts.headers.insert("x-rbb-cache", HeaderValue::from_static("miss"));
+                parts
+                    .headers
+                    .insert("x-rbb-cache", HeaderValue::from_static("miss"));
             }
             parts.headers.remove(header::CONTENT_LENGTH);
-            resp = Response::from_parts(parts, axum::body::Body::from(crate::pagecache::personalize(&bytes, &ctx.csrf)));
+            resp = Response::from_parts(
+                parts,
+                axum::body::Body::from(crate::pagecache::personalize(&bytes, &ctx.csrf)),
+            );
         }
     }
 
     // Any successful write can change what guests see: just what it touched if the handler
     // said so, otherwise everything.
-    if method != "GET" && method != "HEAD" && resp.status().as_u16() < 400 && !crate::pagecache::write_is_private(&path) {
+    if method != "GET"
+        && method != "HEAD"
+        && resp.status().as_u16() < 400
+        && !crate::pagecache::write_is_private(&path)
+    {
         match ctx.write_scope.lock().unwrap().take() {
             Some(tags) => app.content_changed_tags(tags),
             None => app.content_changed(),
@@ -839,7 +872,13 @@ pub async fn context_middleware(
     }
 
     // Record activity for Who's Online (batched; flushed every few seconds).
-    if method == "GET" && !is_api && resp.status().is_success() && !path.starts_with("/live") && !path.starts_with("/pgp/") && !ctx.is_prefetch() {
+    if method == "GET"
+        && !is_api
+        && resp.status().is_success()
+        && !path.starts_with("/live")
+        && !path.starts_with("/pgp/")
+        && !ctx.is_prefetch()
+    {
         let location = if query.is_empty() {
             path
         } else {
@@ -881,7 +920,9 @@ async fn banned_page(ctx: &Ctx) -> Response {
             .ok()
             .flatten();
     let (reason, lifted) = ban.map(|b| (b.0, b.2)).unwrap_or_default();
-    let appeal = crate::routes::appeals::banned_page_context(ctx).await.unwrap_or_default();
+    let appeal = crate::routes::appeals::banned_page_context(ctx)
+        .await
+        .unwrap_or_default();
     match ctx
         .render_status(
             StatusCode::FORBIDDEN,
@@ -1036,7 +1077,14 @@ pub mod de {
 }
 
 /// Replace the layout's debug placeholder with the profiler panel (admin HTML pages only).
-async fn inject_debug(app: &App, resp: Response, p: &crate::debugbar::Handle, method: &str, path: &str, query: &str) -> Response {
+async fn inject_debug(
+    app: &App,
+    resp: Response,
+    p: &crate::debugbar::Handle,
+    method: &str,
+    path: &str,
+    query: &str,
+) -> Response {
     let is_html = resp
         .headers()
         .get(header::CONTENT_TYPE)
@@ -1056,7 +1104,10 @@ async fn inject_debug(app: &App, resp: Response, p: &crate::debugbar::Handle, me
         return Response::from_parts(parts, axum::body::Body::from(bytes));
     }
     let extra = crate::debugbar::Extra {
-        route: format!("{method} {path}{}{query}", if query.is_empty() { "" } else { "?" }),
+        route: format!(
+            "{method} {path}{}{query}",
+            if query.is_empty() { "" } else { "?" }
+        ),
         status: parts.status.as_u16(),
         bytes: bytes.len(),
         pool_size: app.db.size(),
@@ -1088,15 +1139,25 @@ mod tests {
             "javascript:alert(1)",
             "",
         ] {
-            assert_eq!(safe_redirect(bad), "/", "{bad:?} must not redirect off-site");
+            assert_eq!(
+                safe_redirect(bad),
+                "/",
+                "{bad:?} must not redirect off-site"
+            );
         }
-        assert_eq!(safe_redirect("/thread/5?page=2#pid9"), "/thread/5?page=2#pid9");
+        assert_eq!(
+            safe_redirect("/thread/5?page=2#pid9"),
+            "/thread/5?page=2#pid9"
+        );
     }
 
     #[test]
     fn client_ip_uses_proxy_appended_address() {
         let mut h = HeaderMap::new();
-        h.insert("x-forwarded-for", HeaderValue::from_static("6.6.6.6, 203.0.113.9"));
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("6.6.6.6, 203.0.113.9"),
+        );
         let peer: SocketAddr = "10.0.0.1:5000".parse().unwrap();
         assert_eq!(client_ip(&h, Some(peer), true), "203.0.113.9");
         assert_eq!(client_ip(&h, Some(peer), false), "10.0.0.1");

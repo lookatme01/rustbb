@@ -29,12 +29,14 @@ struct Compressed {
 static VERSIONS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     StaticFiles::iter()
         .filter_map(|p| {
-            StaticFiles::get(&p).map(|f| (p.to_string(), hex::encode(&f.metadata.sha256_hash()[..8])))
+            StaticFiles::get(&p)
+                .map(|f| (p.to_string(), hex::encode(&f.metadata.sha256_hash()[..8])))
         })
         .collect()
 });
 
-static COMPRESSED: LazyLock<dashmap::DashMap<String, Arc<Compressed>>> = LazyLock::new(dashmap::DashMap::new);
+static COMPRESSED: LazyLock<dashmap::DashMap<String, Arc<Compressed>>> =
+    LazyLock::new(dashmap::DashMap::new);
 
 fn compressible(path: &str) -> bool {
     matches!(
@@ -60,7 +62,9 @@ pub fn precompress_all() {
             if !compressible(&path) {
                 continue;
             }
-            let Some(f) = StaticFiles::get(&path) else { continue };
+            let Some(f) = StaticFiles::get(&path) else {
+                continue;
+            };
             if f.data.len() < 512 {
                 continue;
             }
@@ -72,7 +76,13 @@ pub fn precompress_all() {
             let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
             let _ = gz.write_all(&f.data);
             let gz = gz.finish().unwrap_or_default();
-            COMPRESSED.insert(path.to_string(), Arc::new(Compressed { br: br.into(), gz: gz.into() }));
+            COMPRESSED.insert(
+                path.to_string(),
+                Arc::new(Compressed {
+                    br: br.into(),
+                    gz: gz.into(),
+                }),
+            );
         }
     });
 }
@@ -81,7 +91,10 @@ fn accepts(headers: &HeaderMap, enc: &str) -> bool {
     headers
         .get(header::ACCEPT_ENCODING)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.split(',').any(|e| e.split(';').next().is_some_and(|n| n.trim() == enc)))
+        .is_some_and(|v| {
+            v.split(',')
+                .any(|e| e.split(';').next().is_some_and(|n| n.trim() == enc))
+        })
 }
 
 pub async fn serve(path: &str, query: Option<&str>, headers: &HeaderMap) -> Response {
@@ -101,8 +114,10 @@ pub async fn serve(path: &str, query: Option<&str>, headers: &HeaderMap) -> Resp
     let mut resp = if headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.split(',').any(|t| t.trim().trim_start_matches("W/") == etag))
-    {
+        .is_some_and(|v| {
+            v.split(',')
+                .any(|t| t.trim().trim_start_matches("W/") == etag)
+        }) {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
         let mime = mime_guess::from_path(path).first_or_octet_stream();
@@ -113,7 +128,11 @@ pub async fn serve(path: &str, query: Option<&str>, headers: &HeaderMap) -> Resp
         };
         let mut r = (StatusCode::OK, body).into_response();
         let h = r.headers_mut();
-        h.insert(header::CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap_or(HeaderValue::from_static("application/octet-stream")));
+        h.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_str(mime.as_ref())
+                .unwrap_or(HeaderValue::from_static("application/octet-stream")),
+        );
         if let Some(e) = encoding {
             h.insert(header::CONTENT_ENCODING, HeaderValue::from_static(e));
         }
@@ -121,7 +140,10 @@ pub async fn serve(path: &str, query: Option<&str>, headers: &HeaderMap) -> Resp
     };
     let h = resp.headers_mut();
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
-    h.insert(header::ETAG, HeaderValue::from_str(&etag).unwrap_or(HeaderValue::from_static("\"0\"")));
+    h.insert(
+        header::ETAG,
+        HeaderValue::from_str(&etag).unwrap_or(HeaderValue::from_static("\"0\"")),
+    );
     if compressible(path) {
         h.insert(header::VARY, HeaderValue::from_static("Accept-Encoding"));
     }
@@ -144,7 +166,10 @@ mod tests {
     #[test]
     fn parses_accept_encoding() {
         let mut h = HeaderMap::new();
-        h.insert(header::ACCEPT_ENCODING, HeaderValue::from_static("gzip, deflate, br;q=1.0"));
+        h.insert(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_static("gzip, deflate, br;q=1.0"),
+        );
         assert!(accepts(&h, "br") && accepts(&h, "gzip") && !accepts(&h, "zstd"));
     }
 }

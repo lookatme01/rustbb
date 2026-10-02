@@ -13,9 +13,9 @@ pub mod member;
 pub mod memberlist;
 pub mod misc;
 pub mod modcp;
+pub mod moderation;
 pub mod modnotes;
 pub mod modreports;
-pub mod moderation;
 pub mod online;
 pub mod pgp;
 pub mod polls;
@@ -49,8 +49,8 @@ pub fn misc_back(ctx: &crate::ctx::Ctx, fallback: &str) -> String {
         .filter(|p| p.starts_with('/') && !p.starts_with("//"))
         .unwrap_or_else(|| fallback.to_string())
 }
-use axum::response::Redirect;
 use axum::Router;
+use axum::response::Redirect;
 use axum::routing::{get, post};
 
 pub fn router() -> Router<App> {
@@ -67,7 +67,10 @@ pub fn router() -> Router<App> {
         .route("/thread/{tid}/newpost", get(showthread::newpost))
         .route("/thread/{tid}/print", get(showthread::printthread))
         .route("/thread/{tid}/whoposted", get(showthread::whoposted))
-        .route("/thread/{tid}/send", get(showthread::sendthread_form).post(showthread::sendthread_submit))
+        .route(
+            "/thread/{tid}/send",
+            get(showthread::sendthread_form).post(showthread::sendthread_submit),
+        )
         .route("/thread/{tid}/subscribe", post(misc::subscribe_thread))
         .route("/thread/{tid}/rate", post(misc::rate_thread))
         .route("/thread/{tid}/poll/vote", post(polls::vote))
@@ -224,19 +227,54 @@ pub fn router() -> Router<App> {
         .route("/sendthread.php", get(misc::legacy_showthread))
         .route("/newreply.php", get(misc::legacy_showthread))
         .route("/newthread.php", get(misc::legacy_forumdisplay))
-        .route("/archive/index.php", get(|| async { Redirect::permanent("/archive") }))
+        .route(
+            "/archive/index.php",
+            get(|| async { Redirect::permanent("/archive") }),
+        )
         .route("/private.php", get(|| async { Redirect::permanent("/pm") }))
-        .route("/usercp.php", get(|| async { Redirect::permanent("/usercp") }))
-        .route("/memberlist.php", get(|| async { Redirect::permanent("/members") }))
-        .route("/showteam.php", get(|| async { Redirect::permanent("/team") }))
-        .route("/search.php", get(|| async { Redirect::permanent("/search") }))
-        .route("/calendar.php", get(|| async { Redirect::permanent("/calendar") }))
-        .route("/portal.php", get(|| async { Redirect::permanent("/portal") }))
-        .route("/online.php", get(|| async { Redirect::permanent("/online") }))
-        .route("/stats.php", get(|| async { Redirect::permanent("/stats") }))
-        .route("/syndication.php", get(|axum::extract::RawQuery(q): axum::extract::RawQuery| async move {
-            Redirect::permanent(&match q { Some(q) => format!("/syndication?{q}"), None => "/syndication".into() })
-        }))
+        .route(
+            "/usercp.php",
+            get(|| async { Redirect::permanent("/usercp") }),
+        )
+        .route(
+            "/memberlist.php",
+            get(|| async { Redirect::permanent("/members") }),
+        )
+        .route(
+            "/showteam.php",
+            get(|| async { Redirect::permanent("/team") }),
+        )
+        .route(
+            "/search.php",
+            get(|| async { Redirect::permanent("/search") }),
+        )
+        .route(
+            "/calendar.php",
+            get(|| async { Redirect::permanent("/calendar") }),
+        )
+        .route(
+            "/portal.php",
+            get(|| async { Redirect::permanent("/portal") }),
+        )
+        .route(
+            "/online.php",
+            get(|| async { Redirect::permanent("/online") }),
+        )
+        .route(
+            "/stats.php",
+            get(|| async { Redirect::permanent("/stats") }),
+        )
+        .route(
+            "/syndication.php",
+            get(
+                |axum::extract::RawQuery(q): axum::extract::RawQuery| async move {
+                    Redirect::permanent(&match q {
+                        Some(q) => format!("/syndication?{q}"),
+                        None => "/syndication".into(),
+                    })
+                },
+            ),
+        )
         .nest("/api/v1", api::router())
         .nest("/admin", crate::admin::router())
 }

@@ -35,10 +35,20 @@ pub async fn stream(ctx: Ctx, Query(q): Query<LiveQuery>) -> AppResult<Response>
     let topic = |rx: tokio::sync::broadcast::Receiver<crate::app::LiveEvent>| -> Events {
         Box::pin(BroadcastStream::new(rx).filter_map(|e| e.ok()))
     };
-    let thread_events: Events = if tid > 0 { topic(ctx.app.live.thread(tid)) } else { Box::pin(futures::stream::empty()) };
-    let user_events: Events = if uid > 0 { topic(ctx.app.live.user(uid)) } else { Box::pin(futures::stream::empty()) };
+    let thread_events: Events = if tid > 0 {
+        topic(ctx.app.live.thread(tid))
+    } else {
+        Box::pin(futures::stream::empty())
+    };
+    let user_events: Events = if uid > 0 {
+        topic(ctx.app.live.user(uid))
+    } else {
+        Box::pin(futures::stream::empty())
+    };
     let s = futures::stream::select(thread_events, user_events).map(|ev| {
-        Ok::<Event, std::convert::Infallible>(Event::default().event(ev.kind).data(ev.data.to_string()))
+        Ok::<Event, std::convert::Infallible>(
+            Event::default().event(ev.kind).data(ev.data.to_string()),
+        )
     });
     // End streams after an hour, or at once when the server shuts down; the browser reconnects
     // automatically.

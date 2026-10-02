@@ -50,7 +50,8 @@ impl Config {
             database_url: get("DATABASE_URL", DEFAULT_DATABASE_URL),
             listen: get("RBB_LISTEN", DEFAULT_LISTEN).parse()?,
             secret,
-            db_max_connections: get("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS).parse()?,
+            db_max_connections: get("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS)
+                .parse()?,
             upload_dir: get("RBB_UPLOAD_DIR", DEFAULT_UPLOAD_DIR),
             trust_proxy: get("RBB_TRUST_PROXY", "false") == "true",
             secure_cookies: get("RBB_SECURE_COOKIES", "false") == "true",

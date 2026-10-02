@@ -146,9 +146,18 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
             }
             crate::system::log_expiries(app, "Ban expired", &unbanned).await;
             for (sql, action) in [
-                ("UPDATE users SET suspendposting = FALSE, suspensiontime = 0 WHERE suspendposting AND suspensiontime > 0 AND suspensiontime <= $1 RETURNING uid, username", "Posting suspension expired"),
-                ("UPDATE users SET moderateposts = FALSE, moderationtime = 0 WHERE moderateposts AND moderationtime > 0 AND moderationtime <= $1 RETURNING uid, username", "Post moderation expired"),
-                ("UPDATE users SET suspendsignature = FALSE, suspendsigtime = 0 WHERE suspendsignature AND suspendsigtime > 0 AND suspendsigtime <= $1 RETURNING uid, username", "Signature suspension expired"),
+                (
+                    "UPDATE users SET suspendposting = FALSE, suspensiontime = 0 WHERE suspendposting AND suspensiontime > 0 AND suspensiontime <= $1 RETURNING uid, username",
+                    "Posting suspension expired",
+                ),
+                (
+                    "UPDATE users SET moderateposts = FALSE, moderationtime = 0 WHERE moderateposts AND moderationtime > 0 AND moderationtime <= $1 RETURNING uid, username",
+                    "Post moderation expired",
+                ),
+                (
+                    "UPDATE users SET suspendsignature = FALSE, suspendsigtime = 0 WHERE suspendsignature AND suspendsigtime > 0 AND suspendsigtime <= $1 RETURNING uid, username",
+                    "Signature suspension expired",
+                ),
             ] {
                 let ended: Vec<(i32, String)> = sqlx::query_as(sql).bind(t).fetch_all(db).await?;
                 crate::system::log_expiries(app, action, &ended).await;

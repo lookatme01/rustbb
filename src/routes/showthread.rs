@@ -327,7 +327,11 @@ pub async fn showthread(
     let reverse = !own_unapproved && offset > total / 2;
     let (order_sql, limit, off) = if reverse {
         let end = (offset + ppp).min(total);
-        ("dateline DESC, pid DESC", (end - offset).max(0), (total - end).max(0))
+        (
+            "dateline DESC, pid DESC",
+            (end - offset).max(0),
+            (total - end).max(0),
+        )
     } else {
         ("dateline, pid", ppp, offset)
     };
@@ -500,13 +504,14 @@ pub async fn showthread(
         .first()
         .map(|p| util::truncate_chars(&strip_tags(&p.message), 160))
         .unwrap_or_default();
-    let captcha = if ctx.uid() == 0 && can_reply && s.bool("guestcaptcha") && s.get("captchaimage") == "1" {
-        Some(crate::routes::captcha::new_captcha(&ctx).await?)
-    } else {
-        // A page with a (single-use) captcha must not be shared between guests.
-        ctx.allow_guest_cache(&vec![format!("thread:{tid}")]);
-        None
-    };
+    let captcha =
+        if ctx.uid() == 0 && can_reply && s.bool("guestcaptcha") && s.get("captchaimage") == "1" {
+            Some(crate::routes::captcha::new_captcha(&ctx).await?)
+        } else {
+            // A page with a (single-use) captcha must not be shared between guests.
+            ctx.allow_guest_cache(&vec![format!("thread:{tid}")]);
+            None
+        };
     ctx.render(
         "showthread.html",
         minijinja::context! {
@@ -800,7 +805,11 @@ pub struct SendThreadForm {
     pub message: String,
 }
 
-pub async fn sendthread_submit(ctx: Ctx, Path(tid): Path<i32>, crate::ctx::CsrfForm(f): crate::ctx::CsrfForm<SendThreadForm>) -> AppResult<Response> {
+pub async fn sendthread_submit(
+    ctx: Ctx,
+    Path(tid): Path<i32>,
+    crate::ctx::CsrfForm(f): crate::ctx::CsrfForm<SendThreadForm>,
+) -> AppResult<Response> {
     let me = ctx.require_login()?.clone();
     if !ctx.perms.cansendemail {
         return Err(AppError::no_perm());
@@ -813,17 +822,28 @@ pub async fn sendthread_submit(ctx: Ctx, Path(tid): Path<i32>, crate::ctx::CsrfF
     if f.subject.trim().is_empty() {
         return Err(AppError::user("Please enter a subject."));
     }
-    let sent: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM maillogs WHERE fromuid = $1 AND dateline > $2")
-        .bind(me.uid)
-        .bind(now() - 86400)
-        .fetch_one(&ctx.app.db)
-        .await?;
-    let max = if ctx.perms.maxemails > 0 { ctx.perms.maxemails as i64 } else { 50 };
+    let sent: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM maillogs WHERE fromuid = $1 AND dateline > $2")
+            .bind(me.uid)
+            .bind(now() - 86400)
+            .fetch_one(&ctx.app.db)
+            .await?;
+    let max = if ctx.perms.maxemails > 0 {
+        ctx.perms.maxemails as i64
+    } else {
+        50
+    };
     if sent >= max {
-        return Err(AppError::user(format!("You may only send {max} emails per day.")));
+        return Err(AppError::user(format!(
+            "You may only send {max} emails per day."
+        )));
     }
     let s = ctx.settings();
-    let link = format!("{}{}", s.get("bburl").trim_end_matches('/'), url_thread(tid as i64, Some(&thread.subject)));
+    let link = format!(
+        "{}{}",
+        s.get("bburl").trim_end_matches('/'),
+        url_thread(tid as i64, Some(&thread.subject))
+    );
     let body = format!(
         "{}\n\n{link}\n\n------------------------------------------\nThis message was sent by {} via {} ({}).\n",
         f.message.trim(),
@@ -843,5 +863,8 @@ pub async fn sendthread_submit(ctx: Ctx, Path(tid): Path<i32>, crate::ctx::CsrfF
         .bind(&ctx.ip)
         .execute(&ctx.app.db)
         .await?;
-    Ok(ctx.redirect(&url_thread(tid as i64, Some(&thread.subject)), "The thread has been sent."))
+    Ok(ctx.redirect(
+        &url_thread(tid as i64, Some(&thread.subject)),
+        "The thread has been sent.",
+    ))
 }

@@ -329,7 +329,14 @@ async fn record_system_authorship(
 ) -> AppResult<()> {
     crate::system::record(
         tx,
-        crate::system::Authorship { kind, ref_id, actor: ctx.uid(), actor_name: ctx.username(), ip: &ctx.ip, summary },
+        crate::system::Authorship {
+            kind,
+            ref_id,
+            actor: ctx.uid(),
+            actor_name: ctx.username(),
+            ip: &ctx.ip,
+            summary,
+        },
     )
     .await
 }
@@ -354,13 +361,16 @@ pub async fn create_reply(
     } else if actor > 0 {
         (actor, ctx.username().to_string())
     } else {
-        (0, guest_name
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("Guest")
-            .chars()
-            .take(30)
-            .collect())
+        (
+            0,
+            guest_name
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Guest")
+                .chars()
+                .take(30)
+                .collect(),
+        )
     };
     let ip = if input.as_system { "" } else { ctx.ip.as_str() };
     let visible: i16 = if needs_moderation(ctx, fid, false) {
@@ -616,12 +626,14 @@ async fn attach_uploads(
         })
         .map(|(aid, _)| aid)
         .collect();
-    let r = sqlx::query("UPDATE attachments SET pid = $1, posthash = '', uid = $3 WHERE aid = ANY($2) AND pid = 0")
-        .bind(pid)
-        .bind(&ok)
-        .bind(owner)
-        .execute(&mut *tx)
-        .await?;
+    let r = sqlx::query(
+        "UPDATE attachments SET pid = $1, posthash = '', uid = $3 WHERE aid = ANY($2) AND pid = 0",
+    )
+    .bind(pid)
+    .bind(&ok)
+    .bind(owner)
+    .execute(&mut *tx)
+    .await?;
     Ok(r.rows_affected())
 }
 

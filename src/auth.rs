@@ -19,13 +19,18 @@ fn argon() -> Argon2<'static> {
 /// after a restart, a credential-stuffing attempt) then queues instead of taking every core and
 /// 19 MiB per hash, so page views stay fast.
 static HASHING: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLock::new(|| {
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
     tokio::sync::Semaphore::new((cores / 4).max(2))
 });
 
 pub async fn hash_password(pw: &str) -> AppResult<String> {
     let pw = pw.to_string();
-    let _permit = HASHING.acquire().await.map_err(|e| AppError::Other(e.into()))?;
+    let _permit = HASHING
+        .acquire()
+        .await
+        .map_err(|e| AppError::Other(e.into()))?;
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         argon()
@@ -49,7 +54,9 @@ pub async fn verify_password(pw: &str, stored: &str) -> bool {
         return util::ct_eq(&calc, hash);
     }
     let (pw, stored) = (pw.to_string(), stored.to_string());
-    let Ok(_permit) = HASHING.acquire().await else { return false };
+    let Ok(_permit) = HASHING.acquire().await else {
+        return false;
+    };
     tokio::task::spawn_blocking(move || match PasswordHash::new(&stored) {
         Ok(h) => argon().verify_password(pw.as_bytes(), &h).is_ok(),
         Err(_) => false,

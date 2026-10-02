@@ -8,8 +8,8 @@
 //! `jsonb_to_recordset`, which coerces values with each column's input function, so
 //! MyBB's 0/1 flags become booleans and `{1,2}` strings become arrays.
 
-use crate::perms::{PermMeta, FORUM_PERM_META, GROUP_PERM_META, MOD_PERM_META};
-use anyhow::{bail, Context, Result};
+use crate::perms::{FORUM_PERM_META, GROUP_PERM_META, MOD_PERM_META, PermMeta};
+use anyhow::{Context, Result, bail};
 use futures::TryStreamExt;
 use serde_json::{Map, Value};
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions, MySqlRow};
@@ -36,11 +36,20 @@ fn row_to_obj(r: &MySqlRow) -> Obj {
             r.try_get::<Option<i64>, _>(i)
                 .ok()
                 .flatten()
-                .or_else(|| r.try_get::<Option<u64>, _>(i).ok().flatten().map(|v| v as i64))
+                .or_else(|| {
+                    r.try_get::<Option<u64>, _>(i)
+                        .ok()
+                        .flatten()
+                        .map(|v| v as i64)
+                })
                 .map(Value::from)
                 .unwrap_or(Value::Null)
         } else if ty.contains("DECIMAL") || ty.contains("FLOAT") || ty.contains("DOUBLE") {
-            r.try_get::<Option<f64>, _>(i).ok().flatten().map(Value::from).unwrap_or(Value::Null)
+            r.try_get::<Option<f64>, _>(i)
+                .ok()
+                .flatten()
+                .map(Value::from)
+                .unwrap_or(Value::Null)
         } else {
             match r.try_get::<Option<String>, _>(i) {
                 Ok(v) => v.map(Value::from).unwrap_or(Value::Null),
@@ -59,8 +68,16 @@ fn row_to_obj(r: &MySqlRow) -> Obj {
 
 /// "1,2,,3" → "{1,2,3}" (a Postgres int[] literal).
 fn int_list(v: &Value) -> Value {
-    let s = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
-    let ids: Vec<String> = s.split(',').filter_map(|x| x.trim().parse::<i64>().ok()).filter(|x| *x > 0).map(|x| x.to_string()).collect();
+    let s = v
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| v.to_string());
+    let ids: Vec<String> = s
+        .split(',')
+        .filter_map(|x| x.trim().parse::<i64>().ok())
+        .filter(|x| *x > 0)
+        .map(|x| x.to_string())
+        .collect();
     Value::from(format!("{{{}}}", ids.join(",")))
 }
 
@@ -98,7 +115,14 @@ fn take_perms(o: &mut Obj, meta: &[PermMeta], base: Value) -> Value {
                 Value::String(s) => s.trim().parse().unwrap_or(0),
                 _ => continue,
             };
-            p.insert(m.name.to_string(), if m.is_bool { Value::from(n != 0) } else { Value::from(n) });
+            p.insert(
+                m.name.to_string(),
+                if m.is_bool {
+                    Value::from(n != 0)
+                } else {
+                    Value::from(n)
+                },
+            );
         }
     }
     Value::Object(p)
@@ -106,8 +130,17 @@ fn take_perms(o: &mut Obj, meta: &[PermMeta], base: Value) -> Value {
 
 impl Importer {
     pub async fn connect(mysql_url: &str, pg: PgPool, prefix: &str) -> Result<Self> {
-        let my = MySqlPoolOptions::new().max_connections(2).connect(mysql_url).await.context("connecting to the MyBB MySQL database")?;
-        Ok(Self { my, pg, prefix: prefix.to_string(), columns: HashMap::new() })
+        let my = MySqlPoolOptions::new()
+            .max_connections(2)
+            .connect(mysql_url)
+            .await
+            .context("connecting to the MyBB MySQL database")?;
+        Ok(Self {
+            my,
+            pg,
+            prefix: prefix.to_string(),
+            columns: HashMap::new(),
+        })
     }
 
     fn t(&self, name: &str) -> String {
@@ -157,17 +190,41 @@ impl Importer {
             return Ok(());
         }
         let cols = self.pg_columns(table).await?;
-        let used: Vec<&(String, String)> = cols.iter().filter(|(c, _)| rows[0].contains_key(c)).collect();
-        let names = used.iter().map(|(c, _)| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
-        let defs = used.iter().map(|(c, t)| format!("\"{c}\" {t}")).collect::<Vec<_>>().join(", ");
-        let sql = format!("INSERT INTO {table} ({names}) SELECT {names} FROM jsonb_to_recordset($1) AS x({defs}) {conflict}");
+        let used: Vec<&(String, String)> = cols
+            .iter()
+            .filter(|(c, _)| rows[0].contains_key(c))
+            .collect();
+        let names = used
+            .iter()
+            .map(|(c, _)| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let defs = used
+            .iter()
+            .map(|(c, t)| format!("\"{c}\" {t}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "INSERT INTO {table} ({names}) SELECT {names} FROM jsonb_to_recordset($1) AS x({defs}) {conflict}"
+        );
         let data = Value::Array(rows.drain(..).map(Value::Object).collect());
-        sqlx::query(&sql).bind(sqlx::types::Json(data)).execute(&self.pg).await.with_context(|| format!("writing {table}"))?;
+        sqlx::query(&sql)
+            .bind(sqlx::types::Json(data))
+            .execute(&self.pg)
+            .await
+            .with_context(|| format!("writing {table}"))?;
         Ok(())
     }
 
     /// Streams `select` from MySQL, applies `fix` to each row and bulk-inserts into `table`.
-    async fn copy<F>(&mut self, label: &str, select: &str, table: &str, conflict: &str, mut fix: F) -> Result<u64>
+    async fn copy<F>(
+        &mut self,
+        label: &str,
+        select: &str,
+        table: &str,
+        conflict: &str,
+        mut fix: F,
+    ) -> Result<u64>
     where
         F: FnMut(&mut Obj) -> bool,
     {
@@ -175,7 +232,11 @@ impl Importer {
         let mut stream = sqlx::query(select).fetch(&my);
         let mut batch = Vec::with_capacity(BATCH);
         let mut n = 0u64;
-        while let Some(row) = stream.try_next().await.with_context(|| format!("reading {label}"))? {
+        while let Some(row) = stream
+            .try_next()
+            .await
+            .with_context(|| format!("reading {label}"))?
+        {
             let mut o = row_to_obj(&row);
             if !fix(&mut o) {
                 continue;
@@ -195,8 +256,14 @@ impl Importer {
     }
 
     pub async fn run(&mut self, uploads_prefix: &str) -> Result<()> {
-        let version: Option<String> =
-            sqlx::query_scalar(&format!("SELECT CAST(value AS CHAR) FROM {} WHERE name = 'bbname'", self.t("settings"))).fetch_optional(&self.my).await.ok().flatten();
+        let version: Option<String> = sqlx::query_scalar(&format!(
+            "SELECT CAST(value AS CHAR) FROM {} WHERE name = 'bbname'",
+            self.t("settings")
+        ))
+        .fetch_optional(&self.my)
+        .await
+        .ok()
+        .flatten();
         if version.is_none() {
             bail!("no MyBB settings table found with prefix '{}'", self.prefix);
         }
@@ -218,13 +285,21 @@ impl Importer {
         .fetch_all(&self.my)
         .await?;
         for (k, v) in settings {
-            sqlx::query("UPDATE settings SET value = $2 WHERE name = $1").bind(k).bind(v).execute(&self.pg).await?;
+            sqlx::query("UPDATE settings SET value = $2 WHERE name = $1")
+                .bind(k)
+                .bind(v)
+                .execute(&self.pg)
+                .await?;
         }
 
         // Usergroups: update the built-in ones in place, add custom ones on top of the
         // Registered group's permissions.
         let existing: HashMap<i32, Value> =
-            sqlx::query_as::<_, (i32, Value)>("SELECT gid, perms FROM usergroups").fetch_all(&self.pg).await?.into_iter().collect();
+            sqlx::query_as::<_, (i32, Value)>("SELECT gid, perms FROM usergroups")
+                .fetch_all(&self.pg)
+                .await?
+                .into_iter()
+                .collect();
         let registered = existing.get(&2).cloned().unwrap_or(Value::Null);
         let psel = self.perm_select("usergroups", GROUP_PERM_META).await?;
         let rows = sqlx::query(&format!(
@@ -238,7 +313,11 @@ impl Importer {
         .await?;
         // Move the System group (see `crate::system`) above every imported gid so no MyBB group
         // lands on it; it has no members at this point because users were truncated.
-        let max_gid = rows.iter().map(|r| int(&row_to_obj(r), "gid") as i32).max().unwrap_or(0);
+        let max_gid = rows
+            .iter()
+            .map(|r| int(&row_to_obj(r), "gid") as i32)
+            .max()
+            .unwrap_or(0);
         sqlx::query("UPDATE usergroups SET gid = (SELECT GREATEST(MAX(gid), $1) + 1 FROM usergroups) WHERE is_system AND gid <= $1")
             .bind(max_gid)
             .execute(&self.pg)
@@ -246,7 +325,14 @@ impl Importer {
         for r in &rows {
             let mut o = row_to_obj(r);
             let gid = int(&o, "gid") as i32;
-            let perms = take_perms(&mut o, GROUP_PERM_META, existing.get(&gid).cloned().unwrap_or_else(|| registered.clone()));
+            let perms = take_perms(
+                &mut o,
+                GROUP_PERM_META,
+                existing
+                    .get(&gid)
+                    .cloned()
+                    .unwrap_or_else(|| registered.clone()),
+            );
             sqlx::query(
                 "INSERT INTO usergroups (gid, type, title, description, namestyle, usertitle, stars, starimage, disporder, isbannedgroup, perms)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, '/static/images/star.svg', $8, $9, $10)
@@ -293,7 +379,14 @@ impl Importer {
             let salt = text(o, "salt");
             let hash = text(o, "password");
             o.remove("salt");
-            o.insert("password".into(), Value::from(if hash.is_empty() { String::new() } else { format!("mybb${salt}${hash}") }));
+            o.insert(
+                "password".into(),
+                Value::from(if hash.is_empty() {
+                    String::new()
+                } else {
+                    format!("mybb${salt}${hash}")
+                }),
+            );
             for k in ["additionalgroups", "buddylist", "ignorelist"] {
                 let v = o.get(k).cloned().unwrap_or(Value::Null);
                 o.insert(k.into(), int_list(&v));
@@ -301,7 +394,10 @@ impl Importer {
             // Local uploads move under /uploads/avatars; remote URLs stay as they are.
             let av = text(o, "avatar");
             let av = av.split('?').next().unwrap_or("").to_string();
-            let av = if let Some(rest) = av.strip_prefix("./uploads/avatars/").or_else(|| av.strip_prefix("uploads/avatars/")) {
+            let av = if let Some(rest) = av
+                .strip_prefix("./uploads/avatars/")
+                .or_else(|| av.strip_prefix("uploads/avatars/"))
+            {
                 format!("/uploads/avatars/{rest}")
             } else if av.starts_with("images/") || av.starts_with("./images/") {
                 String::new()
@@ -352,24 +448,44 @@ impl Importer {
         })
         .await?;
 
-        let fsel = self.perm_select("forumpermissions", FORUM_PERM_META).await?;
+        let fsel = self
+            .perm_select("forumpermissions", FORUM_PERM_META)
+            .await?;
         let base = serde_json::to_value(crate::perms::ForumPerms::default())?;
-        let sel = format!("SELECT CAST(fid AS SIGNED) fid, CAST(gid AS SIGNED) gid{fsel} FROM {}", self.t("forumpermissions"));
-        self.copy("forum permissions", &sel, "forumpermissions", "ON CONFLICT DO NOTHING", |o| {
-            let p = take_perms(o, FORUM_PERM_META, base.clone());
-            o.insert("perms".into(), p);
-            true
-        })
+        let sel = format!(
+            "SELECT CAST(fid AS SIGNED) fid, CAST(gid AS SIGNED) gid{fsel} FROM {}",
+            self.t("forumpermissions")
+        );
+        self.copy(
+            "forum permissions",
+            &sel,
+            "forumpermissions",
+            "ON CONFLICT DO NOTHING",
+            |o| {
+                let p = take_perms(o, FORUM_PERM_META, base.clone());
+                o.insert("perms".into(), p);
+                true
+            },
+        )
         .await?;
 
         let msel = self.perm_select("moderators", MOD_PERM_META).await?;
         let base = serde_json::to_value(crate::perms::ModPerms::default())?;
-        let sel = format!("SELECT CAST(fid AS SIGNED) fid, CAST(id AS SIGNED) id, CAST(isgroup AS SIGNED) isgroup{msel} FROM {}", self.t("moderators"));
-        self.copy("moderators", &sel, "moderators", "ON CONFLICT DO NOTHING", |o| {
-            let p = take_perms(o, MOD_PERM_META, base.clone());
-            o.insert("perms".into(), p);
-            true
-        })
+        let sel = format!(
+            "SELECT CAST(fid AS SIGNED) fid, CAST(id AS SIGNED) id, CAST(isgroup AS SIGNED) isgroup{msel} FROM {}",
+            self.t("moderators")
+        );
+        self.copy(
+            "moderators",
+            &sel,
+            "moderators",
+            "ON CONFLICT DO NOTHING",
+            |o| {
+                let p = take_perms(o, MOD_PERM_META, base.clone());
+                o.insert("perms".into(), p);
+                true
+            },
+        )
         .await?;
 
         let sel = format!(
@@ -380,7 +496,14 @@ impl Importer {
         self.copy("thread prefixes", &sel, "threadprefixes", "", |o| {
             for k in ["forums", "groups"] {
                 let v = o.get(k).cloned().unwrap_or(Value::Null);
-                o.insert(k.into(), if v.as_str() == Some("-1") { Value::from("{}") } else { int_list(&v) });
+                o.insert(
+                    k.into(),
+                    if v.as_str() == Some("-1") {
+                        Value::from("{}")
+                    } else {
+                        int_list(&v)
+                    },
+                );
             }
             true
         })
@@ -431,13 +554,23 @@ impl Importer {
             let opts = text(o, "options");
             let opts: Vec<&str> = opts.split("||~|~||").collect();
             let votes = text(o, "votes");
-            let mut votes: Vec<i64> = votes.split("||~|~||").map(|v| v.trim().parse().unwrap_or(0)).collect();
+            let mut votes: Vec<i64> = votes
+                .split("||~|~||")
+                .map(|v| v.trim().parse().unwrap_or(0))
+                .collect();
             votes.resize(opts.len(), 0);
             o.insert("options".into(), text_array(&opts));
             o.insert("votes".into(), Value::from(votes));
             // MyBB stores the poll length in days relative to the poll's creation.
             let (timeout, dateline) = (int(o, "timeout"), int(o, "dateline"));
-            o.insert("timeout".into(), Value::from(if timeout > 0 && timeout < 100_000 { dateline + timeout * 86400 } else { timeout }));
+            o.insert(
+                "timeout".into(),
+                Value::from(if timeout > 0 && timeout < 100_000 {
+                    dateline + timeout * 86400
+                } else {
+                    timeout
+                }),
+            );
             true
         })
         .await?;
@@ -446,7 +579,14 @@ impl Importer {
                     CAST(dateline AS SIGNED) dateline FROM {} ORDER BY vid",
             self.t("pollvotes")
         );
-        self.copy("poll votes", &sel, "pollvotes", "ON CONFLICT DO NOTHING", |_| true).await?;
+        self.copy(
+            "poll votes",
+            &sel,
+            "pollvotes",
+            "ON CONFLICT DO NOTHING",
+            |_| true,
+        )
+        .await?;
 
         println!("importing private messages…");
         let sel = format!(
@@ -458,10 +598,19 @@ impl Importer {
              FROM {} ORDER BY pmid",
             self.t("privatemessages")
         );
-        self.copy("private messages", &sel, "privatemessages", "ON CONFLICT DO NOTHING", |o| {
-            o.insert("recipients".into(), serde_json::json!({ "to": [int(o, "toid")] }));
-            true
-        })
+        self.copy(
+            "private messages",
+            &sel,
+            "privatemessages",
+            "ON CONFLICT DO NOTHING",
+            |o| {
+                o.insert(
+                    "recipients".into(),
+                    serde_json::json!({ "to": [int(o, "toid")] }),
+                );
+                true
+            },
+        )
         .await?;
 
         let sel = format!(
@@ -473,20 +622,26 @@ impl Importer {
             self.t("attachments")
         );
         let up = uploads_prefix.trim_matches('/').to_string();
-        self.copy("attachments", &sel, "attachments", "ON CONFLICT DO NOTHING", |o| {
-            let name = format!("{up}/{}", text(o, "attachname"));
-            let thumb = text(o, "thumbnail");
-            let thumb = if thumb.is_empty() {
-                String::new()
-            } else if thumb == "SMALL" {
-                name.clone()
-            } else {
-                format!("{up}/{thumb}")
-            };
-            o.insert("attachname".into(), Value::from(name));
-            o.insert("thumbnail".into(), Value::from(thumb));
-            true
-        })
+        self.copy(
+            "attachments",
+            &sel,
+            "attachments",
+            "ON CONFLICT DO NOTHING",
+            |o| {
+                let name = format!("{up}/{}", text(o, "attachname"));
+                let thumb = text(o, "thumbnail");
+                let thumb = if thumb.is_empty() {
+                    String::new()
+                } else if thumb == "SMALL" {
+                    name.clone()
+                } else {
+                    format!("{up}/{thumb}")
+                };
+                o.insert("attachname".into(), Value::from(name));
+                o.insert("thumbnail".into(), Value::from(thumb));
+                true
+            },
+        )
         .await?;
 
         for (label, table, target, sel) in [
@@ -496,7 +651,12 @@ impl Importer {
                 "threadsubscriptions",
                 "SELECT CAST(sid AS SIGNED) sid, CAST(uid AS SIGNED) uid, CAST(tid AS SIGNED) tid, CAST(notification AS SIGNED) notification, CAST(dateline AS SIGNED) dateline FROM {}",
             ),
-            ("forum subscriptions", "forumsubscriptions", "forumsubscriptions", "SELECT CAST(fsid AS SIGNED) fsid, CAST(fid AS SIGNED) fid, CAST(uid AS SIGNED) uid FROM {}"),
+            (
+                "forum subscriptions",
+                "forumsubscriptions",
+                "forumsubscriptions",
+                "SELECT CAST(fsid AS SIGNED) fsid, CAST(fid AS SIGNED) fid, CAST(uid AS SIGNED) uid FROM {}",
+            ),
             (
                 "reputation",
                 "reputation",
@@ -506,7 +666,8 @@ impl Importer {
         ] {
             if self.has_table(table).await? {
                 let sel = sel.replace("{}", &self.t(table));
-                self.copy(label, &sel, target, "ON CONFLICT DO NOTHING", |_| true).await?;
+                self.copy(label, &sel, target, "ON CONFLICT DO NOTHING", |_| true)
+                    .await?;
             }
         }
 

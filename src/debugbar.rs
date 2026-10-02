@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tracing::field::{Field, Visit};
 use tracing::Subscriber;
+use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer};
 
 /// Marker the layout leaves where the panel goes.
@@ -41,7 +41,12 @@ tokio::task_local! {
 }
 
 pub fn new_profile() -> Handle {
-    Arc::new(Mutex::new(Profile { start: Instant::now(), queries: Vec::new(), render_ms: 0.0, template: String::new() }))
+    Arc::new(Mutex::new(Profile {
+        start: Instant::now(),
+        queries: Vec::new(),
+        render_ms: 0.0,
+        template: String::new(),
+    }))
 }
 
 pub fn active() -> bool {
@@ -93,8 +98,12 @@ impl Visit for QueryVisitor {
     }
     fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
         match f.name() {
-            "db.statement" if self.sql.is_none() => self.sql = Some(format!("{v:?}").trim_matches('"').replace("\\n", "\n")),
-            "summary" if self.summary.is_none() => self.summary = Some(format!("{v:?}").trim_matches('"').to_string()),
+            "db.statement" if self.sql.is_none() => {
+                self.sql = Some(format!("{v:?}").trim_matches('"').replace("\\n", "\n"))
+            }
+            "summary" if self.summary.is_none() => {
+                self.summary = Some(format!("{v:?}").trim_matches('"').to_string())
+            }
             _ => {}
         }
     }
@@ -110,18 +119,32 @@ impl<S: Subscriber> Layer<S> for QueryLayer {
         let _ = PROFILE.try_with(|p| {
             let mut v = QueryVisitor::default();
             event.record(&mut v);
-            let sql = v.sql.filter(|s| !s.trim().is_empty()).or(v.summary).unwrap_or_default();
+            let sql = v
+                .sql
+                .filter(|s| !s.trim().is_empty())
+                .or(v.summary)
+                .unwrap_or_default();
             let mut p = p.lock().unwrap();
             let at = p.start.elapsed().as_secs_f64() * 1000.0;
             let ms = v.secs.unwrap_or(0.0) * 1000.0;
-            p.queries.push(QueryRec { sql: normalize(&sql), ms, rows: v.rows_returned.max(v.rows_affected), at: at - ms });
+            p.queries.push(QueryRec {
+                sql: normalize(&sql),
+                ms,
+                rows: v.rows_returned.max(v.rows_affected),
+                at: at - ms,
+            });
         });
     }
 }
 
 /// Only enable sqlx statement events while a request is being profiled.
-pub fn filter<S>() -> tracing_subscriber::filter::DynFilterFn<S, impl Fn(&tracing::Metadata<'_>, &Context<'_, S>) -> bool> {
-    tracing_subscriber::filter::DynFilterFn::new(|meta, _| meta.target() == "sqlx::query" && active())
+pub fn filter<S>() -> tracing_subscriber::filter::DynFilterFn<
+    S,
+    impl Fn(&tracing::Metadata<'_>, &Context<'_, S>) -> bool,
+> {
+    tracing_subscriber::filter::DynFilterFn::new(|meta, _| {
+        meta.target() == "sqlx::query" && active()
+    })
 }
 
 fn normalize(sql: &str) -> String {
@@ -148,28 +171,53 @@ pub fn render(p: &Profile, x: &Extra) -> String {
         *dup.entry(q.sql.as_str()).or_default() += 1;
     }
     let repeated: Vec<(&str, usize)> = {
-        let mut v: Vec<_> = dup.iter().filter(|(_, n)| **n > 1).map(|(s, n)| (*s, *n)).collect();
+        let mut v: Vec<_> = dup
+            .iter()
+            .filter(|(_, n)| **n > 1)
+            .map(|(s, n)| (*s, *n))
+            .collect();
         v.sort_by(|a, b| b.1.cmp(&a.1));
         v
     };
     let slowest = p.queries.iter().map(|q| q.ms).fold(0.0, f64::max);
-    let grade = if total < 50.0 { "fast" } else if total < 200.0 { "ok" } else { "slow" };
+    let grade = if total < 50.0 {
+        "fast"
+    } else if total < 200.0 {
+        "ok"
+    } else {
+        "slow"
+    };
     let mut h = String::with_capacity(4096);
     let _ = write!(
         h,
         r#"<details class="devbar devbar-{grade}" id="devbar"><summary><span class="devbar-pill"><b>{total:.1}</b> ms</span><span class="devbar-pill"><b>{nq}</b> {qword} · {db:.1} ms</span><span class="devbar-pill">render <b>{render:.1}</b> ms</span><span class="devbar-pill">{kb:.1} KB</span>{warn}<span class="devbar-route">{method_route}</span></summary><div class="devbar-body">"#,
         nq = p.queries.len(),
-        qword = if p.queries.len() == 1 { "query" } else { "queries" },
+        qword = if p.queries.len() == 1 {
+            "query"
+        } else {
+            "queries"
+        },
         render = p.render_ms,
         kb = x.bytes as f64 / 1024.0,
-        warn = if repeated.is_empty() { String::new() } else { format!(r#"<span class="devbar-pill devbar-warn">{} repeated</span>"#, repeated.len()) },
+        warn = if repeated.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r#"<span class="devbar-pill devbar-warn">{} repeated</span>"#,
+                repeated.len()
+            )
+        },
         method_route = escape_html(&x.route),
     );
     let _ = write!(
         h,
         r#"<dl class="devbar-facts"><div><dt>Status</dt><dd>{}</dd></div><div><dt>Template</dt><dd>{}</dd></div><div><dt>Handler time</dt><dd>{:.1} ms</dd></div><div><dt>Slowest query</dt><dd>{:.2} ms</dd></div><div><dt>DB pool</dt><dd>{} open · {} idle</dd></div><div><dt>Node</dt><dd>{}</dd></div><div><dt>Uptime</dt><dd>{}</dd></div><div><dt>Version</dt><dd>{}</dd></div><div><dt>Cache</dt><dd>{}</dd></div></dl>"#,
         x.status,
-        escape_html(if p.template.is_empty() { "—" } else { &p.template }),
+        escape_html(if p.template.is_empty() {
+            "—"
+        } else {
+            &p.template
+        }),
         (total - p.render_ms).max(0.0),
         slowest,
         x.pool_size,
@@ -182,7 +230,11 @@ pub fn render(p: &Profile, x: &Extra) -> String {
     if !repeated.is_empty() {
         h.push_str(r#"<p class="devbar-note">Repeated statements often mean an N+1 pattern:</p><ul class="devbar-dups">"#);
         for (sql, n) in repeated.iter().take(5) {
-            let _ = write!(h, "<li><b>×{n}</b> <code>{}</code></li>", escape_html(&truncate(sql, 160)));
+            let _ = write!(
+                h,
+                "<li><b>×{n}</b> <code>{}</code></li>",
+                escape_html(&truncate(sql, 160))
+            );
         }
         h.push_str("</ul>");
     }

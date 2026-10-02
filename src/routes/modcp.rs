@@ -184,7 +184,14 @@ pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResu
     .fetch_all(&ctx.app.db)
     .await?;
     for rid in changed {
-        crate::routes::modreports::record_event(&ctx.app.db, rid, ctx.uid(), if status == 1 { "resolved" } else { "reopened" }, "").await?;
+        crate::routes::modreports::record_event(
+            &ctx.app.db,
+            rid,
+            ctx.uid(),
+            if status == 1 { "resolved" } else { "reopened" },
+            "",
+        )
+        .await?;
     }
     ctx.app.mod_counts.invalidate_all();
     Ok(ctx.redirect("/modcp/reports", "The selected reports have been updated."))
@@ -559,7 +566,11 @@ pub async fn announcement_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnnForm>) -> AppR
     if f.as_system && !ctx.perms.canpostassystem {
         return Err(AppError::no_perm());
     }
-    let system = if f.as_system { Some(crate::system::identity(&ctx.app).await?.0) } else { None };
+    let system = if f.as_system {
+        Some(crate::system::identity(&ctx.app).await?.0)
+    } else {
+        None
+    };
     let mut tx = ctx.app.db.begin().await?;
     let aid = if f.aid > 0 {
         let existing = ctx
@@ -609,7 +620,14 @@ pub async fn announcement_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnnForm>) -> AppR
     if system.is_some() {
         crate::system::record(
             &mut tx,
-            crate::system::Authorship { kind: "announcement", ref_id: aid, actor: ctx.uid(), actor_name: ctx.username(), ip: &ctx.ip, summary: f.subject.trim() },
+            crate::system::Authorship {
+                kind: "announcement",
+                ref_id: aid,
+                actor: ctx.uid(),
+                actor_name: ctx.username(),
+                ip: &ctx.ip,
+                summary: f.subject.trim(),
+            },
         )
         .await?;
     }
@@ -715,7 +733,14 @@ pub async fn editprofile_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Respo
             .map(|(f, v)| (f.to_string(), v))
             .collect();
     let fields = ctx.cache.profilefields.to_vec();
-    page(&ctx, "modcp/editprofile.html", "finduser", &format!("Edit Profile: {}", user.username), minijinja::context! { user => &user, fields => fields, values => values }).await
+    page(
+        &ctx,
+        "modcp/editprofile.html",
+        "finduser",
+        &format!("Edit Profile: {}", user.username),
+        minijinja::context! { user => &user, fields => fields, values => values },
+    )
+    .await
 }
 
 #[derive(Deserialize, Default)]
@@ -1025,7 +1050,17 @@ pub async fn check_can_lift(ctx: &Ctx, uid: i32) -> AppResult<()> {
 /// Lift a ban and record it in the moderator log and the member's audit log.
 pub async fn lift_ban_logged(ctx: &Ctx, uid: i32) -> AppResult<()> {
     lift_ban_for(&ctx.app, uid).await?;
-    crate::ops::log_moderator_action(&ctx.app, ctx.uid(), &ctx.ip, 0, 0, 0, "Lifted ban", serde_json::json!({"uid": uid})).await;
+    crate::ops::log_moderator_action(
+        &ctx.app,
+        ctx.uid(),
+        &ctx.ip,
+        0,
+        0,
+        0,
+        "Lifted ban",
+        serde_json::json!({"uid": uid}),
+    )
+    .await;
     crate::audit::log(ctx, uid, "unbanned", serde_json::Value::Null).await;
     Ok(())
 }

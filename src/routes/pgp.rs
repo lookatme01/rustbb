@@ -50,7 +50,12 @@ pub fn with_csp(mut r: Response) -> Response {
 /// The board's identity in signed statements: the origin of the board URL setting, so that a
 /// signature made on one board can't be replayed on another.
 pub fn board_id(ctx: &Ctx) -> String {
-    let u = ctx.settings().get("bburl").trim().trim_end_matches('/').to_string();
+    let u = ctx
+        .settings()
+        .get("bburl")
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
     url::Url::parse(&u)
         .map(|p| p.origin().ascii_serialization())
         .unwrap_or(u)
@@ -134,12 +139,12 @@ pub async fn active_keys(ctx: &Ctx, uids: &[i32]) -> AppResult<Vec<KeyRow>> {
 }
 
 async fn history(ctx: &Ctx, uid: i32) -> AppResult<Vec<KeyRow>> {
-    Ok(
-        sqlx::query_as("SELECT * FROM pgp_keys WHERE uid = $1 ORDER BY added DESC, kid DESC LIMIT 50")
-            .bind(uid)
-            .fetch_all(&ctx.app.db)
-            .await?,
+    Ok(sqlx::query_as(
+        "SELECT * FROM pgp_keys WHERE uid = $1 ORDER BY added DESC, kid DESC LIMIT 50",
     )
+    .bind(uid)
+    .fetch_all(&ctx.app.db)
+    .await?)
 }
 
 #[derive(FromRow, Serialize)]
@@ -165,7 +170,9 @@ fn json_ok(v: Value) -> Response {
 async fn challenge(ctx: Ctx) -> AppResult<Response> {
     let me = require(&ctx)?;
     let c = pgp::make_challenge(&ctx.app.cfg.secret, me.uid, now());
-    Ok(json_ok(json!({ "challenge": c, "board": board_id(&ctx), "uid": me.uid })))
+    Ok(json_ok(
+        json!({ "challenge": c, "board": board_id(&ctx), "uid": me.uid }),
+    ))
 }
 
 async fn me_json(ctx: Ctx) -> AppResult<Response> {
@@ -264,10 +271,17 @@ async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Resp
             .bind(me.uid)
             .fetch_optional(&ctx.app.db)
             .await?;
-    let source = if f.source == "imported" { "imported" } else { "generated" };
+    let source = if f.source == "imported" {
+        "imported"
+    } else {
+        "generated"
+    };
 
     // Re-publishing the same key (for example to add or remove the backup) just refreshes it.
-    if old_any.as_ref().is_some_and(|k| k.fingerprint == info.fingerprint) {
+    if old_any
+        .as_ref()
+        .is_some_and(|k| k.fingerprint == info.fingerprint)
+    {
         sqlx::query("UPDATE pgp_keys SET armored = $3, user_ids = $4, enc_keyids = $5, expires = $6, backup = CASE WHEN $7 = '' THEN backup ELSE $7 END WHERE uid = $1 AND fingerprint = $2")
             .bind(me.uid)
             .bind(&info.fingerprint)
@@ -287,17 +301,21 @@ async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Resp
         let (old_key, _) = pgp::parse_public_key(&old.armored, t).map_err(AppError::user)?;
         let st = pgp::key_transition_statement(&board, me.uid, &old.fingerprint, &info.fingerprint);
         pgp::verify_detached(&old_key, &f.transition_sig, st.as_bytes()).map_err(|e| {
-            AppError::user(format!("The signature from your previous key is invalid: {e}"))
+            AppError::user(format!(
+                "The signature from your previous key is invalid: {e}"
+            ))
         })?;
         transition = (old.fingerprint.clone(), f.transition_sig.trim().to_string());
     }
 
     let mut tx = ctx.app.db.begin().await?;
-    sqlx::query("UPDATE pgp_keys SET status = 1, retired = $2, backup = '' WHERE uid = $1 AND status = 0")
-        .bind(me.uid)
-        .bind(t)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE pgp_keys SET status = 1, retired = $2, backup = '' WHERE uid = $1 AND status = 0",
+    )
+    .bind(me.uid)
+    .bind(t)
+    .execute(&mut *tx)
+    .await?;
     // A key that was previously replaced can come back (for example after restoring a backup).
     sqlx::query("DELETE FROM pgp_keys WHERE uid = $1 AND fingerprint = $2 AND status = 1")
         .bind(me.uid)
@@ -374,7 +392,11 @@ async fn backup(ctx: Ctx, CsrfForm(f): CsrfForm<BackupForm>) -> AppResult<Respon
     crate::audit::log(
         &ctx,
         me.uid,
-        if b.is_empty() { "pgp_backup_removed" } else { "pgp_backup_saved" },
+        if b.is_empty() {
+            "pgp_backup_removed"
+        } else {
+            "pgp_backup_saved"
+        },
         json!({ "fingerprint": key.fingerprint }),
     )
     .await;
@@ -403,7 +425,13 @@ async fn revoke(ctx: Ctx, CsrfForm(f): CsrfForm<RevokeForm>) -> AppResult<Respon
         .bind(now())
         .execute(&ctx.app.db)
         .await?;
-    crate::audit::log(&ctx, me.uid, "pgp_key_revoked", json!({ "fingerprint": key.fingerprint })).await;
+    crate::audit::log(
+        &ctx,
+        me.uid,
+        "pgp_key_revoked",
+        json!({ "fingerprint": key.fingerprint }),
+    )
+    .await;
     notify_verifiers(&ctx, me.uid, "pgp_keyrevoked").await?;
     me_json(ctx).await
 }
@@ -493,7 +521,9 @@ async fn lookup(ctx: Ctx, Query(q): Query<LookupQuery>) -> AppResult<Response> {
             })
         })
         .collect();
-    Ok(json_ok(json!({ "users": out, "missing": names.iter().filter(|n| !users.iter().any(|u| u.1.to_lowercase() == **n)).collect::<Vec<_>>() })))
+    Ok(json_ok(
+        json!({ "users": out, "missing": names.iter().filter(|n| !users.iter().any(|u| u.1.to_lowercase() == **n)).collect::<Vec<_>>() }),
+    ))
 }
 
 #[derive(Deserialize, Default)]
@@ -586,10 +616,16 @@ async fn public_key_file(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> 
         .ok_or_else(|| AppError::not_found("key"))?;
     Ok((
         [
-            (header::CONTENT_TYPE, "application/pgp-keys; charset=utf-8".to_string()),
+            (
+                header::CONTENT_TYPE,
+                "application/pgp-keys; charset=utf-8".to_string(),
+            ),
             (
                 header::CONTENT_DISPOSITION,
-                format!("inline; filename=\"{}.asc\"", &key.fingerprint[key.fingerprint.len() - 16..]),
+                format!(
+                    "inline; filename=\"{}.asc\"",
+                    &key.fingerprint[key.fingerprint.len() - 16..]
+                ),
             ),
         ],
         key.armored,
@@ -621,7 +657,9 @@ async fn verify_page(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let me = require(&ctx)?;
     let (_, system) = can_view_user(&ctx, uid).await?;
     if system {
-        return Err(AppError::user("The System account doesn't have an identity key."));
+        return Err(AppError::user(
+            "The System account doesn't have an identity key.",
+        ));
     }
     let authors = crate::render::load_authors(&ctx, &[me.uid, uid]).await?;
     let r = ctx

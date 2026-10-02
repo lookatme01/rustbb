@@ -270,7 +270,11 @@ pub async fn edit_save(
     } else {
         s(fl.get("email")).trim().to_string()
     };
-    let gid = if sys { user.usergroup } else { i(fl.get("usergroup")) };
+    let gid = if sys {
+        user.usergroup
+    } else {
+        i(fl.get("usergroup"))
+    };
     if ctx.cache.group(gid).is_none() {
         return Err(AppError::user("Invalid primary group."));
     }
@@ -402,7 +406,11 @@ pub async fn edit_save(
 
 /// Erase a member's personal data on request: delete the account and anonymize what stays,
 /// whatever the Privacy settings say. The erasure log records that it happened, without the data.
-pub async fn erase(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {
+pub async fn erase(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    CsrfForm(f): CsrfForm<AnyForm>,
+) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     crate::system::guard(&ctx.cache, uid, "erased")?;
     if uid == ctx.uid() {
@@ -410,10 +418,16 @@ pub async fn erase(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<AnyForm
     }
     let user = load(&ctx, uid).await?;
     if s(f.fields.get("confirm")).trim() != user.username {
-        return Err(AppError::user("Type the member's username exactly to confirm the erasure."));
+        return Err(AppError::user(
+            "Type the member's username exactly to confirm the erasure.",
+        ));
     }
     let keep_posts = b(f.fields.get("keepposts"));
-    let reference: String = s(f.fields.get("reference")).trim().chars().take(200).collect();
+    let reference: String = s(f.fields.get("reference"))
+        .trim()
+        .chars()
+        .take(200)
+        .collect();
     crate::routes::usercp::delete_user_with(&ctx.app, uid, !keep_posts, true).await?;
     let id: i32 = sqlx::query_scalar(
         "INSERT INTO erasure_log (former_uid, performed_by, dateline, kept_posts, reference) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -425,8 +439,17 @@ pub async fn erase(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<AnyForm
     .bind(&reference)
     .fetch_one(&ctx.app.db)
     .await?;
-    crate::admin::log(&ctx, "users", "Erased a member's personal data", serde_json::json!({"uid": uid, "erasure": id})).await;
-    Ok(ctx.redirect("/admin/users", "The member's personal data has been erased."))
+    crate::admin::log(
+        &ctx,
+        "users",
+        "Erased a member's personal data",
+        serde_json::json!({"uid": uid, "erasure": id}),
+    )
+    .await;
+    Ok(ctx.redirect(
+        "/admin/users",
+        "The member's personal data has been erased.",
+    ))
 }
 
 pub async fn delete(
@@ -731,11 +754,16 @@ pub async fn adminperms_save(
     Ok(ctx.redirect("/admin/adminperms", "Admin permissions saved."))
 }
 
-pub async fn activity(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<crate::routes::usercp::ActivityQuery>) -> AppResult<Response> {
+pub async fn activity(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    Query(q): Query<crate::routes::usercp::ActivityQuery>,
+) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
     let base = format!("/admin/users/{uid}/activity?kind={}&page={{page}}", q.kind);
-    let (events, pagination) = crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base).await?;
+    let (events, pagination) =
+        crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base).await?;
     crate::admin::page(
         &ctx,
         "admin/user_activity.html",

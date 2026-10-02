@@ -91,10 +91,11 @@ pub async fn ensure(db: &PgPool) -> anyhow::Result<(i32, i32)> {
 /// System's uid and current name (admins can rename it).
 pub async fn identity(app: &App) -> AppResult<(i32, String)> {
     let uid = app.cache().system_uid;
-    let name: Option<String> = sqlx::query_scalar("SELECT username FROM users WHERE uid = $1 AND is_system")
-        .bind(uid)
-        .fetch_optional(&app.db)
-        .await?;
+    let name: Option<String> =
+        sqlx::query_scalar("SELECT username FROM users WHERE uid = $1 AND is_system")
+            .bind(uid)
+            .fetch_optional(&app.db)
+            .await?;
     name.map(|n| (uid, n))
         .ok_or_else(|| AppError::user("The System account is not available."))
 }
@@ -126,8 +127,15 @@ pub async fn record(conn: &mut sqlx::PgConnection, a: Authorship<'_>) -> AppResu
 
 /// The welcome message for a member, from the board settings. `{username}` and `{boardname}`
 /// are inserted as literal text, so a crafted username can't add MyCode to the message.
-pub fn welcome_text(subject: &str, message: &str, username: &str, boardname: &str) -> (String, String) {
-    let subject = subject.replace("{username}", username).replace("{boardname}", boardname);
+pub fn welcome_text(
+    subject: &str,
+    message: &str,
+    username: &str,
+    boardname: &str,
+) -> (String, String) {
+    let subject = subject
+        .replace("{username}", username)
+        .replace("{boardname}", boardname);
     let message = message
         .replace("{username}", &crate::parser::literal(username))
         .replace("{boardname}", &crate::parser::literal(boardname));
@@ -140,7 +148,10 @@ pub async fn welcome(app: &App, members: &[(i32, String)]) {
     if !s.bool("system_welcome_pm") || !s.bool("enablepms") {
         return;
     }
-    let (subject, message) = (s.get("system_welcome_subject"), s.get("system_welcome_message"));
+    let (subject, message) = (
+        s.get("system_welcome_subject"),
+        s.get("system_welcome_message"),
+    );
     if subject.trim().is_empty() || message.trim().is_empty() {
         return;
     }
@@ -160,11 +171,12 @@ async fn free_name(tx: &mut sqlx::PgConnection) -> anyhow::Result<String> {
         } else {
             format!("{DEFAULT_NAME} {n}")
         };
-        let taken: bool =
-            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE lower(username) = lower($1))")
-                .bind(&name)
-                .fetch_one(&mut *tx)
-                .await?;
+        let taken: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE lower(username) = lower($1))",
+        )
+        .bind(&name)
+        .fetch_one(&mut *tx)
+        .await?;
         if !taken {
             return Ok(name);
         }
@@ -198,7 +210,13 @@ fn autoclose_forums(setting: &str) -> Option<Vec<i32>> {
     if setting.trim().is_empty() {
         return None;
     }
-    Some(setting.split(',').filter_map(|x| x.trim().parse::<i32>().ok()).filter(|f| *f > 0).collect())
+    Some(
+        setting
+            .split(',')
+            .filter_map(|x| x.trim().parse::<i32>().ok())
+            .filter(|f| *f > 0)
+            .collect(),
+    )
 }
 
 /// Scheduled task: close threads with no new posts for `system_autoclose_days`, as System.
@@ -209,7 +227,9 @@ pub async fn autoclose(app: &App) -> anyhow::Result<String> {
         return Ok("turned off".into());
     }
     let fids = match autoclose_forums(cache.settings.get("system_autoclose_forums")) {
-        Some(f) if f.is_empty() => return Ok("no valid forum IDs configured; nothing closed".into()),
+        Some(f) if f.is_empty() => {
+            return Ok("no valid forum IDs configured; nothing closed".into());
+        }
         Some(f) => f,
         None => vec![],
     };
@@ -252,7 +272,17 @@ pub async fn log_expiries(app: &App, action: &str, members: &[(i32, String)]) {
         return;
     }
     for (uid, name) in members {
-        crate::ops::log_moderator_action(app, cache.system_uid, "", 0, 0, 0, action, serde_json::json!({"uid": uid, "username": name, "subject": name, "automatic": true})).await;
+        crate::ops::log_moderator_action(
+            app,
+            cache.system_uid,
+            "",
+            0,
+            0,
+            0,
+            action,
+            serde_json::json!({"uid": uid, "username": name, "subject": name, "automatic": true}),
+        )
+        .await;
     }
 }
 
@@ -262,9 +292,19 @@ mod tests {
 
     #[test]
     fn welcome_placeholders_are_literal() {
-        let (sub, msg) = welcome_text("Welcome to {boardname}, {username}!", "Hi {username}, enjoy [b]{boardname}[/b].", "[url=https://evil.example]x[/url]", "My Board");
-        assert_eq!(sub, "Welcome to My Board, [url=https://evil.example]x[/url]!");
-        assert!(msg.starts_with("Hi [noparse][[/noparse][noparse]url=https://evil.example]x[/noparse]"));
+        let (sub, msg) = welcome_text(
+            "Welcome to {boardname}, {username}!",
+            "Hi {username}, enjoy [b]{boardname}[/b].",
+            "[url=https://evil.example]x[/url]",
+            "My Board",
+        );
+        assert_eq!(
+            sub,
+            "Welcome to My Board, [url=https://evil.example]x[/url]!"
+        );
+        assert!(
+            msg.starts_with("Hi [noparse][[/noparse][noparse]url=https://evil.example]x[/noparse]")
+        );
         assert!(msg.ends_with("enjoy [b][noparse]My Board[/noparse][/b]."));
     }
 

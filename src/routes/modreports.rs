@@ -26,21 +26,31 @@ pub fn router() -> Router<App> {
 /// Mod CP access plus permission to manage reported content (or forum moderator rights).
 pub fn require_reports(ctx: &Ctx) -> AppResult<()> {
     ctx.require_login()?;
-    if !(ctx.perms.canmodcp || ctx.is_any_mod()) || !(ctx.perms.canmanagereportedcontent || ctx.is_any_mod()) {
+    if !(ctx.perms.canmodcp || ctx.is_any_mod())
+        || !(ctx.perms.canmanagereportedcontent || ctx.is_any_mod())
+    {
         return Err(AppError::no_perm());
     }
     Ok(())
 }
 
-pub async fn record_event(db: &sqlx::PgPool, rid: i32, uid: i32, action: &str, note: &str) -> AppResult<()> {
-    sqlx::query("INSERT INTO report_events (rid, uid, action, note, dateline) VALUES ($1, $2, $3, $4, $5)")
-        .bind(rid)
-        .bind(uid)
-        .bind(action)
-        .bind(note)
-        .bind(now())
-        .execute(db)
-        .await?;
+pub async fn record_event(
+    db: &sqlx::PgPool,
+    rid: i32,
+    uid: i32,
+    action: &str,
+    note: &str,
+) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO report_events (rid, uid, action, note, dateline) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(rid)
+    .bind(uid)
+    .bind(action)
+    .bind(note)
+    .bind(now())
+    .execute(db)
+    .await?;
     Ok(())
 }
 
@@ -100,7 +110,13 @@ async fn load(ctx: &Ctx, rid: i32) -> AppResult<Report> {
 /// Who the report is about: the post's author, the profile owner, the rated member or the sender.
 async fn target_uid(db: &sqlx::PgPool, r: &Report) -> i32 {
     if r.r#type == "post" {
-        sqlx::query_scalar("SELECT uid FROM posts WHERE pid = $1").bind(r.id).fetch_optional(db).await.ok().flatten().unwrap_or(0)
+        sqlx::query_scalar("SELECT uid FROM posts WHERE pid = $1")
+            .bind(r.id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(0)
     } else {
         r.id2
     }
@@ -110,17 +126,24 @@ async fn username(db: &sqlx::PgPool, uid: i32) -> String {
     if uid <= 0 {
         return String::new();
     }
-    sqlx::query_scalar("SELECT username FROM users WHERE uid = $1").bind(uid).fetch_optional(db).await.ok().flatten().unwrap_or_default()
+    sqlx::query_scalar("SELECT username FROM users WHERE uid = $1")
+        .bind(uid)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
 pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
     let db = &ctx.app.db;
     let target = target_uid(db, &r).await;
-    let reporters: Vec<(i32, String)> = sqlx::query_as("SELECT uid, username FROM users WHERE uid = ANY($1) ORDER BY username")
-        .bind(&r.reporters)
-        .fetch_all(db)
-        .await?;
+    let reporters: Vec<(i32, String)> =
+        sqlx::query_as("SELECT uid, username FROM users WHERE uid = ANY($1) ORDER BY username")
+            .bind(&r.reporters)
+            .fetch_all(db)
+            .await?;
     let events: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
         "SELECT e.action, e.note, e.dateline, u.username FROM report_events e LEFT JOIN users u ON u.uid = e.uid WHERE e.rid = $1 ORDER BY e.id",
     )
@@ -133,14 +156,29 @@ pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
             label => event_label(&action, &note), note => if action == "taken_over" { String::new() } else { note }, when => when, who => who,
         })
         .collect();
-    let latest_note = if target > 0 { crate::routes::modnotes::latest_notes(&ctx.app, &[target]).await?.remove(&target) } else { None };
+    let latest_note = if target > 0 {
+        crate::routes::modnotes::latest_notes(&ctx.app, &[target])
+            .await?
+            .remove(&target)
+    } else {
+        None
+    };
     let (link, what) = match r.r#type.as_str() {
         "post" => (Some(format!("/post/{}", r.id)), "Post".to_string()),
         "profile" => (Some(format!("/user/{}", r.id)), "Profile".to_string()),
-        "reputation" => (Some(format!("/reputation/{}", r.id2)), "Reputation comment".to_string()),
+        "reputation" => (
+            Some(format!("/reputation/{}", r.id2)),
+            "Reputation comment".to_string(),
+        ),
         _ => (None, "Private message".to_string()),
     };
-    let reason_title = ctx.cache.reportreasons.iter().find(|x| x.rid == r.reasonid).map(|x| x.title.clone()).unwrap_or_default();
+    let reason_title = ctx
+        .cache
+        .reportreasons
+        .iter()
+        .find(|x| x.rid == r.reasonid)
+        .map(|x| x.title.clone())
+        .unwrap_or_default();
     ctx.render(
         "modcp/report.html",
         minijinja::context! {
@@ -165,7 +203,11 @@ pub struct ClaimForm {
     pub action: String,
 }
 
-pub async fn claim(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(f): CsrfForm<ClaimForm>) -> AppResult<Response> {
+pub async fn claim(
+    ctx: Ctx,
+    Path(rid): Path<i32>,
+    CsrfForm(f): CsrfForm<ClaimForm>,
+) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
     let db = &ctx.app.db;
     let me = ctx.uid();
@@ -178,15 +220,40 @@ pub async fn claim(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(f): CsrfForm<ClaimFo
                 )));
             }
             if r.claimed_by != me {
-                sqlx::query("UPDATE reportedcontent SET claimed_by = $2, claimed_at = $3 WHERE rid = $1").bind(rid).bind(me).bind(now()).execute(db).await?;
+                sqlx::query(
+                    "UPDATE reportedcontent SET claimed_by = $2, claimed_at = $3 WHERE rid = $1",
+                )
+                .bind(rid)
+                .bind(me)
+                .bind(now())
+                .execute(db)
+                .await?;
                 record_event(db, rid, me, "claimed", "").await?;
             }
         }
         "takeover" => {
             if r.claimed_by != me {
                 let previous = username(db, r.claimed_by).await;
-                sqlx::query("UPDATE reportedcontent SET claimed_by = $2, claimed_at = $3 WHERE rid = $1").bind(rid).bind(me).bind(now()).execute(db).await?;
-                record_event(db, rid, me, if r.claimed_by > 0 { "taken_over" } else { "claimed" }, &previous).await?;
+                sqlx::query(
+                    "UPDATE reportedcontent SET claimed_by = $2, claimed_at = $3 WHERE rid = $1",
+                )
+                .bind(rid)
+                .bind(me)
+                .bind(now())
+                .execute(db)
+                .await?;
+                record_event(
+                    db,
+                    rid,
+                    me,
+                    if r.claimed_by > 0 {
+                        "taken_over"
+                    } else {
+                        "claimed"
+                    },
+                    &previous,
+                )
+                .await?;
             }
         }
         "release" => {
@@ -194,9 +261,15 @@ pub async fn claim(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(f): CsrfForm<ClaimFo
                 return Ok(ctx.redirect(&format!("/modcp/reports/{rid}"), ""));
             }
             if r.claimed_by != me && !ctx.is_admin() {
-                return Err(AppError::NoPermission("Only the moderator handling this report (or an administrator) can release it.".into()));
+                return Err(AppError::NoPermission(
+                    "Only the moderator handling this report (or an administrator) can release it."
+                        .into(),
+                ));
             }
-            sqlx::query("UPDATE reportedcontent SET claimed_by = 0, claimed_at = 0 WHERE rid = $1").bind(rid).execute(db).await?;
+            sqlx::query("UPDATE reportedcontent SET claimed_by = 0, claimed_at = 0 WHERE rid = $1")
+                .bind(rid)
+                .execute(db)
+                .await?;
             record_event(db, rid, me, "released", "").await?;
         }
         _ => return Err(AppError::user("Unknown action.")),
@@ -211,9 +284,18 @@ pub struct ResolveForm {
     pub resolution: String,
 }
 
-pub async fn resolve(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(f): CsrfForm<ResolveForm>) -> AppResult<Response> {
+pub async fn resolve(
+    ctx: Ctx,
+    Path(rid): Path<i32>,
+    CsrfForm(f): CsrfForm<ResolveForm>,
+) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
-    let note: String = f.resolution.trim().chars().take(MAX_RESOLUTION_CHARS).collect();
+    let note: String = f
+        .resolution
+        .trim()
+        .chars()
+        .take(MAX_RESOLUTION_CHARS)
+        .collect();
     if r.reportstatus == 0 {
         sqlx::query("UPDATE reportedcontent SET reportstatus = 1, resolved_by = $2, resolved_at = $3, resolution = $4 WHERE rid = $1")
             .bind(rid)
@@ -225,10 +307,17 @@ pub async fn resolve(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(f): CsrfForm<Resol
         record_event(&ctx.app.db, rid, ctx.uid(), "resolved", &note).await?;
         ctx.app.mod_counts.invalidate_all();
     }
-    Ok(ctx.redirect(&format!("/modcp/reports/{rid}"), "The report has been resolved."))
+    Ok(ctx.redirect(
+        &format!("/modcp/reports/{rid}"),
+        "The report has been resolved.",
+    ))
 }
 
-pub async fn reopen(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(_f): CsrfForm<ResolveForm>) -> AppResult<Response> {
+pub async fn reopen(
+    ctx: Ctx,
+    Path(rid): Path<i32>,
+    CsrfForm(_f): CsrfForm<ResolveForm>,
+) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
     if r.reportstatus != 0 {
         sqlx::query("UPDATE reportedcontent SET reportstatus = 0, resolved_by = 0, resolved_at = 0, resolution = '' WHERE rid = $1")
@@ -238,5 +327,8 @@ pub async fn reopen(ctx: Ctx, Path(rid): Path<i32>, CsrfForm(_f): CsrfForm<Resol
         record_event(&ctx.app.db, rid, ctx.uid(), "reopened", "").await?;
         ctx.app.mod_counts.invalidate_all();
     }
-    Ok(ctx.redirect(&format!("/modcp/reports/{rid}"), "The report has been reopened."))
+    Ok(ctx.redirect(
+        &format!("/modcp/reports/{rid}"),
+        "The report has been reopened.",
+    ))
 }
