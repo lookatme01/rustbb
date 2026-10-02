@@ -11,7 +11,8 @@ pub fn describe_location(ctx: &Ctx, loc: &str) -> String {
     let path = loc.split('?').next().unwrap_or(loc);
     let seg: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     let id = seg.get(1).and_then(|s| crate::util::leading_id(s));
-    let text = match (seg.first().copied().unwrap_or(""), id) {
+
+    match (seg.first().copied().unwrap_or(""), id) {
         ("", _) | ("index.php", _) => "<a href=\"/\">Viewing the board index</a>".to_string(),
         ("forum", Some(fid)) => match ctx.cache.forum(fid) {
             Some(f) if ctx.forum_perms(fid).canview => format!(
@@ -40,8 +41,7 @@ pub fn describe_location(ctx: &Ctx, loc: &str) -> String {
         ("member", _) if path.contains("login") => "Logging in".into(),
         ("archive", _) => "Viewing the lite version".into(),
         _ => "Unknown location".into(),
-    };
-    text
+    }
 }
 
 pub async fn online(ctx: Ctx) -> AppResult<Response> {
@@ -99,15 +99,14 @@ pub async fn online(ctx: Ctx) -> AppResult<Response> {
             }
         }
         let mut location = describe_location(&ctx, &loc);
-        if l2 > 0 {
-            if let Some((subj, fid)) = threads.get(&l2) {
-                if ctx.forum_perms(*fid).canviewthreads {
-                    location = format!(
-                        "Reading thread <a href=\"/thread/{l2}\">{}</a>",
-                        escape_html(subj)
-                    );
-                }
-            }
+        if l2 > 0
+            && let Some((subj, fid)) = threads.get(&l2)
+            && ctx.forum_perms(*fid).canviewthreads
+        {
+            location = format!(
+                "Reading thread <a href=\"/thread/{l2}\">{}</a>",
+                escape_html(subj)
+            );
         }
         let who = if !bot.is_empty() {
             format!("{} (search engine)", escape_html(&bot))

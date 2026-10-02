@@ -57,6 +57,15 @@ flate2 = "1"
 rhai = { version = "1", features = ["sync", "serde"] }
 fake = { version = "2", optional = true }
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Positional SQL row tuples are being replaced by named `FromRow` records over time; until then
+# they trip this lint everywhere. Handlers legitimately take many extractors.
+type_complexity = "allow"
+too_many_arguments = "allow"
+
 [features]
 default = []
 

@@ -176,7 +176,7 @@ pub fn render(p: &Profile, x: &Extra) -> String {
             .filter(|(_, n)| **n > 1)
             .map(|(s, n)| (*s, *n))
             .collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|a| std::cmp::Reverse(a.1));
         v
     };
     let slowest = p.queries.iter().map(|q| q.ms).fold(0.0, f64::max);

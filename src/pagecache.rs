@@ -113,6 +113,10 @@ impl PageCache {
         self.entries.run_pending_tasks();
         self.entries.entry_count()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Tags for a forum listing and every forum above it (their listings show its last post).

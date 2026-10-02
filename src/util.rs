@@ -128,7 +128,7 @@ pub fn format_date(ts: i64, tz: Tz, datefmt: &str, timefmt: &str, style: &str) -
             let today = to_local(n, tz).date_naive();
             let d = dt.date_naive();
             if d == today {
-                if diff < 3 * 3600 && diff >= 0 {
+                if (0..3 * 3600).contains(&diff) {
                     let h = diff / 3600;
                     return if h == 1 {
                         "1 hour ago".into()
@@ -177,7 +177,7 @@ pub fn format_number(n: i64) -> String {
     let s = n.abs().to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);

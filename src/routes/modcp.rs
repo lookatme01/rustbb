@@ -485,10 +485,10 @@ pub async fn announcement_form(ctx: Ctx, Query(q): Query<AnnQuery>) -> AppResult
             .find(|a| a.aid == id)
             .cloned()
     });
-    if let Some(a) = &a {
-        if !can_announce(&ctx, a.fid) {
-            return Err(AppError::no_perm());
-        }
+    if let Some(a) = &a
+        && !can_announce(&ctx, a.fid)
+    {
+        return Err(AppError::no_perm());
     }
     let forums: Vec<(i32, String, usize)> = crate::routes::forumdisplay::forum_jump(&ctx)
         .into_iter()

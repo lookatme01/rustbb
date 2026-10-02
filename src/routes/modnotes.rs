@@ -437,7 +437,7 @@ pub async fn history(
         }
     }
 
-    events.sort_by(|a, b| b.when.cmp(&a.when));
+    events.sort_by_key(|a| std::cmp::Reverse(a.when));
     let ban: Option<(String, i64)> =
         sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
             .bind(uid)

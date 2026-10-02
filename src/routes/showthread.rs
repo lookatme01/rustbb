@@ -81,10 +81,10 @@ pub fn edit_allowed(
     fp: &ForumPerms,
     mp: &Option<ModPerms>,
 ) -> bool {
-    if let Some(m) = mp {
-        if m.caneditposts {
-            return true;
-        }
+    if let Some(m) = mp
+        && m.caneditposts
+    {
+        return true;
     }
     if ctx.uid() == 0
         || post.uid != ctx.uid()
@@ -509,7 +509,7 @@ pub async fn showthread(
             Some(crate::routes::captcha::new_captcha(&ctx).await?)
         } else {
             // A page with a (single-use) captcha must not be shared between guests.
-            ctx.allow_guest_cache(&vec![format!("thread:{tid}")]);
+            ctx.allow_guest_cache(&[format!("thread:{tid}")]);
             None
         };
     ctx.render(

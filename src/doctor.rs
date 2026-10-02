@@ -220,7 +220,7 @@ pub fn compare_migrations(embedded: &[(i64, Vec<u8>)], applied: &[AppliedMigrati
 pub fn check_pool(pool: u32, max_connections: i32, reserved: i32) -> Check {
     const NAME: &str = "Connection limit";
     let usable = (max_connections - reserved).max(0) as u32;
-    let nodes = if pool == 0 { 0 } else { usable / pool };
+    let nodes = usable.checked_div(pool).unwrap_or(0);
     let detail =
         format!("RBB_DB_MAX_CONNECTIONS={pool}, server allows {usable}: room for {nodes} nodes");
     if pool > usable {

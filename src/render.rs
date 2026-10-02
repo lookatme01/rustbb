@@ -72,12 +72,13 @@ pub fn post_html(ctx: &CtxInner, post: &Post, stale: &mut Vec<Parsed>) -> String
         return post.message_html.clone();
     }
     // Parsed moments ago for another viewer, before the write-back landed?
-    if !viewer_restrict && !post.smilieoff {
-        if let Some((rev, hash, html)) = ctx.app.parsed_cache.get(&post.pid) {
-            // Same parser inputs and the same text (edits reset parser_rev but change the text).
-            if rev == cache.parser_rev && *hash == *source_hash(&post.message) {
-                return html.to_string();
-            }
+    if !viewer_restrict
+        && !post.smilieoff
+        && let Some((rev, hash, html)) = ctx.app.parsed_cache.get(&post.pid)
+    {
+        // Same parser inputs and the same text (edits reset parser_rev but change the text).
+        if rev == cache.parser_rev && *hash == *source_hash(&post.message) {
+            return html.to_string();
         }
     }
     let mut opts = forum_parse_options(forum, Some(post.username.clone()));
@@ -271,10 +272,10 @@ pub async fn load_authors(ctx: &CtxInner, uids: &[i32]) -> AppResult<HashMap<i32
             .fetch_all(&ctx.app.db)
             .await?;
         for (uid, fid, v) in vals {
-            if let Some(f) = pf.iter().find(|f| f.fid == fid) {
-                if f.viewableby.is_empty() || f.viewableby.iter().any(|g| ctx.groups.contains(g)) {
-                    fields.entry(uid).or_default().push((f.name.clone(), v));
-                }
+            if let Some(f) = pf.iter().find(|f| f.fid == fid)
+                && (f.viewableby.is_empty() || f.viewableby.iter().any(|g| ctx.groups.contains(g)))
+            {
+                fields.entry(uid).or_default().push((f.name.clone(), v));
             }
         }
     }
@@ -304,15 +305,15 @@ pub fn author_info(ctx: &CtxInner, r: &AuthorRow) -> AuthorInfo {
             usertitle = g.usertitle.clone();
         }
     }
-    if usertitle.is_empty() || group.map(|g| g.usertitle.is_empty()).unwrap_or(true) {
-        if let Some(t) = cache.usertitle_for(r.postnum) {
-            if usertitle.is_empty() {
-                usertitle = t.title.clone();
-            }
-            if stars == 0 {
-                stars = t.stars as i32;
-                starimage = t.starimage.clone();
-            }
+    if (usertitle.is_empty() || group.map(|g| g.usertitle.is_empty()).unwrap_or(true))
+        && let Some(t) = cache.usertitle_for(r.postnum)
+    {
+        if usertitle.is_empty() {
+            usertitle = t.title.clone();
+        }
+        if stars == 0 {
+            stars = t.stars as i32;
+            starimage = t.starimage.clone();
         }
     }
     if !r.usertitle.is_empty() {

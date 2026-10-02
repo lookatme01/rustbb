@@ -245,7 +245,7 @@ impl Importer {
             n += 1;
             if batch.len() >= BATCH {
                 self.write(table, &mut batch, conflict).await?;
-                if n % 100_000 == 0 {
+                if n.is_multiple_of(100_000) {
                     println!("  {label}: {n}");
                 }
             }

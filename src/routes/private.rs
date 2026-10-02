@@ -203,15 +203,14 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
     }
     let mut to = q.to.clone().unwrap_or_default();
     let (mut subject, mut message) = (String::new(), String::new());
-    if let Some(uid) = q.uid {
-        if let Some(n) =
+    if let Some(uid) = q.uid
+        && let Some(n) =
             sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE uid = $1")
                 .bind(uid)
                 .fetch_optional(&ctx.app.db)
                 .await?
-        {
-            to = n;
-        }
+    {
+        to = n;
     }
     let mut pmid = 0;
     let mut pgp_compose = PgpCompose::default();
@@ -580,9 +579,7 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             groups.extend(&r.additionalgroups);
             let rperms = ctx.cache.group_perms(&groups);
             let override_ = ctx.perms.canoverridepm;
-            if ctx.cache.is_system(r.uid) {
-                errors.push(format!("{} cannot receive private messages.", r.username));
-            } else if !rperms.canusepms && !override_ {
+            if ctx.cache.is_system(r.uid) || (!rperms.canusepms && !override_) {
                 errors.push(format!("{} cannot receive private messages.", r.username));
             } else if (!r.receivepms || r.ignorelist.contains(&sender_uid)) && !override_ {
                 errors.push(format!(
@@ -616,13 +613,13 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             .bind(me.uid)
             .fetch_one(&ctx.app.db)
             .await?;
-            if let Some(l) = last {
-                if now() - l < flood {
-                    errors.push(format!(
-                        "Please wait {} more seconds before sending another message.",
-                        flood - (now() - l)
-                    ));
-                }
+            if let Some(l) = last
+                && now() - l < flood
+            {
+                errors.push(format!(
+                    "Please wait {} more seconds before sending another message.",
+                    flood - (now() - l)
+                ));
             }
         }
     }
@@ -1101,14 +1098,13 @@ pub async fn folders_save(ctx: Ctx, CsrfForm(f): CsrfForm<FoldersForm>) -> AppRe
         .and_then(|v| v.as_str())
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
+        && list.len() < 30
     {
-        if list.len() < 30 {
-            max_id += 1;
-            list.push(crate::models::PmFolder {
-                id: max_id,
-                name: new.chars().take(40).collect(),
-            });
-        }
+        max_id += 1;
+        list.push(crate::models::PmFolder {
+            id: max_id,
+            name: new.chars().take(40).collect(),
+        });
     }
     sqlx::query("UPDATE users SET pmfolders = $2 WHERE uid = $1")
         .bind(me.uid)

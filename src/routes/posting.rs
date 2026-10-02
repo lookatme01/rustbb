@@ -239,19 +239,18 @@ pub async fn newthread_form(
     }
     ctx.set_location(fid, 0);
     let mut form = default_form(&ctx);
-    if let Some(did) = q.did {
-        if let Some((s, m)) = sqlx::query_as::<_, (String, String)>(
+    if let Some(did) = q.did
+        && let Some((s, m)) = sqlx::query_as::<_, (String, String)>(
             "SELECT subject, message FROM drafts WHERE did = $1 AND uid = $2",
         )
         .bind(did)
         .bind(ctx.uid())
         .fetch_optional(&ctx.app.db)
         .await?
-        {
-            form.subject = s;
-            form.message = m;
-            form.did = did;
-        }
+    {
+        form.subject = s;
+        form.message = m;
+        form.did = did;
     }
     render_editor(
         &ctx,
@@ -544,17 +543,16 @@ pub async fn newreply_form(
     pids.dedup();
     form.message = quotes_for(&ctx, tid, &pids).await?;
     form.replyto = q.pid.unwrap_or(0);
-    if let Some(did) = q.did {
-        if let Some((m,)) =
+    if let Some(did) = q.did
+        && let Some((m,)) =
             sqlx::query_as::<_, (String,)>("SELECT message FROM drafts WHERE did = $1 AND uid = $2")
                 .bind(did)
                 .bind(ctx.uid())
                 .fetch_optional(&ctx.app.db)
                 .await?
-        {
-            form.message = m;
-            form.did = did;
-        }
+    {
+        form.message = m;
+        form.did = did;
     }
     let recent = recent_posts_for_review(&ctx, tid).await?;
     render_editor(&ctx, "newreply", thread.fid, tid, 0, &form, vec![], None, minijinja::context! { thread => &thread, thread_url => url_thread(tid as i64, Some(&thread.subject)), recent => recent }).await

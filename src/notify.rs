@@ -103,8 +103,8 @@ pub async fn thread_subscribers(
             2 => {
                 let msg = format!(
                     "{} has just replied to a thread you are subscribed to: [url={bburl}/post/{pid}]{}[/url]\n\n[quote]{}[/quote]",
-                    crate::parser::literal(&poster),
-                    crate::parser::literal(&subject),
+                    crate::parser::literal(poster),
+                    crate::parser::literal(subject),
                     crate::parser::literal(&excerpt),
                 );
                 let _ = crate::routes::private::send_system_pm(
@@ -187,19 +187,20 @@ pub async fn mentions_and_quotes(
             .await
             .ok()
             .flatten();
-        if let Some(q) = quoted {
-            if q > 0 && !notified.contains(&q) {
-                notified.push(q);
-                alert(
-                    app,
-                    q,
-                    poster_uid,
-                    "quoted",
-                    pid,
-                    serde_json::json!({"tid": tid, "subject": subject, "poster": poster}),
-                )
-                .await;
-            }
+        if let Some(q) = quoted
+            && q > 0
+            && !notified.contains(&q)
+        {
+            notified.push(q);
+            alert(
+                app,
+                q,
+                poster_uid,
+                "quoted",
+                pid,
+                serde_json::json!({"tid": tid, "subject": subject, "poster": poster}),
+            )
+            .await;
         }
     }
     if cache.settings.bool("enablementions") {

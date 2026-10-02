@@ -76,7 +76,7 @@ pub async fn stats(ctx: Ctx) -> AppResult<Response> {
     };
     let days = ((now() - data["first_reg"].as_i64().unwrap_or(now())) as f64 / 86400.0).max(1.0);
     let users = base["users"].as_f64().unwrap_or(1.0).max(1.0);
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "stats.html",
         minijinja::context! {

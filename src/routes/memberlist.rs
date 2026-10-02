@@ -114,7 +114,7 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
         .filter(|g| g.perms.0.showmemberlist && g.gid != 1)
         .map(|g| (g.gid, g.title.clone()))
         .collect();
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "memberlist.html",
         minijinja::context! { title => "Member List", members => list, pagination => pg, sort => sort, order => order.to_lowercase(), username => q.username, letter => letter, groups => groups, gid => q.gid, total => total },
@@ -164,6 +164,6 @@ pub async fn showteam(ctx: Ctx) -> AppResult<Response> {
         .filter(|m| ctx.forum_perms(m.0).canview)
         .map(|(fid, n, uid, g, d)| minijinja::context! { uid => uid, formatted => ctx.cache.format_name(&n, g, d), forum => ctx.cache.forum(fid).map(|f| f.name.clone()), fid => fid })
         .collect();
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render("showteam.html", minijinja::context! { title => "Forum Team", sections => sections, moderators => moderators }).await
 }

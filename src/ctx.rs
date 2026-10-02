@@ -120,10 +120,10 @@ pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>, trust_proxy: boo
                 return ip.to_string();
             }
         }
-        if let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
-            if v.parse::<std::net::IpAddr>().is_ok() {
-                return v.to_string();
-            }
+        if let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok())
+            && v.parse::<std::net::IpAddr>().is_ok()
+        {
+            return v.to_string();
         }
     }
     peer.map(|p| p.ip().to_string())
@@ -134,14 +134,14 @@ pub fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     for v in headers.get_all(header::COOKIE) {
         let Ok(s) = v.to_str() else { continue };
         for part in s.split(';') {
-            if let Some((k, val)) = part.trim().split_once('=') {
-                if k == name {
-                    return Some(
-                        percent_encoding::percent_decode_str(val)
-                            .decode_utf8_lossy()
-                            .into_owned(),
-                    );
-                }
+            if let Some((k, val)) = part.trim().split_once('=')
+                && k == name
+            {
+                return Some(
+                    percent_encoding::percent_decode_str(val)
+                        .decode_utf8_lossy()
+                        .into_owned(),
+                );
             }
         }
     }
@@ -254,17 +254,18 @@ impl CtxInner {
         }
         // Password-protected forums (and their children).
         for pfid in &forum.parentlist {
-            if let Some(pf) = self.cache.forum(*pfid) {
-                if pf.has_password() && !self.is_mod(*pfid) {
-                    let cookie =
-                        get_cookie(&self.headers, &format!("forumpass_{pfid}")).unwrap_or_default();
-                    let expect = util::hmac_hex(
-                        &self.app.cfg.secret,
-                        &format!("forumpass:{pfid}:{}", pf.password),
-                    );
-                    if !util::ct_eq(&cookie, &expect) {
-                        return Err(AppError::User(format!("__forumpass__{pfid}")));
-                    }
+            if let Some(pf) = self.cache.forum(*pfid)
+                && pf.has_password()
+                && !self.is_mod(*pfid)
+            {
+                let cookie =
+                    get_cookie(&self.headers, &format!("forumpass_{pfid}")).unwrap_or_default();
+                let expect = util::hmac_hex(
+                    &self.app.cfg.secret,
+                    &format!("forumpass:{pfid}:{}", pf.password),
+                );
+                if !util::ct_eq(&cookie, &expect) {
+                    return Err(AppError::User(format!("__forumpass__{pfid}")));
                 }
             }
         }
@@ -652,10 +653,10 @@ pub async fn context_middleware(
         .map(|u| u.style)
         .filter(|s| *s > 0)
         .or_else(|| get_cookie(&headers, "rbb_theme").and_then(|t| t.parse().ok()));
-    if let Some(t) = chosen.and_then(|t| cache.theme(t)) {
-        if t.allowedgroups.is_empty() || t.allowedgroups.iter().any(|g| groups.contains(g)) {
-            theme = t.tid;
-        }
+    if let Some(t) = chosen.and_then(|t| cache.theme(t))
+        && (t.allowedgroups.is_empty() || t.allowedgroups.iter().any(|g| groups.contains(g)))
+    {
+        theme = t.tid;
     }
     let flash = get_cookie(&headers, FLASH_COOKIE)
         .filter(|f| !f.is_empty())
@@ -889,7 +890,7 @@ pub async fn context_middleware(
         let key = if let Some(b) = bot {
             format!("bot={b}")
         } else if had_sid.is_none() && ctx.uid() == 0 {
-            format!("ip={}", util::sha256_hex(&ip)[..24].to_string())
+            format!("ip={}", &util::sha256_hex(&ip)[..24])
         } else {
             sid
         };

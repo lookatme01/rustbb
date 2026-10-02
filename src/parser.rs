@@ -76,7 +76,7 @@ impl ParserData {
         custom: Vec<(String, String)>,
     ) -> Self {
         // Longest codes first so ":-)" wins over ":)".
-        smilies.sort_by(|a, b| b.find.len().cmp(&a.find.len()));
+        smilies.sort_by_key(|a| std::cmp::Reverse(a.find.len()));
         let badwords = badwords
             .into_iter()
             .filter_map(|(word, is_regex, replacement)| {
@@ -177,7 +177,6 @@ const KNOWN: &[&str] = &[
     "indent",
 ];
 const VERBATIM: &[&str] = &["code", "php", "noparse"];
-const SELF_CLOSING: &[&str] = &["hr", "*", "attachment"];
 
 struct Tag {
     name: String,
@@ -209,9 +208,7 @@ fn read_tag(s: &str) -> Option<(Tag, usize)> {
         }
         return None;
     }
-    let name_end = inner
-        .find(|c: char| c == '=' || c == ' ')
-        .unwrap_or(inner.len());
+    let name_end = inner.find(['=', ' ']).unwrap_or(inner.len());
     let name = inner[..name_end].to_ascii_lowercase();
     if !(KNOWN.contains(&name.as_str()) || VERBATIM.contains(&name.as_str())) {
         return None;
@@ -280,82 +277,82 @@ fn tokenize_and_build(input: &str) -> Vec<Node> {
     }
 
     while i < input.len() {
-        if bytes[i] == b'[' {
-            if let Some((tag, len)) = read_tag(&input[i..]) {
-                if !tag.closing && VERBATIM.contains(&tag.name.as_str()) {
-                    let close = format!("[/{}]", tag.name);
-                    let after = &input[i + len..];
-                    if let Some(pos) = find_ci(after, &close) {
-                        push_text(&mut stack, &mut text);
-                        let content = after[..pos].to_string();
-                        stack.last_mut().unwrap().children.push(Node::Raw {
-                            tag: tag.name.clone(),
-                            arg: tag.arg,
-                            content,
-                        });
-                        i += len + pos + close.len();
-                        continue;
-                    }
-                } else if tag.closing {
-                    if let Some(pos) = stack.iter().rposition(|o| o.tag == tag.name) {
-                        if pos > 0 {
-                            push_text(&mut stack, &mut text);
-                            while stack.len() > pos + 1 {
-                                // auto-close mis-nested inner tags
-                                close_top(&mut stack, String::new(), true);
-                            }
-                            close_top(&mut stack, tag.raw, true);
-                            i += len;
-                            continue;
-                        }
-                    }
-                } else if tag.name == "*" {
+        if bytes[i] == b'['
+            && let Some((tag, len)) = read_tag(&input[i..])
+        {
+            if !tag.closing && VERBATIM.contains(&tag.name.as_str()) {
+                let close = format!("[/{}]", tag.name);
+                let after = &input[i + len..];
+                if let Some(pos) = find_ci(after, &close) {
                     push_text(&mut stack, &mut text);
-                    // A new list item closes the previous one.
-                    if stack.last().map(|o| o.tag == "*").unwrap_or(false) {
+                    let content = after[..pos].to_string();
+                    stack.last_mut().unwrap().children.push(Node::Raw {
+                        tag: tag.name.clone(),
+                        arg: tag.arg,
+                        content,
+                    });
+                    i += len + pos + close.len();
+                    continue;
+                }
+            } else if tag.closing {
+                if let Some(pos) = stack.iter().rposition(|o| o.tag == tag.name)
+                    && pos > 0
+                {
+                    push_text(&mut stack, &mut text);
+                    while stack.len() > pos + 1 {
+                        // auto-close mis-nested inner tags
                         close_top(&mut stack, String::new(), true);
                     }
-                    if stack.last().map(|o| o.tag == "list").unwrap_or(false) {
-                        stack.push(Open {
-                            tag: tag.name,
-                            arg: None,
-                            raw_open: tag.raw,
-                            children: vec![],
-                        });
-                        i += len;
-                        continue;
-                    }
-                    text.push_str(&tag.raw);
+                    close_top(&mut stack, tag.raw, true);
                     i += len;
                     continue;
-                } else if tag.name == "hr" || tag.name == "attachment" {
-                    push_text(&mut stack, &mut text);
-                    stack.last_mut().unwrap().children.push(Node::Elem {
-                        tag: tag.name,
-                        arg: tag.arg,
-                        raw_open: tag.raw,
-                        raw_close: String::new(),
-                        children: vec![],
-                        closed: true,
-                    });
-                    i += len;
-                    continue;
-                } else if stack.len() < 64 {
-                    push_text(&mut stack, &mut text);
+                }
+            } else if tag.name == "*" {
+                push_text(&mut stack, &mut text);
+                // A new list item closes the previous one.
+                if stack.last().map(|o| o.tag == "*").unwrap_or(false) {
+                    close_top(&mut stack, String::new(), true);
+                }
+                if stack.last().map(|o| o.tag == "list").unwrap_or(false) {
                     stack.push(Open {
                         tag: tag.name,
-                        arg: tag.arg,
+                        arg: None,
                         raw_open: tag.raw,
                         children: vec![],
                     });
                     i += len;
                     continue;
                 }
-                // fallthrough: treat as literal
                 text.push_str(&tag.raw);
                 i += len;
                 continue;
+            } else if tag.name == "hr" || tag.name == "attachment" {
+                push_text(&mut stack, &mut text);
+                stack.last_mut().unwrap().children.push(Node::Elem {
+                    tag: tag.name,
+                    arg: tag.arg,
+                    raw_open: tag.raw,
+                    raw_close: String::new(),
+                    children: vec![],
+                    closed: true,
+                });
+                i += len;
+                continue;
+            } else if stack.len() < 64 {
+                push_text(&mut stack, &mut text);
+                stack.push(Open {
+                    tag: tag.name,
+                    arg: tag.arg,
+                    raw_open: tag.raw,
+                    children: vec![],
+                });
+                i += len;
+                continue;
             }
+            // fallthrough: treat as literal
+            text.push_str(&tag.raw);
+            i += len;
+            continue;
         }
         let ch = input[i..].chars().next().unwrap();
         text.push(ch);
@@ -412,21 +409,21 @@ impl<'a> Parser<'a> {
             msg = self.data.badwords_filter(&msg);
         }
         // /me support: "/me waves" at line start
-        if let Some(name) = &self.opts.me_username {
-            if msg.contains("/me ") {
-                let esc = name.replace('[', "&#91;");
-                msg = msg
-                    .lines()
-                    .map(|l| {
-                        if let Some(rest) = l.strip_prefix("/me ") {
-                            format!("\u{1}me\u{2}* {esc} {rest}\u{1}/me\u{2}")
-                        } else {
-                            l.to_string()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-            }
+        if let Some(name) = &self.opts.me_username
+            && msg.contains("/me ")
+        {
+            let esc = name.replace('[', "&#91;");
+            msg = msg
+                .lines()
+                .map(|l| {
+                    if let Some(rest) = l.strip_prefix("/me ") {
+                        format!("\u{1}me\u{2}* {esc} {rest}\u{1}/me\u{2}")
+                    } else {
+                        l.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
         }
         let mut out = if !self.opts.allow_mycode {
             self.render_text(
@@ -504,15 +501,15 @@ impl<'a> Parser<'a> {
         let mut s = String::new();
         // strip one leading newline inside block elements
         let mut v = children.to_vec();
-        if let Some(Node::Text(t)) = v.first_mut() {
-            if let Some(rest) = t.strip_prefix('\n') {
-                *t = rest.to_string();
-            }
+        if let Some(Node::Text(t)) = v.first_mut()
+            && let Some(rest) = t.strip_prefix('\n')
+        {
+            *t = rest.to_string();
         }
-        if let Some(Node::Text(t)) = v.last_mut() {
-            if let Some(rest) = t.strip_suffix('\n') {
-                *t = rest.to_string();
-            }
+        if let Some(Node::Text(t)) = v.last_mut()
+            && let Some(rest) = t.strip_suffix('\n')
+        {
+            *t = rest.to_string();
         }
         self.render_nodes(&v, ctx, &mut s);
         s
@@ -1335,15 +1332,15 @@ pub fn limit_quote_depth(message: &str, max_depth: usize) -> String {
     let mut i = 0;
     let lower = message.to_ascii_lowercase();
     while i < message.len() {
-        if lower[i..].starts_with("[quote") {
-            if let Some(end) = message[i..].find(']') {
-                depth += 1;
-                if depth <= max_depth {
-                    out.push_str(&message[i..i + end + 1]);
-                }
-                i += end + 1;
-                continue;
+        if lower[i..].starts_with("[quote")
+            && let Some(end) = message[i..].find(']')
+        {
+            depth += 1;
+            if depth <= max_depth {
+                out.push_str(&message[i..i + end + 1]);
             }
+            i += end + 1;
+            continue;
         }
         if lower[i..].starts_with("[/quote]") {
             if depth <= max_depth {

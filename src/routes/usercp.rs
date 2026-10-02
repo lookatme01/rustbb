@@ -149,12 +149,12 @@ pub fn validate_profile_field(f: &ProfileField, v: &str) -> Result<String, Strin
             return Err(format!("Invalid choice for {}.", f.name));
         }
     }
-    if !v.is_empty() && !f.regex.is_empty() {
-        if let Ok(re) = regex::Regex::new(&f.regex) {
-            if !re.is_match(&v) {
-                return Err(format!("{} is not in the correct format.", f.name));
-            }
-        }
+    if !v.is_empty()
+        && !f.regex.is_empty()
+        && let Ok(re) = regex::Regex::new(&f.regex)
+        && !re.is_match(&v)
+    {
+        return Err(format!("{} is not in the correct format.", f.name));
     }
     Ok(v)
 }
@@ -449,10 +449,11 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let remove_old = |old: String| {
         let dir = dir.clone();
         async move {
-            if let Some(name) = old.strip_prefix("/uploads/avatars/") {
-                if !name.contains('/') && !name.contains("..") {
-                    let _ = tokio::fs::remove_file(format!("{dir}/{name}")).await;
-                }
+            if let Some(name) = old.strip_prefix("/uploads/avatars/")
+                && !name.contains('/')
+                && !name.contains("..")
+            {
+                let _ = tokio::fs::remove_file(format!("{dir}/{name}")).await;
             }
         }
     };

@@ -78,20 +78,21 @@ pub async fn require_admin(ctx: &Ctx, module: &str) -> AppResult<()> {
                 .bind(me.uid)
                 .fetch_optional(&ctx.app.db)
                 .await?;
-        if let Some(p) = perms {
-            if let Some(obj) = p.as_object() {
-                if !obj.is_empty() && obj.get(module).and_then(|v| v.as_bool()) == Some(false) {
-                    return Err(AppError::NoPermission(
-                        "You do not have permission to access this part of the Admin CP.".into(),
-                    ));
-                }
-            }
+        if let Some(p) = perms
+            && let Some(obj) = p.as_object()
+            && !obj.is_empty()
+            && obj.get(module).and_then(|v| v.as_bool()) == Some(false)
+        {
+            return Err(AppError::NoPermission(
+                "You do not have permission to access this part of the Admin CP.".into(),
+            ));
         }
     }
     Ok(())
 }
 
 /// Wrap a guard so that an unverified admin is sent to the password prompt.
+#[allow(clippy::result_large_err)] // an axum response, returned as-is by handlers
 pub async fn guard(ctx: &Ctx, module: &str) -> Result<(), Response> {
     match require_admin(ctx, module).await {
         Ok(()) => Ok(()),

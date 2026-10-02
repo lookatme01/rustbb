@@ -162,14 +162,14 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
     }
     let pid = i(fl.get("pid"));
     let kind = if s(fl.get("type")) == "c" { "c" } else { "f" };
-    if fid > 0 && pid > 0 {
-        if let Some(p) = ctx.cache.forum(pid) {
-            if p.parentlist.contains(&fid) {
-                return Err(AppError::user(
-                    "A forum cannot be moved into one of its own subforums.",
-                ));
-            }
-        }
+    if fid > 0
+        && pid > 0
+        && let Some(p) = ctx.cache.forum(pid)
+        && p.parentlist.contains(&fid)
+    {
+        return Err(AppError::user(
+            "A forum cannot be moved into one of its own subforums.",
+        ));
     }
     let password = s(fl.get("password"));
     let clear_pw = b(fl.get("clearpassword"));

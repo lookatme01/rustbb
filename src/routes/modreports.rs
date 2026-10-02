@@ -97,12 +97,11 @@ async fn load(ctx: &Ctx, rid: i32) -> AppResult<Report> {
     .fetch_optional(&ctx.app.db)
     .await?
     .ok_or_else(|| AppError::not_found("report"))?;
-    if r.r#type == "post" {
-        if let Some(fids) = crate::routes::modcp::mod_fids(ctx) {
-            if !fids.contains(&r.id3) {
-                return Err(AppError::not_found("report"));
-            }
-        }
+    if r.r#type == "post"
+        && let Some(fids) = crate::routes::modcp::mod_fids(ctx)
+        && !fids.contains(&r.id3)
+    {
+        return Err(AppError::not_found("report"));
     }
     Ok(r)
 }

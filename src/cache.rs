@@ -227,14 +227,12 @@ impl Cache {
                             let (mut brand, mut css, mut cur, mut n) =
                                 (String::new(), false, Some(t), 0);
                             while let Some(x) = cur {
-                                if brand.is_empty() {
-                                    if let Some(b) =
+                                if brand.is_empty()
+                                    && let Some(b) =
                                         x.properties.0.get("brand").and_then(|v| v.as_str())
-                                    {
-                                        if crate::admin::themes::valid_brand(b) {
-                                            brand = b.to_string();
-                                        }
-                                    }
+                                    && crate::admin::themes::valid_brand(b)
+                                {
+                                    brand = b.to_string();
                                 }
                                 css |= !x.stylesheet.trim().is_empty();
                                 n += 1;

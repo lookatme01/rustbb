@@ -75,7 +75,7 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
     } else {
         None
     };
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "portal.html",
         minijinja::context! { title => "Portal", announcements => announcements, latest => latest, online => online, stats => stats },

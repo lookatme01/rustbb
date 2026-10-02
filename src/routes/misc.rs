@@ -351,7 +351,7 @@ pub async fn announcement(ctx: Ctx, Path(aid): Path<i32>) -> AppResult<Response>
     } else {
         vec![]
     };
-    ctx.allow_guest_cache(&vec![]);
+    ctx.allow_guest_cache(&[]);
     ctx.render("announcement.html", minijinja::context! { title => &a.subject, a => &a, html => html, author => author, breadcrumb => breadcrumb }).await
 }
 
@@ -380,7 +380,7 @@ pub async fn help(ctx: Ctx) -> AppResult<Response> {
             minijinja::context! { sid => sid, name => name, description => desc, docs => d }
         })
         .collect();
-    ctx.allow_guest_cache(&vec![]);
+    ctx.allow_guest_cache(&[]);
     ctx.render(
         "help.html",
         minijinja::context! { title => "Help Documents", sections => out },
@@ -397,7 +397,7 @@ pub async fn help_doc(ctx: Ctx, Path(hid): Path<i32>) -> AppResult<Response> {
     .await?
     .ok_or_else(|| AppError::not_found("help document"))?;
     let html = crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &Default::default(), &doc.2);
-    ctx.allow_guest_cache(&vec![]);
+    ctx.allow_guest_cache(&[]);
     ctx.render("page.html", minijinja::context! { title => doc.0, subtitle => doc.1, html => html, breadcrumb => vec![("Help".to_string(), "/help".to_string())] }).await
 }
 
@@ -408,7 +408,7 @@ pub async fn rules(ctx: Ctx) -> AppResult<Response> {
         &Default::default(),
         ctx.settings().get("tos"),
     );
-    ctx.allow_guest_cache(&vec![]);
+    ctx.allow_guest_cache(&[]);
     ctx.render(
         "page.html",
         minijinja::context! { title => "Forum Rules", html => html },
@@ -482,10 +482,12 @@ pub async fn contact_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ContactForm>) -> App
     if !util::valid_email(&email) {
         errors.push("Please enter a valid email address so we can reply.".into());
     }
-    if errors.is_empty() && ctx.uid() == 0 && ctx.settings().get("captchaimage") == "1" {
-        if let Err(e) = crate::routes::captcha::check(&ctx, &f.captcha_hash, &f.captcha).await {
-            errors.push(e.public_message());
-        }
+    if errors.is_empty()
+        && ctx.uid() == 0
+        && ctx.settings().get("captchaimage") == "1"
+        && let Err(e) = crate::routes::captcha::check(&ctx, &f.captcha_hash, &f.captcha).await
+    {
+        errors.push(e.public_message());
     }
     if !errors.is_empty() {
         let captcha = if ctx.uid() == 0 && ctx.settings().get("captchaimage") == "1" {

@@ -670,10 +670,11 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
             errors.push("The answer to the security question is incorrect.".into());
         }
     }
-    if errors.is_empty() && s.get("captchaimage") == "1" {
-        if let Err(e) = crate::routes::captcha::check(&ctx, &f.captcha_hash, &f.captcha).await {
-            errors.push(e.public_message());
-        }
+    if errors.is_empty()
+        && s.get("captchaimage") == "1"
+        && let Err(e) = crate::routes::captcha::check(&ctx, &f.captcha_hash, &f.captcha).await
+    {
+        errors.push(e.public_message());
     }
     if !errors.is_empty() {
         return register_page(&ctx, &f, errors).await;
@@ -1232,7 +1233,7 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
         .iter()
         .filter_map(|g| ctx.cache.group(*g).map(|g| g.title.clone()))
         .collect();
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "profile.html",
         minijinja::context! {

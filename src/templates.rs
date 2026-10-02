@@ -43,10 +43,10 @@ pub fn resolve_source(
         tid = cache.theme(tid).map(|t| t.pid).unwrap_or(0);
         guard += 1;
     }
-    if let Some(dir) = dev_dir {
-        if let Ok(s) = std::fs::read_to_string(format!("{dir}/{name}")) {
-            return Some(s);
-        }
+    if let Some(dir) = dev_dir
+        && let Ok(s) = std::fs::read_to_string(format!("{dir}/{name}"))
+    {
+        return Some(s);
     }
     default_template(name)
 }

@@ -574,10 +574,10 @@ pub async fn banner_upload(
         .execute(&ctx.app.db)
         .await?;
     if let Some(old) = old.and_then(|o| o.strip_prefix("/uploads/banners/").map(|x| x.to_string()))
+        && !old.contains('/')
+        && !old.contains("..")
     {
-        if !old.contains('/') && !old.contains("..") {
-            let _ = tokio::fs::remove_file(format!("{dir}/{old}")).await;
-        }
+        let _ = tokio::fs::remove_file(format!("{dir}/{old}")).await;
     }
     ctx.app.invalidate(&["themes"]).await?;
     crate::admin::log(

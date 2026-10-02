@@ -63,10 +63,10 @@ pub const SYSTEM_PROTECTED: &str = "RBSYS";
 
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
-        if let Some(db) = e.as_database_error() {
-            if db.code().as_deref() == Some(SYSTEM_PROTECTED) {
-                return AppError::User(db.message().to_string());
-            }
+        if let Some(db) = e.as_database_error()
+            && db.code().as_deref() == Some(SYSTEM_PROTECTED)
+        {
+            return AppError::User(db.message().to_string());
         }
         AppError::Db(e)
     }

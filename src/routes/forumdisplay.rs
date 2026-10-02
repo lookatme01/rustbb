@@ -238,9 +238,10 @@ pub async fn forumdisplay(
         return Ok(Redirect::to(&forum.linkto).into_response());
     }
     ctx.set_location(fid, 0);
-    if forum.overridestyle && forum.style > 0 {
-        ctx.set_theme(forum.style);
-    } else if forum.style > 0 && ctx.user.as_ref().map(|u| u.style == 0).unwrap_or(true) {
+    // A forum's theme applies when it overrides members' choices or the viewer chose none.
+    if forum.style > 0
+        && (forum.overridestyle || ctx.user.as_ref().map(|u| u.style == 0).unwrap_or(true))
+    {
         ctx.set_theme(forum.style);
     }
     let s = ctx.settings();
@@ -448,14 +449,14 @@ pub async fn forumdisplay(
             .map(|r| (r.0, ctx.cache.format_name(&r.1, r.2, r.3)))
             .collect();
         let mut users = users;
-        if let Some(me) = &ctx.user {
-            if !users.iter().any(|u| u.0 == me.uid) {
-                users.push((
-                    me.uid,
-                    ctx.cache
-                        .format_name(&me.username, me.usergroup, me.displaygroup),
-                ));
-            }
+        if let Some(me) = &ctx.user
+            && !users.iter().any(|u| u.0 == me.uid)
+        {
+            users.push((
+                me.uid,
+                ctx.cache
+                    .format_name(&me.username, me.usergroup, me.displaygroup),
+            ));
         }
         Some(minijinja::context! { users => users, guests => guests })
     } else {
@@ -501,7 +502,7 @@ pub async fn forumdisplay(
         vec![]
     };
 
-    ctx.allow_guest_cache(&vec![format!("forum:{fid}")]);
+    ctx.allow_guest_cache(&[format!("forum:{fid}")]);
     ctx.render(
         "forumdisplay.html",
         minijinja::context! {

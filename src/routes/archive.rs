@@ -24,7 +24,7 @@ pub async fn index(ctx: Ctx) -> AppResult<Response> {
         .filter(|f| f.active && ctx.forum_perms(f.fid).canview)
         .map(|f| minijinja::context! { fid => f.fid, name => &f.name, depth => ctx.cache.forum_depth.get(&f.fid).copied().unwrap_or(0), category => f.is_category() })
         .collect();
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "archive.html",
         minijinja::context! { mode => "index", forums => forums, full_url => "/" },
@@ -80,7 +80,7 @@ pub async fn forum(
         .filter(|f| f.active && ctx.forum_perms(f.fid).canview)
         .map(|f| (f.fid, f.name.clone()))
         .collect();
-    ctx.allow_guest_cache(&vec![format!("forum:{fid}")]);
+    ctx.allow_guest_cache(&[format!("forum:{fid}")]);
     ctx.render(
         "archive.html",
         minijinja::context! { mode => "forum", forum => &forum, threads => threads, subforums => subforums, pagination => pg, full_url => crate::templates::url_forum(fid as i64, Some(&forum.name)) },
@@ -113,7 +113,7 @@ pub async fn thread(
     let list: Vec<_> = posts.iter().map(|p| minijinja::context! { username => &p.username, dateline => p.dateline, html => crate::render::post_html(&ctx, p, &mut stale) }).collect();
     crate::render::store_parsed(&ctx, stale);
     *ctx.app.thread_views.entry(tid).or_insert(0) += 1;
-    ctx.allow_guest_cache(&vec![format!("thread:{tid}")]);
+    ctx.allow_guest_cache(&[format!("thread:{tid}")]);
     ctx.render(
         "archive.html",
         minijinja::context! { mode => "thread", thread => &t, forum => &forum, posts => list, pagination => pg, full_url => crate::templates::url_thread(tid as i64, Some(&t.subject)) },

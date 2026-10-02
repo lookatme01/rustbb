@@ -435,12 +435,13 @@ pub async fn do_move(ctx: Ctx, CsrfForm(f): CsrfForm<MoveForm>) -> AppResult<Res
     if !ctx.forum_perms(f.target).canview {
         return Err(AppError::no_perm());
     }
-    if let Some(mp) = ctx.mod_perms(threads[0].fid) {
-        if !mp.canmovetononmodforum && ctx.mod_perms(f.target).is_none() {
-            return Err(AppError::user(
-                "You can only move threads to forums you moderate.",
-            ));
-        }
+    if let Some(mp) = ctx.mod_perms(threads[0].fid)
+        && !mp.canmovetononmodforum
+        && ctx.mod_perms(f.target).is_none()
+    {
+        return Err(AppError::user(
+            "You can only move threads to forums you moderate.",
+        ));
     }
     let tids: Vec<i32> = threads.iter().map(|t| t.tid).collect();
     let msg = match f.method.as_str() {

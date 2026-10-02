@@ -196,10 +196,13 @@ fn build_level(
             }
             let p = ctx.forum_perms(*id);
             let pw = cache.forum(*id).map(|f| f.has_password()).unwrap_or(false);
-            if p.canviewthreads && !p.canonlyviewownthreads && !pw {
-                if best.map(|b| c.lastpost > b.lastpost).unwrap_or(true) && c.lastpost > 0 {
-                    best = Some(c);
-                }
+            if p.canviewthreads
+                && !p.canonlyviewownthreads
+                && !pw
+                && best.map(|b| c.lastpost > b.lastpost).unwrap_or(true)
+                && c.lastpost > 0
+            {
+                best = Some(c);
             }
             if ctx.uid() > 0 && c.lastpost > readcut && c.lastposteruid != ctx.uid() {
                 let r = read.get(id).copied().unwrap_or(0);
@@ -304,20 +307,20 @@ pub async fn online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
         }
     };
     // The viewer is online even if the cached summary predates their arrival.
-    if let Some(u) = &ctx.user {
-        if !summary.members.iter().any(|m| m.uid == u.uid) {
-            summary.members.push(OnlineUser {
-                uid: u.uid,
-                formatted: ctx
-                    .cache
-                    .format_name(&u.username, u.usergroup, u.displaygroup),
-                invisible: u.invisible,
-                username: u.username.clone(),
-                avatar: String::new(),
-            });
-            summary.num_members += 1;
-            summary.total += 1;
-        }
+    if let Some(u) = &ctx.user
+        && !summary.members.iter().any(|m| m.uid == u.uid)
+    {
+        summary.members.push(OnlineUser {
+            uid: u.uid,
+            formatted: ctx
+                .cache
+                .format_name(&u.username, u.usergroup, u.displaygroup),
+            invisible: u.invisible,
+            username: u.username.clone(),
+            avatar: String::new(),
+        });
+        summary.num_members += 1;
+        summary.total += 1;
     }
     // Faces for the first members shown.
     let shown: Vec<i32> = summary.members.iter().take(40).map(|m| m.uid).collect();
@@ -486,22 +489,22 @@ pub async fn index(ctx: Ctx) -> AppResult<Response> {
     } else {
         None
     };
-    if let (Some(o), Some(st)) = (&online, &stats) {
-        if o.total > st["mostonline"].as_i64().unwrap_or(0) {
-            let _ = sqlx::query("UPDATE counters SET mostonline = $1, mostonlinetime = $2 WHERE id = 1 AND mostonline < $1")
+    if let (Some(o), Some(st)) = (&online, &stats)
+        && o.total > st["mostonline"].as_i64().unwrap_or(0)
+    {
+        let _ = sqlx::query("UPDATE counters SET mostonline = $1, mostonlinetime = $2 WHERE id = 1 AND mostonline < $1")
                 .bind(o.total as i32)
                 .bind(now())
                 .execute(&ctx.app.db)
                 .await;
-            ctx.app.stats_cache.invalidate(&"boardstats");
-        }
+        ctx.app.stats_cache.invalidate(&"boardstats");
     }
     let birthdays = if s.bool("showbirthdays") {
         todays_birthdays(&ctx).await?
     } else {
         vec![]
     };
-    ctx.allow_guest_cache(&vec!["board".to_string()]);
+    ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "index.html",
         minijinja::context! {

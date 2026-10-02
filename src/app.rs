@@ -220,12 +220,12 @@ impl AppState {
 
     async fn reload_parts(&self, parts: &[&str]) -> anyhow::Result<()> {
         // Another node's scoped page-cache invalidation.
-        if let [p] = parts {
-            if let Some(tags) = p.strip_prefix("pagetags|") {
-                self.page_cache
-                    .invalidate_tags(&tags.split(',').collect::<Vec<_>>());
-                return Ok(());
-            }
+        if let [p] = parts
+            && let Some(tags) = p.strip_prefix("pagetags|")
+        {
+            self.page_cache
+                .invalidate_tags(&tags.split(',').collect::<Vec<_>>());
+            return Ok(());
         }
         // Settings, forums, themes… all change what guests see.
         self.page_cache.clear();
@@ -320,32 +320,31 @@ async fn run_listener(app: &App) -> anyhow::Result<()> {
         let n = l.recv().await?;
         match n.channel() {
             "rbb_cache" => {
-                if let Some((node, part)) = n.payload().split_once(':') {
-                    if node != app.node_id {
-                        if let Err(e) = app.reload_parts(&[part]).await {
-                            tracing::warn!("cache reload {part} failed: {e:#}");
-                        }
-                    }
+                if let Some((node, part)) = n.payload().split_once(':')
+                    && node != app.node_id
+                    && let Err(e) = app.reload_parts(&[part]).await
+                {
+                    tracing::warn!("cache reload {part} failed: {e:#}");
                 }
             }
             "rbb_live" => {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(n.payload()) {
-                    if v["node"].as_str() != Some(app.node_id.as_str()) {
-                        let kind: &'static str = match v["kind"].as_str().unwrap_or("") {
-                            "newpost" => "newpost",
-                            "alert" => "alert",
-                            "pm" => "pm",
-                            "editpost" => "editpost",
-                            "typing" => "typing",
-                            _ => continue,
-                        };
-                        app.publish(LiveEvent {
-                            kind,
-                            tid: v["tid"].as_i64().unwrap_or(0) as i32,
-                            uid: v["uid"].as_i64().unwrap_or(0) as i32,
-                            data: v["data"].clone(),
-                        });
-                    }
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(n.payload())
+                    && v["node"].as_str() != Some(app.node_id.as_str())
+                {
+                    let kind: &'static str = match v["kind"].as_str().unwrap_or("") {
+                        "newpost" => "newpost",
+                        "alert" => "alert",
+                        "pm" => "pm",
+                        "editpost" => "editpost",
+                        "typing" => "typing",
+                        _ => continue,
+                    };
+                    app.publish(LiveEvent {
+                        kind,
+                        tid: v["tid"].as_i64().unwrap_or(0) as i32,
+                        uid: v["uid"].as_i64().unwrap_or(0) as i32,
+                        data: v["data"].clone(),
+                    });
                 }
             }
             _ => {}

@@ -141,10 +141,11 @@ fn needs_moderation(ctx: &CtxInner, fid: i32, thread: bool) -> bool {
     if ctx.is_mod(fid) {
         return false;
     }
-    if let Some(u) = &ctx.user {
-        if u.moderateposts && (u.moderationtime == 0 || u.moderationtime > now()) {
-            return true;
-        }
+    if let Some(u) = &ctx.user
+        && u.moderateposts
+        && (u.moderationtime == 0 || u.moderationtime > now())
+    {
+        return true;
     }
     let fp = ctx.forum_perms(fid);
     if thread { fp.modthreads } else { fp.modposts }
@@ -388,24 +389,25 @@ pub async fn create_reply(
                 .bind(tid)
                 .fetch_optional(&app.db)
                 .await?;
-        if let Some((lpid, luid, ldate, lmsg)) = last {
-            if luid == uid && t - ldate < mergemins * 60 {
-                let merged = format!("{lmsg}\n[hr]\n{}", input.message.trim());
-                sqlx::query(
-                    "UPDATE posts SET message = $2, parser_rev = -1, edittime = $3 WHERE pid = $1",
-                )
-                .bind(lpid)
-                .bind(&merged)
+        if let Some((lpid, luid, ldate, lmsg)) = last
+            && luid == uid
+            && t - ldate < mergemins * 60
+        {
+            let merged = format!("{lmsg}\n[hr]\n{}", input.message.trim());
+            sqlx::query(
+                "UPDATE posts SET message = $2, parser_rev = -1, edittime = $3 WHERE pid = $1",
+            )
+            .bind(lpid)
+            .bind(&merged)
+            .bind(t)
+            .execute(&app.db)
+            .await?;
+            sqlx::query("UPDATE users SET lastpost = $2 WHERE uid = $1")
+                .bind(uid)
                 .bind(t)
                 .execute(&app.db)
                 .await?;
-                sqlx::query("UPDATE users SET lastpost = $2 WHERE uid = $1")
-                    .bind(uid)
-                    .bind(t)
-                    .execute(&app.db)
-                    .await?;
-                return Ok((lpid, 1, true));
-            }
+            return Ok((lpid, 1, true));
         }
     }
 
