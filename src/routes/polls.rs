@@ -161,7 +161,7 @@ pub async fn vote(
         return Err(AppError::user("You have already voted in this poll."));
     }
     for o in &opts {
-        sqlx::query("INSERT INTO pollvotes (pid, uid, voteoption, dateline, ipaddress) VALUES ($1, $2, $3, $4, $5)").bind(p.pid).bind(me.uid).bind(o).bind(now()).bind(&ctx.ip).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO pollvotes (pid, uid, voteoption, dateline, ipaddress) VALUES ($1, $2, $3, $4, $5)").bind(p.pid).bind(me.uid).bind(o).bind(now()).bind(crate::util::IpText::from(&ctx.ip)).execute(&mut *tx).await?;
         sqlx::query("UPDATE polls SET votes[$2] = votes[$2] + 1 WHERE pid = $1")
             .bind(p.pid)
             .bind(o)

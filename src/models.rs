@@ -38,9 +38,9 @@ pub struct User {
     pub suspendsignature: bool,
     pub suspendsigtime: i64,
     #[serde(skip_serializing)]
-    pub regip: String,
+    pub regip: crate::util::IpText,
     #[serde(skip_serializing)]
-    pub lastip: String,
+    pub lastip: crate::util::IpText,
     pub language: String,
     pub style: i32,
     pub away: bool,
@@ -263,7 +263,7 @@ pub struct Post {
     pub message: String,
     pub message_html: String,
     pub parser_rev: i32,
-    pub ipaddress: String,
+    pub ipaddress: crate::util::IpText,
     pub includesig: bool,
     pub smilieoff: bool,
     pub edituid: i32,

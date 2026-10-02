@@ -894,7 +894,7 @@ pub async fn log_moderator_action_in(
     .bind(pid)
     .bind(action)
     .bind(data)
-    .bind(ip)
+    .bind(crate::util::IpText(ip.to_string()))
     .execute(c)
     .await?;
     Ok(())

@@ -190,6 +190,19 @@ impl Importer {
             return Ok(());
         }
         let cols = self.pg_columns(table).await?;
+        // MyBB stores "no address" as an empty string; inet columns take NULL.
+        for (c, t) in &cols {
+            if t == "inet" {
+                for r in rows.iter_mut() {
+                    if r.get(c)
+                        .and_then(Value::as_str)
+                        .is_some_and(|v| v.parse::<std::net::IpAddr>().is_err())
+                    {
+                        r.insert(c.clone(), Value::Null);
+                    }
+                }
+            }
+        }
         let used: Vec<&(String, String)> = cols
             .iter()
             .filter(|(c, _)| rows[0].contains_key(c))

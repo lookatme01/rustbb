@@ -42,14 +42,13 @@ const BATCH: i64 = 5000;
 
 /// Shorten IP addresses on rows dated before `cut`, in batches so no table is locked for long.
 /// Every old row is checked each run (rows can arrive with old dates, e.g. from an import or a
-/// restore). An IPv4 address ending in ".0" is already its own /24, so a cheap text test skips it
-/// before the shortening function runs.
+/// restore); rows already shortened are skipped.
 async fn shorten_ips(db: &sqlx::PgPool, cut: i64) -> anyhow::Result<u64> {
     let mut total = 0;
     for (table, time, col) in IP_COLUMNS {
         let sql = format!(
             "UPDATE {table} SET {col} = rbb_anon_ip({col}) WHERE ctid IN (
-                SELECT ctid FROM {table} WHERE {time} < $1 AND {col} <> '' AND {col} NOT LIKE '%.0' AND {col} <> rbb_anon_ip({col}) LIMIT $2)"
+                SELECT ctid FROM {table} WHERE {time} < $1 AND {col} IS NOT NULL AND {col} <> rbb_anon_ip({col}) LIMIT $2)"
         );
         loop {
             let n = sqlx::query(&sql)
@@ -109,7 +108,7 @@ pub async fn anonymize_member(
     name: &str,
 ) -> crate::error::AppResult<()> {
     for sql in [
-        "UPDATE posts SET username = $2, ipaddress = '' WHERE uid = $1",
+        "UPDATE posts SET username = $2, ipaddress = NULL WHERE uid = $1",
         "UPDATE threads SET username = $2 WHERE uid = $1",
         "UPDATE threads SET lastposter = $2 WHERE lastposteruid = $1",
         "UPDATE forums SET lastposter = $2 WHERE lastposteruid = $1",
@@ -121,12 +120,12 @@ pub async fn anonymize_member(
             .await?;
     }
     for sql in [
-        "UPDATE pollvotes SET ipaddress = '' WHERE uid = $1",
-        "UPDATE threadratings SET ipaddress = '' WHERE uid = $1",
-        "UPDATE privatemessages SET ipaddress = '' WHERE fromid = $1",
-        "UPDATE moderatorlog SET ipaddress = '' WHERE uid = $1",
-        "UPDATE adminlog SET ipaddress = '' WHERE uid = $1",
-        "UPDATE system_authorship SET ipaddress = '' WHERE actor = $1",
+        "UPDATE pollvotes SET ipaddress = NULL WHERE uid = $1",
+        "UPDATE threadratings SET ipaddress = NULL WHERE uid = $1",
+        "UPDATE privatemessages SET ipaddress = NULL WHERE fromid = $1",
+        "UPDATE moderatorlog SET ipaddress = NULL WHERE uid = $1",
+        "UPDATE adminlog SET ipaddress = NULL WHERE uid = $1",
+        "UPDATE system_authorship SET ipaddress = NULL WHERE actor = $1",
         "DELETE FROM maillogs WHERE fromuid = $1 OR touid = $1",
         "DELETE FROM searchlog WHERE uid = $1",
     ] {

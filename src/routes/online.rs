@@ -56,7 +56,7 @@ pub async fn online(ctx: Ctx) -> AppResult<Response> {
         "s.time DESC"
     };
     let rows: Vec<(String, i32, String, i64, String, bool, String, i32, i32, Option<String>, Option<i32>, Option<i32>, Option<bool>)> = sqlx::query_as(&format!(
-        "SELECT s.sid, s.uid, s.ip, s.time, s.location, s.anonymous, s.bot, s.location1, s.location2, u.username, u.usergroup, u.displaygroup, u.invisible
+        "SELECT s.sid, s.uid, COALESCE(host(s.ip), ''), s.time, s.location, s.anonymous, s.bot, s.location1, s.location2, u.username, u.usergroup, u.displaygroup, u.invisible
          FROM sessions s LEFT JOIN users u ON u.uid = s.uid WHERE s.time > $1 ORDER BY {order} LIMIT 1000"
     ))
     .bind(cutoff)

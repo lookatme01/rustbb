@@ -213,7 +213,7 @@ pub async fn rate_thread(
         .bind(tid)
         .bind(me.uid)
         .bind(f.rating as i16)
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .execute(&ctx.app.db)
         .await?;
     sqlx::query("UPDATE threads SET numratings = numratings + 1, totalratings = totalratings + $2 WHERE tid = $1").bind(tid).bind(f.rating).execute(&ctx.app.db).await?;
@@ -535,7 +535,7 @@ pub async fn contact_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ContactForm>) -> App
             .bind(ctx.uid())
             .bind(&email)
             .bind(&to)
-            .bind(&ctx.ip)
+            .bind(crate::util::IpText::from(&ctx.ip))
             .execute(&ctx.app.db)
             .await?;
     }

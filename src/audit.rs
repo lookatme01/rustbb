@@ -159,7 +159,7 @@ pub async fn record(
     .bind(uid)
     .bind(now())
     .bind(action)
-    .bind(&actor.ip)
+    .bind(crate::util::IpText::from(&actor.ip))
     .bind(actor.useragent.chars().take(200).collect::<String>())
     .bind(by)
     .bind(details)

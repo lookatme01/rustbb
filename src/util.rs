@@ -316,3 +316,89 @@ mod tests {
         assert_eq!(format_number(1234567), "1,234,567");
     }
 }
+
+/// An IP address stored in an `inet` column, handled as text in the application. Empty (or
+/// unparseable) text is stored as NULL — "no address" — and NULL reads back as empty text.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct IpText(pub String);
+
+impl IpText {
+    pub fn addr(&self) -> Option<std::net::IpAddr> {
+        self.0.trim().parse().ok()
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl From<&str> for IpText {
+    fn from(s: &str) -> Self {
+        IpText(s.to_string())
+    }
+}
+
+impl From<&String> for IpText {
+    fn from(s: &String) -> Self {
+        IpText(s.clone())
+    }
+}
+
+impl std::ops::Deref for IpText {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for IpText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for IpText {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <ipnetwork::IpNetwork as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl sqlx::postgres::PgHasArrayType for IpText {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <ipnetwork::IpNetwork as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
+impl<'q> sqlx::Encode<'q, sqlx::Postgres> for IpText {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        match self.addr() {
+            Some(a) => <ipnetwork::IpNetwork as sqlx::Encode<sqlx::Postgres>>::encode(
+                ipnetwork::IpNetwork::from(a),
+                buf,
+            ),
+            None => Ok(sqlx::encode::IsNull::Yes),
+        }
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for IpText {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        use sqlx::ValueRef;
+        if value.is_null() {
+            return Ok(IpText::default());
+        }
+        let n = <ipnetwork::IpNetwork as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        let host_prefix = if n.is_ipv4() { 32 } else { 128 };
+        Ok(IpText(if n.prefix() == host_prefix {
+            n.ip().to_string()
+        } else {
+            n.to_string()
+        }))
+    }
+}

@@ -435,7 +435,7 @@ pub async fn load_logs(
     let (all, fids) = ctx.staff().scope(Cap::ModLog).sql();
     let show_ip = ctx.can(Cap::IpSearch);
     let rows: Vec<(i64, i32, i64, i32, i32, i32, String, serde_json::Value, String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT l.id, l.uid, l.dateline, l.fid, l.tid, l.pid, l.action, l.data, l.ipaddress, u.username, t.subject FROM moderatorlog l
+        "SELECT l.id, l.uid, l.dateline, l.fid, l.tid, l.pid, l.action, l.data, COALESCE(host(l.ipaddress), ''), u.username, t.subject FROM moderatorlog l
          LEFT JOIN users u ON u.uid = l.uid LEFT JOIN threads t ON t.tid = l.tid
          WHERE ($1 = 0 OR l.uid = $1) AND ($2 = 0 OR l.tid = $2) AND ($5 OR l.fid = ANY($6))
          ORDER BY l.id DESC LIMIT $3 OFFSET $4",
@@ -1155,19 +1155,32 @@ pub async fn ipsearch(ctx: Ctx, Query(q): Query<IpQuery>) -> AppResult<Response>
     let (users, posts) = if ip.is_empty() {
         (vec![], vec![])
     } else {
-        let pat = if ip.contains('*') {
-            ip.replace('*', "%")
-        } else {
-            ip.clone()
+        // An address or network (CIDR) is matched natively (and can use the index); anything
+        // else is a text prefix with `*` wildcards, e.g. `192.168.*`.
+        let (cond_u, cond_p, arg) = match ip.parse::<crate::config::Cidr>() {
+            Ok(_) => (
+                "regip <<= $1::inet OR lastip <<= $1::inet",
+                "ipaddress <<= $1::inet",
+                ip.clone(),
+            ),
+            Err(_) => (
+                "host(regip) LIKE $1 OR host(lastip) LIKE $1",
+                "host(ipaddress) LIKE $1",
+                format!("{}%", ip.trim_end_matches('*').replace('*', "%")),
+            ),
         };
-        let users: Vec<(i32, String, String, String)> = sqlx::query_as("SELECT uid, username, regip, lastip FROM users WHERE regip LIKE $1 OR lastip LIKE $1 ORDER BY uid LIMIT 200")
-            .bind(&pat)
-            .fetch_all(&ctx.app.db)
-            .await?;
-        let posts: Vec<(i32, i32, String, String, i64)> = sqlx::query_as("SELECT pid, uid, username, subject, dateline FROM posts WHERE ipaddress LIKE $1 ORDER BY pid DESC LIMIT 200")
-            .bind(&pat)
-            .fetch_all(&ctx.app.db)
-            .await?;
+        let users: Vec<(i32, String, String, String)> = sqlx::query_as(&format!(
+            "SELECT uid, username, COALESCE(host(regip), ''), COALESCE(host(lastip), '') FROM users WHERE {cond_u} ORDER BY uid LIMIT 200"
+        ))
+        .bind(&arg)
+        .fetch_all(&ctx.app.db)
+        .await?;
+        let posts: Vec<(i32, i32, String, String, i64)> = sqlx::query_as(&format!(
+            "SELECT pid, uid, username, subject, dateline FROM posts WHERE {cond_p} ORDER BY pid DESC LIMIT 200"
+        ))
+        .bind(&arg)
+        .fetch_all(&ctx.app.db)
+        .await?;
         (users, posts)
     };
     page(

@@ -254,7 +254,7 @@ pub async fn build_postbits(
             ip: mp
                 .as_ref()
                 .filter(|m| m.canviewips)
-                .map(|_| p.ipaddress.clone()),
+                .map(|_| p.ipaddress.0.clone()),
             attachments: remaining,
             reactions: rx_view,
             can_edit: edit_allowed(ctx, &p, thread, fp, mp),
@@ -859,7 +859,7 @@ pub async fn sendthread_submit(
         .bind(&me.email)
         .bind(email)
         .bind(tid)
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .execute(&ctx.app.db)
         .await?;
     Ok(ctx.redirect(

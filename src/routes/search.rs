@@ -98,7 +98,7 @@ async fn store(
         .bind(&sid)
         .bind(ctx.uid())
         .bind(now())
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .bind(kind)
         .bind(&ids)
         .bind(keywords)

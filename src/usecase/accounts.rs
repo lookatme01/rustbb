@@ -124,7 +124,7 @@ pub async fn register(
     .bind(&a.email)
     .bind(group)
     .bind(t)
-    .bind(&actor.ip)
+    .bind(crate::util::IpText::from(&actor.ip))
     .bind(&a.timezone)
     .bind(a.referrer_uid)
     .bind(a.hideemail)

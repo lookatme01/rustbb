@@ -296,7 +296,7 @@ pub async fn adminlog(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {
         "/admin/tools/adminlog?page={page}",
     );
     let rows: Vec<(i64, String, String, String, i64, serde_json::Value, Option<String>)> = sqlx::query_as(
-        "SELECT l.id, l.module, l.action, l.ipaddress, l.dateline, l.data, u.username FROM adminlog l LEFT JOIN users u ON u.uid = l.uid ORDER BY l.id DESC LIMIT 50 OFFSET $1",
+        "SELECT l.id, l.module, l.action, COALESCE(host(l.ipaddress), ''), l.dateline, l.data, u.username FROM adminlog l LEFT JOIN users u ON u.uid = l.uid ORDER BY l.id DESC LIMIT 50 OFFSET $1",
     )
     .bind((pg.page - 1) * 50)
     .fetch_all(&ctx.app.db)
@@ -328,7 +328,7 @@ pub async fn systemlog(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> 
         "/admin/tools/systemlog?page={page}",
     );
     let rows: Vec<(String, i32, i32, String, String, i64, String)> = sqlx::query_as(
-        "SELECT kind, ref_id, actor, actor_name, ipaddress, dateline, summary FROM system_authorship ORDER BY id DESC LIMIT 50 OFFSET $1",
+        "SELECT kind, ref_id, actor, actor_name, COALESCE(host(ipaddress), ''), dateline, summary FROM system_authorship ORDER BY id DESC LIMIT 50 OFFSET $1",
     )
     .bind((pg.page - 1) * 50)
     .fetch_all(&ctx.app.db)
@@ -385,7 +385,7 @@ pub async fn maillogs(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {
         "/admin/tools/maillogs?page={page}",
     );
     let rows: Vec<(i64, String, i64, String, String, String, i16)> = sqlx::query_as(
-        "SELECT mid, subject, dateline, fromemail, toemail, ipaddress, type FROM maillogs ORDER BY mid DESC LIMIT 50 OFFSET $1",
+        "SELECT mid, subject, dateline, fromemail, toemail, COALESCE(host(ipaddress), ''), type FROM maillogs ORDER BY mid DESC LIMIT 50 OFFSET $1",
     )
     .bind((pg.page - 1) * 50)
     .fetch_all(&ctx.app.db)
@@ -459,7 +459,7 @@ pub async fn testmail(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
 pub async fn spamlog(ctx: Ctx) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "logs");
     let rows: Vec<(String, String, String, i64, String)> =
-        sqlx::query_as("SELECT username, email, ipaddress, dateline, data FROM spamlog ORDER BY sid DESC LIMIT 200").fetch_all(&ctx.app.db).await?;
+        sqlx::query_as("SELECT username, email, COALESCE(host(ipaddress), ''), dateline, data FROM spamlog ORDER BY sid DESC LIMIT 200").fetch_all(&ctx.app.db).await?;
     crate::admin::page(
         &ctx,
         "admin/spamlog.html",

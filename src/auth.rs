@@ -152,7 +152,7 @@ pub async fn create_login(ctx: &CtxInner, uid: i32, remember: bool) -> AppResult
     .bind(uid)
     .bind(now())
     .bind(expires)
-    .bind(&ctx.ip)
+    .bind(crate::util::IpText::from(&ctx.ip))
     .bind(&ctx.useragent)
     .bind(util::random_token(32))
     .execute(&ctx.app.db)
@@ -165,7 +165,7 @@ pub async fn create_login(ctx: &CtxInner, uid: i32, remember: bool) -> AppResult
     );
     sqlx::query("UPDATE users SET loginattempts = 0, lastip = $2 WHERE uid = $1")
         .bind(uid)
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .execute(&ctx.app.db)
         .await?;
     // Rotate the guest session id so a pre-login sid can't be fixated.

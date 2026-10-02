@@ -632,7 +632,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
         }
         sids.push(sid);
         uids.push(a.uid);
-        ips.push(a.ip);
+        ips.push(crate::util::IpText(a.ip));
         times.push(a.time);
         locs.push(a.location);
         uas.push(a.useragent);
@@ -643,7 +643,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
     }
     sqlx::query(
         "INSERT INTO sessions (sid, uid, ip, time, location, useragent, anonymous, location1, location2, bot)
-         SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::bigint[], $5::text[], $6::text[], $7::bool[], $8::int[], $9::int[], $10::text[])
+         SELECT * FROM UNNEST($1::text[], $2::int[], $3::inet[], $4::bigint[], $5::text[], $6::text[], $7::bool[], $8::int[], $9::int[], $10::text[])
          ON CONFLICT (sid) DO UPDATE SET uid = EXCLUDED.uid, ip = EXCLUDED.ip, time = EXCLUDED.time, location = EXCLUDED.location,
             useragent = EXCLUDED.useragent, anonymous = EXCLUDED.anonymous, location1 = EXCLUDED.location1,
             location2 = EXCLUDED.location2, bot = EXCLUDED.bot",
@@ -663,6 +663,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
     if !user_times.is_empty() {
         let (u, rest): (Vec<i32>, Vec<(i64, String)>) = user_times.into_iter().unzip();
         let (t, ip): (Vec<i64>, Vec<String>) = rest.into_iter().unzip();
+        let ip: Vec<crate::util::IpText> = ip.into_iter().map(crate::util::IpText).collect();
         // lastvisit becomes the previous lastactive when the user returns after 15+ minutes.
         sqlx::query(
             "UPDATE users SET
@@ -670,7 +671,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
                 timeonline = users.timeonline + CASE WHEN d.t - users.lastactive BETWEEN 0 AND 900 THEN d.t - users.lastactive ELSE 0 END,
                 lastactive = d.t,
                 lastip = d.ip
-             FROM UNNEST($1::int[], $2::bigint[], $3::text[]) AS d(uid, t, ip)
+             FROM UNNEST($1::int[], $2::bigint[], $3::inet[]) AS d(uid, t, ip)
              WHERE users.uid = d.uid AND users.lastactive < d.t",
         )
         .bind(&u)

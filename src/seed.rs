@@ -95,7 +95,7 @@ pub async fn seed(db: &PgPool, users: i64, threads: i64, posts: i64) -> anyhow::
     sqlx::query(
         "INSERT INTO users (username, password, email, usergroup, regdate, lastactive, lastvisit, pmfolders, regip, lastip, signature)
          SELECT 'user' || g, $1, 'user' || g || '@example.com', 2, $2 - (random() * 3 * 365 * 86400)::bigint, $2 - (random() * 30 * 86400)::bigint, $2 - (random() * 30 * 86400)::bigint,
-                '[]', '10.' || (g % 250) || '.' || (g / 250 % 250) || '.1', '10.0.0.1', CASE WHEN g % 5 = 0 THEN '[i]Signature of user ' || g || '[/i]' ELSE '' END
+                '[]', ('10.' || (g % 250) || '.' || (g / 250 % 250) || '.1')::inet, '10.0.0.1'::inet, CASE WHEN g % 5 = 0 THEN '[i]Signature of user ' || g || '[/i]' ELSE '' END
          FROM generate_series(1, $3) g
          ON CONFLICT DO NOTHING",
     )
@@ -159,7 +159,7 @@ pub async fn seed(db: &PgPool, users: i64, threads: i64, posts: i64) -> anyhow::
         "INSERT INTO posts (tid, fid, subject, uid, username, dateline, message, visible, ipaddress)
          SELECT t.tid, t.fid, t.subject, t.uid, t.username, t.dateline,
                 (SELECT string_agg(w[1 + floor(random() * cardinality(w))::int], ' ') FROM (SELECT $1::text[] AS w) x, generate_series(1, 30 + (t.tid % 60))),
-                1, '10.1.' || (t.uid % 250) || '.' || (t.tid % 250)
+                1, ('10.1.' || (t.uid % 250) || '.' || (t.tid % 250))::inet
          FROM threads t WHERE t.tid BETWEEN $2 AND $3",
     )
     .bind(&words)
@@ -178,7 +178,7 @@ pub async fn seed(db: &PgPool, users: i64, threads: i64, posts: i64) -> anyhow::
              SELECT t.tid, t.fid, 'RE: ' || t.subject, u.uid, u.username, LEAST($8, t.dateline + (r.g % 5000) * 600 + (random() * 3600)::bigint),
                     (SELECT string_agg(w[1 + floor(random() * cardinality(w))::int], ' ') FROM (SELECT $1::text[] AS w) x, generate_series(1, 10 + (r.g % 80)))
                     || CASE WHEN r.g % 50 = 0 THEN E'\n[quote]' || 'Earlier message quoted here' || E'[/quote]\nAgreed! :)' WHEN r.g % 30 = 0 THEN E'\n[b]Bold point[/b] and a link https://example.com/page/' || r.g ELSE '' END,
-                    1, '10.2.' || (u.uid % 250) || '.' || (r.g % 250)
+                    1, ('10.2.' || (u.uid % 250) || '.' || (r.g % 250))::inet
              FROM (SELECT g, $4 + (CASE WHEN g % 10 = 0 THEN (g / 10) % 20 ELSE floor(power(random(), 2) * $5)::int END) AS rtid,
                           $6 + (g * 104729) % ($7 - $6 + 1) AS ruid FROM generate_series($2, $3) g) r
              JOIN threads t ON t.tid = r.rtid

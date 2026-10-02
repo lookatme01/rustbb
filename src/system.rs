@@ -117,7 +117,7 @@ pub async fn record(conn: &mut sqlx::PgConnection, a: Authorship<'_>) -> AppResu
         .bind(a.ref_id)
         .bind(a.actor)
         .bind(a.actor_name)
-        .bind(a.ip)
+        .bind(crate::util::IpText::from(a.ip))
         .bind(now())
         .bind(a.summary.chars().take(200).collect::<String>())
         .execute(&mut *conn)

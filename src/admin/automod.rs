@@ -76,7 +76,7 @@ async fn write_policy(ctx: &Ctx, revision: i64, policy: Policy) -> AppResult<()>
         .execute(&mut *tx)
         .await?;
     sqlx::query("INSERT INTO automod_config_history (uid,dateline,before_policy,after_policy) VALUES ($1,$2,$3,$4)").bind(ctx.uid()).bind(now()).bind(&before).bind(&value).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO adminlog (uid,ipaddress,dateline,module,action,data) VALUES ($1,$2,$3,'content','Automod policy changed',$4)").bind(ctx.uid()).bind(&ctx.ip).bind(now()).bind(serde_json::json!({"before":before,"after":value})).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO adminlog (uid,ipaddress,dateline,module,action,data) VALUES ($1,$2,$3,'content','Automod policy changed',$4)").bind(ctx.uid()).bind(crate::util::IpText::from(&ctx.ip)).bind(now()).bind(serde_json::json!({"before":before,"after":value})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }

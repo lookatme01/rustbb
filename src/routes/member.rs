@@ -512,7 +512,7 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
             let _ = sqlx::query("INSERT INTO spamlog (username, email, ipaddress, dateline, data) VALUES ($1, $2, $3, $4, $5)")
                 .bind(u)
                 .bind(e)
-                .bind(ip)
+                .bind(crate::util::IpText(ip.to_string()))
                 .bind(now())
                 .bind(r)
                 .execute(&db)
@@ -548,7 +548,7 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
     if maxregs > 0 {
         let n: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE regip = $1 AND regdate > $2")
-                .bind(&ctx.ip)
+                .bind(crate::util::IpText::from(&ctx.ip))
                 .bind(now() - s.int("betweenregstime").max(1) * 3600)
                 .fetch_one(&ctx.app.db)
                 .await?;
@@ -1281,7 +1281,7 @@ pub async fn email_submit(
             .bind(&me.email)
             .bind(uid)
             .bind(&email)
-            .bind(&ctx.ip)
+            .bind(crate::util::IpText::from(&ctx.ip))
             .execute(&ctx.app.db)
             .await?;
     }

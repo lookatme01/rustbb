@@ -81,7 +81,7 @@ req "$ADMIN" "editor offers System option" 200 "$BASE/newthread/3"
 has "checkbox shown to admins" 'name="as_system"'
 TID=$(curl -s -o /dev/null -D - -b "$ADMIN" -c "$ADMIN" --data-urlencode "my_post_key=$T" --data-urlencode "subject=System notice $N" --data-urlencode "message=Scheduled maintenance tonight." --data-urlencode "as_system=1" "$BASE/newthread/3" | location | sed -n 's|^/thread/\([0-9]*\).*|\1|p')
 [ -n "$TID" ] && ok "thread posted as System (tid $TID)" || bad "thread posted as System"
-read -r TUID PIP <<<"$(sql "SELECT t.uid, p.ipaddress = '' FROM threads t JOIN posts p ON p.pid = t.firstpost WHERE t.tid = ${TID:-0}" | tr '|' ' ')"
+read -r TUID PIP <<<"$(sql "SELECT t.uid, p.ipaddress IS NULL FROM threads t JOIN posts p ON p.pid = t.firstpost WHERE t.tid = ${TID:-0}" | tr '|' ' ')"
 [ "$TUID" = "$SYS" ] && ok "thread author is System" || bad "thread author is System (got $TUID)"
 [ "$PIP" = t ] && ok "post stores no IP" || bad "post stores no IP"
 req "$ADMIN" "reply as System" 303 --data-urlencode "my_post_key=$T" --data-urlencode "message=Done, all good." --data-urlencode "as_system=1" "$BASE/newreply/${TID:-0}"
@@ -92,7 +92,7 @@ if ./target/debug/rbb check >/dev/null 2>&1; then ok "counters consistent"; else
 req "$ADMIN" "thread page" 200 "$BASE/thread/${TID:-0}"
 has "System shown as author" 'name-system'
 req "$ADMIN" "PM as System" 303 --data-urlencode "my_post_key=$T" --data-urlencode "to=$MNAME" --data-urlencode "subject=Notice $N" --data-urlencode "message=Please read the rules." --data-urlencode "as_system=1" --data-urlencode "savecopy=1" --data-urlencode "receipt=1" "$BASE/pm/send"
-read -r PFROM PIP2 PREC <<<"$(sql "SELECT fromid, ipaddress = '', receipt FROM privatemessages WHERE uid = $MUID AND subject = 'Notice $N'" | tr '|' ' ')"
+read -r PFROM PIP2 PREC <<<"$(sql "SELECT fromid, ipaddress IS NULL, receipt FROM privatemessages WHERE uid = $MUID AND subject = 'Notice $N'" | tr '|' ' ')"
 [ "$PFROM" = "$SYS" ] && ok "PM is from System" || bad "PM is from System (got $PFROM)"
 [ "$PIP2" = t ] && [ "$PREC" = 0 ] && ok "no IP, no read receipt" || bad "no IP, no read receipt"
 [ "$(sql "SELECT count(*) FROM privatemessages WHERE subject = 'Notice $N' AND folder = 2")" = 0 ] && ok "no Sent copy" || bad "no Sent copy"

@@ -54,7 +54,7 @@ pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
         _ => "regdate DESC",
     };
     let where_sql = "($1 = '' OR username ILIKE '%' || $1 || '%') AND ($2 = '' OR email ILIKE '%' || $2 || '%')
-        AND ($3 = '' OR regip LIKE $3 || '%' OR lastip LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))";
+        AND ($3 = '' OR host(regip) LIKE $3 || '%' OR host(lastip) LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))";
     let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
         .bind(q.username.trim())
         .bind(q.email.trim())
@@ -80,7 +80,7 @@ pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
         ),
     );
     let rows: Vec<(i32, String, String, i32, i32, i64, i64, i32, String)> = sqlx::query_as(&format!(
-        "SELECT uid, username, email, usergroup, displaygroup, regdate, lastactive, postnum, lastip FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $5"
+        "SELECT uid, username, email, usergroup, displaygroup, regdate, lastactive, postnum, COALESCE(host(lastip), '') FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $5"
     ))
     .bind(q.username.trim())
     .bind(q.email.trim())
@@ -188,7 +188,7 @@ pub async fn new_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
         .bind(&email)
         .bind(gid)
         .bind(now())
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .fetch_one(&ctx.app.db)
         .await
         .map_err(|e| match e {
@@ -235,9 +235,9 @@ pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             .into_iter()
             .map(|(f, v)| (f.to_string(), v))
             .collect();
-    let ips: Vec<(String, i64)> = sqlx::query_as("SELECT ipaddress, MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress <> '' GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
+    let ips: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
     let logins: Vec<(i64, String, String)> = sqlx::query_as(
-        "SELECT created, ip, useragent FROM logins WHERE uid = $1 ORDER BY created DESC LIMIT 20",
+        "SELECT created, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 ORDER BY created DESC LIMIT 20",
     )
     .bind(uid)
     .fetch_all(&ctx.app.db)
@@ -523,7 +523,7 @@ pub async fn ban(
 pub async fn awaiting(ctx: Ctx) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let rows: Vec<(i32, String, String, i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT u.uid, u.username, u.email, u.regdate, u.regip, (SELECT type FROM awaitingactivation a WHERE a.uid = u.uid ORDER BY aid DESC LIMIT 1)
+        "SELECT u.uid, u.username, u.email, u.regdate, COALESCE(host(u.regip), ''), (SELECT type FROM awaitingactivation a WHERE a.uid = u.uid ORDER BY aid DESC LIMIT 1)
          FROM users u WHERE u.usergroup = 5 ORDER BY u.regdate DESC LIMIT 500",
     )
     .fetch_all(&ctx.app.db)

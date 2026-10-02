@@ -121,7 +121,7 @@ pub async fn guard(ctx: &Ctx, module: &str) -> Result<(), Response> {
 pub async fn log(ctx: &Ctx, module: &str, action: &str, data: serde_json::Value) {
     let _ = sqlx::query("INSERT INTO adminlog (uid, ipaddress, dateline, module, action, data) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(ctx.uid())
-        .bind(&ctx.ip)
+        .bind(crate::util::IpText::from(&ctx.ip))
         .bind(now())
         .bind(module)
         .bind(action)
@@ -251,7 +251,7 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
         .await?
         .unwrap_or_default();
     let logs: Vec<(i64, String, String, String, i64, Option<String>)> = sqlx::query_as(
-        "SELECT l.id, l.module, l.action, l.ipaddress, l.dateline, u.username FROM adminlog l LEFT JOIN users u ON u.uid = l.uid ORDER BY l.id DESC LIMIT 10",
+        "SELECT l.id, l.module, l.action, COALESCE(host(l.ipaddress), ''), l.dateline, u.username FROM adminlog l LEFT JOIN users u ON u.uid = l.uid ORDER BY l.id DESC LIMIT 10",
     )
     .fetch_all(db)
     .await?;
