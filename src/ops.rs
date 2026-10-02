@@ -765,6 +765,29 @@ pub async fn merge_posts_in(uow: &mut Uow, pids: &[i32], sep: &str) -> AppResult
     delete_posts_in(uow, &rest).await
 }
 
+/// Remove attachments uploaded more than a day ago but never attached to a post (rows now,
+/// files after commit). Returns how many.
+pub async fn prune_orphaned_attachments(app: &App) -> AppResult<usize> {
+    let mut uow = Uow::begin(app).await?;
+    let files: Vec<(String, String)> = sqlx::query_as(
+        "DELETE FROM attachments WHERE pid = 0 AND dateuploaded < $1 RETURNING attachname, thumbnail",
+    )
+    .bind(now() - 86400)
+    .fetch_all(uow.conn())
+    .await?;
+    let n = files.len();
+    let paths: Vec<String> = files
+        .into_iter()
+        .flat_map(|(a, t)| [a, t])
+        .filter(|p| !p.is_empty())
+        .collect();
+    if !paths.is_empty() {
+        uow.job(Job::DeleteFiles { paths });
+    }
+    uow.commit(app).await?;
+    Ok(n)
+}
+
 /// Recalculate everything from scratch (ACP "Recount & Rebuild"). Batched per forum.
 pub async fn rebuild_all_counters(app: &App) -> AppResult<()> {
     let tids: Vec<i32> = sqlx::query_scalar("SELECT tid FROM threads ORDER BY tid")

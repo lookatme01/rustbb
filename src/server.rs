@@ -23,6 +23,42 @@ async fn static_file(
     assets::serve(&path, q.as_deref(), &headers).await
 }
 
+/// Request bodies larger than this are refused unless a route allows more.
+pub const DEFAULT_BODY_LIMIT: usize = 2 * 1024 * 1024;
+
+/// An avatar or banner from object storage (immutable: cached for a year).
+async fn stored_image(
+    State(app): State<app::App>,
+    Path((kind, name)): Path<(String, String)>,
+) -> Response {
+    if !matches!(kind.as_str(), "avatars" | "banners") || name.contains("..") || name.contains('/')
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match app.storage.get(&format!("{kind}/{name}")).await {
+        Ok(Some(d)) => {
+            let ctype = mime_guess::from_path(&name).first_or_octet_stream();
+            (
+                [
+                    (header::CONTENT_TYPE, ctype.essence_str().to_string()),
+                    (
+                        header::CACHE_CONTROL,
+                        "public, max-age=31536000, immutable".into(),
+                    ),
+                    (header::CONTENT_LENGTH, d.size.to_string()),
+                ],
+                axum::body::Body::from_stream(d.stream),
+            )
+                .into_response()
+        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::warn!("reading {kind}/{name} from storage failed: {e:#}");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
+}
+
 async fn theme_css(State(app): State<app::App>, Path(tid): Path<String>) -> Response {
     let tid: i32 = tid.trim_end_matches(".css").parse().unwrap_or(0);
     let cache = app.cache();
@@ -92,6 +128,21 @@ pub fn build_router(app: app::App) -> Router {
         app.clone(),
         ctx::context_middleware,
     ));
+    // Avatars and banners: straight from the directory when stored locally, streamed from the
+    // object store otherwise.
+    let uploads: Router<app::App> = if app.storage.is_local() {
+        Router::new()
+            .nest_service(
+                "/uploads/avatars",
+                tower_http::services::ServeDir::new(format!("{}/avatars", app.cfg.upload_dir)),
+            )
+            .nest_service(
+                "/uploads/banners",
+                tower_http::services::ServeDir::new(format!("{}/banners", app.cfg.upload_dir)),
+            )
+    } else {
+        Router::new().route("/uploads/{kind}/{name}", get(stored_image))
+    };
     Router::new()
         .route("/static/{*path}", get(static_file))
         .route("/css/theme/{tid}", get(theme_css))
@@ -99,20 +150,14 @@ pub fn build_router(app: app::App) -> Router {
         .route("/readyz", get(observe::readyz))
         // Older name for the readiness check.
         .route("/healthz", get(observe::readyz))
-        .nest_service(
-            "/uploads/avatars",
-            tower_http::services::ServeDir::new(format!("{}/avatars", app.cfg.upload_dir)),
-        )
-        .nest_service(
-            "/uploads/banners",
-            tower_http::services::ServeDir::new(format!("{}/banners", app.cfg.upload_dir)),
-        )
+        .merge(uploads)
         .merge(dynamic)
         .route_layer(axum::middleware::from_fn_with_state(
             app.clone(),
             observe::http_metrics,
         ))
-        .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024))
+        // Small bodies by default; the upload routes raise it for themselves (see `routes`).
+        .layer(axum::extract::DefaultBodyLimit::max(DEFAULT_BODY_LIMIT))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),

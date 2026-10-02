@@ -616,15 +616,7 @@ pub async fn attachments(ctx: Ctx) -> AppResult<Response> {
 
 pub async fn attachments_cleanup(ctx: Ctx, CsrfForm(_): CsrfForm<AnyForm>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "tools");
-    let files: Vec<(String, String)> =
-        sqlx::query_as("DELETE FROM attachments WHERE pid = 0 AND dateuploaded < $1 RETURNING attachname, thumbnail").bind(now() - 86400).fetch_all(&ctx.app.db).await?;
-    let n = files.len();
-    for (a, t) in files {
-        let _ = tokio::fs::remove_file(format!("{}/{a}", ctx.app.cfg.upload_dir)).await;
-        if !t.is_empty() {
-            let _ = tokio::fs::remove_file(format!("{}/{t}", ctx.app.cfg.upload_dir)).await;
-        }
-    }
+    let n = crate::ops::prune_orphaned_attachments(&ctx.app).await?;
     Ok(ctx.redirect(
         "/admin/tools/attachments",
         &format!("Removed {n} orphaned attachments."),

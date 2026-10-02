@@ -15,10 +15,16 @@ pub fn router() -> Router<crate::app::App> {
     Router::new()
         .route("/themes", get(list))
         .route("/themes/edit", get(edit_form).post(edit_save))
-        .route("/themes/{tid}/banner", post(banner_upload))
+        .route(
+            "/themes/{tid}/banner",
+            post(banner_upload).layer(crate::routes::upload_limit()),
+        )
         .route("/themes/default", post(set_default))
         .route("/themes/delete", post(delete))
-        .route("/themes/import", post(import))
+        .route(
+            "/themes/import",
+            post(import).layer(axum::extract::DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
         .route("/themes/{tid}/export", get(export))
         .route("/themes/{tid}/templates", get(templates))
         .route(
@@ -508,7 +514,7 @@ pub async fn banner_upload(
         .cloned()
         .ok_or_else(|| AppError::not_found("theme"))?;
     let mut token = String::new();
-    let mut file: Option<Vec<u8>> = None;
+    let mut file: Option<crate::infra::uploads::Spooled> = None;
     while let Some(field) = mp
         .next_field()
         .await
@@ -516,15 +522,12 @@ pub async fn banner_upload(
     {
         match field.name().unwrap_or("") {
             "file" => {
-                let data = field
-                    .bytes()
+                match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, 12 * 1024 * 1024)
                     .await
-                    .map_err(|_| AppError::user("Upload failed."))?;
-                if data.len() > 12 * 1024 * 1024 {
-                    return Err(AppError::user("The banner is too large (12 MB at most)."));
-                }
-                if !data.is_empty() {
-                    file = Some(data.to_vec());
+                {
+                    Ok(f) => file = Some(f),
+                    Err(crate::infra::uploads::SpoolError::Empty) => {}
+                    Err(e) => return Err(e.into()),
                 }
             }
             "my_post_key" => token = field.text().await.unwrap_or_default(),
@@ -532,10 +535,8 @@ pub async fn banner_upload(
         }
     }
     ctx.check_csrf(&token)?;
-    let data = file.ok_or_else(|| AppError::user("Please choose an image."))?;
-    let jpeg = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let img = crate::util::decode_image(&data)
-            .map_err(|_| "The file is not a supported image (PNG, JPEG, GIF, WebP).".to_string())?;
+    let upload = file.ok_or_else(|| AppError::user("Please choose an image."))?;
+    let jpeg = crate::infra::uploads::with_image(upload.path().to_path_buf(), move |img| {
         let img = if img.width() > 2400 {
             img.resize(2400, 2400, image::imageops::FilterType::Lanczos3)
         } else {
@@ -549,16 +550,14 @@ pub async fn banner_upload(
         Ok(out.into_inner())
     })
     .await
-    .map_err(|e| AppError::Other(e.into()))?
     .map_err(AppError::User)?;
-    let dir = format!("{}/banners", ctx.app.cfg.upload_dir);
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| AppError::Other(e.into()))?;
+    drop(upload);
     let name = format!("banner_{tid}_{}.jpg", crate::util::random_token(8));
-    tokio::fs::write(format!("{dir}/{name}"), &jpeg)
+    ctx.app
+        .storage
+        .put_bytes(&format!("banners/{name}"), jpeg.into())
         .await
-        .map_err(|e| AppError::Other(e.into()))?;
+        .map_err(AppError::Other)?;
     let mut props = theme.properties.0.clone();
     if !props.is_object() {
         props = serde_json::json!({});
@@ -576,8 +575,9 @@ pub async fn banner_upload(
     if let Some(old) = old.and_then(|o| o.strip_prefix("/uploads/banners/").map(|x| x.to_string()))
         && !old.contains('/')
         && !old.contains("..")
+        && let Err(e) = ctx.app.storage.delete(&format!("banners/{old}")).await
     {
-        let _ = tokio::fs::remove_file(format!("{dir}/{old}")).await;
+        tracing::warn!("removing the old banner failed: {e:#}");
     }
     ctx.app.invalidate(&["themes"]).await?;
     crate::admin::log(

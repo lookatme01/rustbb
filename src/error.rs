@@ -16,6 +16,8 @@ pub enum AppError {
     Csrf,
     #[error("Too many requests. Please slow down.")]
     RateLimited,
+    #[error("The submitted data is too large.")]
+    TooLarge,
     #[error("Please log in to continue.")]
     LoginRequired,
     #[error(transparent)]
@@ -44,6 +46,7 @@ impl AppError {
             AppError::User(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Csrf => StatusCode::FORBIDDEN,
             AppError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            AppError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             AppError::Db(_) | AppError::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

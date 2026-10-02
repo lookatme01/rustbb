@@ -16,6 +16,13 @@ use tokio::sync::broadcast;
 
 pub type App = Arc<AppState>;
 
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 #[derive(Clone, Debug)]
 pub struct Activity {
     pub uid: i32,
@@ -111,6 +118,10 @@ pub struct AppState {
     /// Bounds concurrent full-text searches so they can't exhaust the DB pool.
     pub search_sem: tokio::sync::Semaphore,
     pub plugins: crate::plugins::Plugins,
+    /// Where uploaded files live (local directory or object storage).
+    pub storage: crate::infra::storage::Storage,
+    /// Open live-update streams, capped (RBB_SSE_MAX, RBB_SSE_MAX_PER_IP, RBB_SSE_MAX_PER_USER).
+    pub streams: Arc<crate::infra::streams::StreamLimits>,
     pub started: i64,
     /// Finished HTML of guest pages (see `crate::pagecache`).
     pub page_cache: crate::pagecache::PageCache,
@@ -159,6 +170,7 @@ impl AppState {
         let cache = Arc::new(ArcSwap::from_pointee(Cache::load_all(&db).await?));
         let tpl = Templates::new(cache.clone(), cfg.dev_templates.clone());
         let plugins = crate::plugins::Plugins::load_with(&cfg.plugins_dir, cfg.plugins_trusted);
+        let storage = crate::infra::storage::Storage::from_config(&cfg)?;
         let page_cache_mb = if cfg.dev_templates.is_some() {
             0
         } else {
@@ -191,6 +203,12 @@ impl AppState {
                 .build(),
             search_sem: tokio::sync::Semaphore::new(8),
             plugins,
+            storage,
+            streams: Arc::new(crate::infra::streams::StreamLimits::new(
+                env_usize("RBB_SSE_MAX", 10_000),
+                env_usize("RBB_SSE_MAX_PER_IP", 20),
+                env_usize("RBB_SSE_MAX_PER_USER", 8),
+            )),
             started: now(),
             page_cache: crate::pagecache::PageCache::new(page_cache_mb),
             page_cache_dirty: std::sync::atomic::AtomicBool::new(false),

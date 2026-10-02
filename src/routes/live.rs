@@ -29,8 +29,27 @@ pub async fn stream(ctx: Ctx, Query(q): Query<LiveQuery>) -> AppResult<Response>
     if tid == 0 && uid == 0 {
         return Ok(axum::http::StatusCode::NO_CONTENT.into_response());
     }
+    // Cap open streams (in total, per address, per member); the slot is held until the stream
+    // ends, however it ends.
+    let guard = match ctx.app.streams.acquire(&ctx.ip, uid) {
+        Ok(g) => g,
+        Err(why) => {
+            let which = match why {
+                crate::infra::streams::Refused::Total => "total",
+                crate::infra::streams::Refused::Address => "address",
+                crate::infra::streams::Refused::Member => "member",
+            };
+            crate::infra::metrics::counter_with("rbb_live_refused_total", &[("limit", which)], 1);
+            return Ok((
+                axum::http::StatusCode::TOO_MANY_REQUESTS,
+                [(axum::http::header::RETRY_AFTER, "30")],
+                "Too many open live-update connections.",
+            )
+                .into_response());
+        }
+    };
     // Subscribe only to this thread's and this member's topics: an event wakes just the
-    // streams it concerns. (Per-IP connection limits are enforced by the global limiter.)
+    // streams it concerns.
     type Events = std::pin::Pin<Box<dyn futures::Stream<Item = crate::app::LiveEvent> + Send>>;
     let topic = |rx: tokio::sync::broadcast::Receiver<crate::app::LiveEvent>| -> Events {
         Box::pin(BroadcastStream::new(rx).filter_map(|e| e.ok()))
@@ -45,17 +64,15 @@ pub async fn stream(ctx: Ctx, Query(q): Query<LiveQuery>) -> AppResult<Response>
     } else {
         Box::pin(futures::stream::empty())
     };
-    let s = futures::stream::select(thread_events, user_events).map(|ev| {
+    let s = futures::stream::select(thread_events, user_events).map(move |ev| {
+        let _slot = &guard;
         Ok::<Event, std::convert::Infallible>(
             Event::default().event(ev.kind).data(ev.data.to_string()),
         )
     });
     // End streams after an hour, or at once when the server shuts down; the browser reconnects
     // automatically.
-    let s = s
-        .timeout(Duration::from_secs(3600))
-        .take_while(|r| r.is_ok())
-        .map(|r| r.unwrap());
+    let s = futures::StreamExt::take_until(s, tokio::time::sleep(Duration::from_secs(3600)));
     let mut stopping = ctx.app.shutdown.subscribe();
     let s = futures::StreamExt::take_until(s, async move {
         let _ = stopping.wait_for(|s| *s).await;

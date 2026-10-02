@@ -122,6 +122,9 @@ pub struct Config {
     pub query_sample_rate: f64,
     /// Statements slower than this are logged with a warning (`RBB_SLOW_QUERY_MS`).
     pub slow_query_ms: u64,
+    /// Largest upload accepted (attachments, avatars, banners), in MiB (`RBB_MAX_UPLOAD_MB`).
+    /// Other requests are limited to 2 MiB.
+    pub max_upload_mb: u64,
     /// On shutdown, keep serving (while reporting not ready) this long so load balancers stop
     /// sending requests first (`RBB_SHUTDOWN_DRAIN_SECS`).
     pub shutdown_drain_secs: u64,
@@ -170,6 +173,7 @@ impl Config {
             query_sample_rate: 0.0,
             slow_query_ms: 1000,
             shutdown_drain_secs: 0,
+            max_upload_mb: 25,
         }
     }
 
@@ -225,6 +229,9 @@ impl Config {
                 .clamp(0.0, 1.0),
             slow_query_ms: get("RBB_SLOW_QUERY_MS", "250").parse()?,
             shutdown_drain_secs: get("RBB_SHUTDOWN_DRAIN_SECS", "0").parse()?,
+            max_upload_mb: get("RBB_MAX_UPLOAD_MB", "25")
+                .parse::<u64>()?
+                .clamp(1, 4096),
         })
     }
 }

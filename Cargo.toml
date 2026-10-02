@@ -57,6 +57,7 @@ flate2 = "1"
 ammonia = "4"
 rhai = { version = "1", features = ["sync", "serde"] }
 fake = { version = "2", optional = true }
+object_store = { version = "0.14.2", features = ["aws"] }
 
 [lints.rust]
 unsafe_code = "forbid"

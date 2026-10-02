@@ -168,7 +168,13 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t)
                 .execute(db)
                 .await?;
-            format!("removed {a} stale sessions")
+            let orphans = crate::ops::prune_orphaned_attachments(app)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let tmp = crate::infra::uploads::sweep_tmp(&app.cfg.upload_dir).await;
+            format!(
+                "removed {a} stale sessions, {orphans} orphaned attachments, {tmp} stale upload files"
+            )
         }
         "dailycleanup" => {
             let cut = t - s.int("threadreadcut").max(1) * 86400;

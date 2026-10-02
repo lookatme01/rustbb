@@ -18,6 +18,23 @@ fn json_err(msg: &str) -> Response {
         .into_response()
 }
 
+/// The largest attachment any enabled type allows, capped by `RBB_MAX_UPLOAD_MB`.
+fn upload_ceiling(ctx: &Ctx) -> u64 {
+    let cap = ctx.app.cfg.max_upload_mb * 1024 * 1024;
+    let types = &ctx.cache.attachtypes;
+    if types.iter().any(|a| a.enabled && a.maxsize <= 0) {
+        return cap;
+    }
+    types
+        .iter()
+        .filter(|a| a.enabled)
+        .map(|a| a.maxsize as u64 * 1024)
+        .max()
+        .unwrap_or(0)
+        .min(cap)
+        .max(1)
+}
+
 pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let me = ctx.require_login()?.clone();
     let s = ctx.settings().clone();
@@ -28,7 +45,10 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let mut pid = 0i32;
     let mut fid = 0i32;
     let mut key = String::new();
-    let mut file: Option<(String, Vec<u8>)> = None;
+    // The file streams to a temporary file, cut off at the largest size any enabled type allows
+    // (the limit for its own type is checked once the form's other fields are known).
+    let limit = upload_ceiling(&ctx);
+    let mut file: Option<crate::infra::uploads::Spooled> = None;
     while let Some(field) = mp
         .next_field()
         .await
@@ -36,12 +56,13 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     {
         match field.name().unwrap_or("") {
             "file" => {
-                let name = field.file_name().unwrap_or("file").to_string();
-                let data = field
-                    .bytes()
-                    .await
-                    .map_err(|_| AppError::user("Upload failed."))?;
-                file = Some((name, data.to_vec()));
+                match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, limit).await {
+                    Ok(f) => file = Some(f),
+                    Err(crate::infra::uploads::SpoolError::Io(e)) => {
+                        return Err(AppError::Other(e.into()));
+                    }
+                    Err(e) => return Ok(json_err(&e.to_string())),
+                }
             }
             "posthash" => posthash = field.text().await.unwrap_or_default(),
             "pid" => pid = field.text().await.unwrap_or_default().parse().unwrap_or(0),
@@ -51,15 +72,9 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         }
     }
     ctx.check_csrf(&key)?;
-    let (filename, data) = file.ok_or_else(|| AppError::user("No file was uploaded."))?;
-    let filename: String = filename
-        .replace(['/', '\\', '\0'], "_")
-        .chars()
-        .take(120)
-        .collect();
-    if data.is_empty() {
-        return Ok(json_err("The uploaded file is empty."));
-    }
+    let upload = file.ok_or_else(|| AppError::user("No file was uploaded."))?;
+    let filename = upload.file_name.clone();
+    let size = upload.size as i64;
     // Editing an existing post: must be allowed to edit it.
     if pid > 0 {
         let row: Option<(i32, i32)> = sqlx::query_as("SELECT uid, fid FROM posts WHERE pid = $1")
@@ -107,7 +122,7 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
             )));
         }
     }
-    if at.maxsize > 0 && data.len() as i64 > at.maxsize as i64 * 1024 {
+    if at.maxsize > 0 && size > at.maxsize as i64 * 1024 {
         return Ok(json_err(&format!(
             "The file is too large. The maximum size for .{ext} files is {}.",
             util::format_bytes(at.maxsize as i64 * 1024)
@@ -132,60 +147,49 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         .bind(me.uid)
         .fetch_one(&ctx.app.db)
         .await?;
-        if used + data.len() as i64 > ctx.perms.attachquota as i64 * 1024 {
+        if used + size > ctx.perms.attachquota as i64 * 1024 {
             return Ok(json_err(
                 "Uploading this file would exceed your attachment quota. Delete some attachments in the User CP first.",
             ));
         }
     }
     let is_image = at.mimetype.starts_with("image/");
-    // Images must decode; thumbnails are generated for them.
+    // Images must decode (within limits); thumbnails are made for large ones.
     let (tw, th) = (
         s.int("attachthumbw").max(32) as u32,
         s.int("attachthumbh").max(32) as u32,
     );
-    let data_for_thumb = if is_image { Some(data.clone()) } else { None };
-    let thumb: Option<Vec<u8>> = match data_for_thumb {
-        Some(d) => {
-            let r = tokio::task::spawn_blocking(move || -> Result<Option<Vec<u8>>, String> {
-                let img = crate::util::decode_image(&d).map_err(|_| {
-                    "The image appears to be corrupt, too large, or is not a supported format."
-                        .to_string()
-                })?;
-                if img.width() <= tw && img.height() <= th {
-                    return Ok(None);
-                }
-                let t = img.thumbnail(tw, th);
-                let mut out = std::io::Cursor::new(Vec::new());
-                t.write_to(&mut out, image::ImageFormat::Png)
-                    .map_err(|e| e.to_string())?;
-                Ok(Some(out.into_inner()))
-            })
-            .await
-            .map_err(|e| AppError::Other(e.into()))?;
-            match r {
-                Ok(t) => t,
-                Err(e) => return Ok(json_err(&e)),
+    let thumb: Option<Vec<u8>> = if is_image {
+        let r = crate::infra::uploads::with_image(upload.path().to_path_buf(), move |img| {
+            if img.width() <= tw && img.height() <= th {
+                return Ok(None);
             }
+            crate::infra::uploads::png(&img.thumbnail(tw, th)).map(Some)
+        })
+        .await;
+        match r {
+            Ok(t) => t,
+            Err(e) => return Ok(json_err(&e)),
         }
-        None => None,
+    } else {
+        None
     };
     let month = chrono::Utc::now().format("%Y%m").to_string();
-    let dir = format!("{}/attachments/{month}", ctx.app.cfg.upload_dir);
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| AppError::Other(e.into()))?;
     let stem = format!("{}_{}", me.uid, util::random_token(24));
     let attachname = format!("attachments/{month}/{stem}.attach");
-    tokio::fs::write(format!("{}/{attachname}", ctx.app.cfg.upload_dir), &data)
+    ctx.app
+        .storage
+        .put_file(&attachname, &upload.take())
         .await
-        .map_err(|e| AppError::Other(e.into()))?;
+        .map_err(AppError::Other)?;
     let thumbname = match thumb {
         Some(t) => {
             let n = format!("attachments/{month}/{stem}_thumb.png");
-            tokio::fs::write(format!("{}/{n}", ctx.app.cfg.upload_dir), &t)
+            ctx.app
+                .storage
+                .put_bytes(&n, t.into())
                 .await
-                .map_err(|e| AppError::Other(e.into()))?;
+                .map_err(AppError::Other)?;
             n
         }
         None if is_image => attachname.clone(),
@@ -203,7 +207,7 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     .bind(me.uid)
     .bind(&filename)
     .bind(&at.mimetype)
-    .bind(data.len() as i64)
+    .bind(size)
     .bind(&attachname)
     .bind(now())
     .bind(visible)
@@ -216,7 +220,7 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
             .execute(&ctx.app.db)
             .await?;
     }
-    Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(data.len() as i64), "visible": visible, "is_image": is_image})).into_response())
+    Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(size), "visible": visible, "is_image": is_image})).into_response())
 }
 
 #[derive(Deserialize, Default)]
@@ -270,18 +274,17 @@ pub async fn download(
     } else {
         attachname
     };
-    if path.contains("..") {
-        return Err(AppError::not_found("attachment"));
-    }
-    let full = format!("{}/{path}", ctx.app.cfg.upload_dir);
-    let file = tokio::fs::File::open(&full)
+    let Some(stored) = ctx
+        .app
+        .storage
+        .get(&path)
         .await
-        .map_err(|_| AppError::not_found("attachment file"))?;
-    let len = file
-        .metadata()
-        .await
-        .map(|m| m.len())
-        .unwrap_or(size as u64);
+        .map_err(|_| AppError::not_found("attachment file"))?
+    else {
+        return Err(AppError::not_found("attachment file"));
+    };
+    let len = stored.size;
+    let _ = size;
     if !thumb && ctx.method == "GET" {
         let db = ctx.app.db.clone();
         tokio::spawn(async move {
@@ -311,8 +314,7 @@ pub async fn download(
     } else {
         format!("attachment; filename*=UTF-8''{disp_name}")
     };
-    let stream = tokio_util_stream(file);
-    let mut resp = Response::new(Body::from_stream(stream));
+    let mut resp = Response::new(Body::from_stream(stored.stream));
     let h = resp.headers_mut();
     h.insert(
         header::CONTENT_TYPE,
@@ -330,21 +332,6 @@ pub async fn download(
     );
     h.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox"));
     Ok(resp)
-}
-
-fn tokio_util_stream(
-    file: tokio::fs::File,
-) -> impl futures::Stream<Item = std::io::Result<bytes::Bytes>> {
-    use tokio::io::AsyncReadExt;
-    async_stream::try_stream! {
-        let mut f = file;
-        let mut buf = vec![0u8; 64 * 1024];
-        loop {
-            let n = f.read(&mut buf).await?;
-            if n == 0 { break; }
-            yield bytes::Bytes::copy_from_slice(&buf[..n]);
-        }
-    }
 }
 
 #[derive(Deserialize, Default)]
@@ -378,20 +365,22 @@ pub async fn remove(
     if !allowed {
         return Err(AppError::no_perm());
     }
+    // The row goes now; the files once that has committed.
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     sqlx::query("DELETE FROM attachments WHERE aid = $1")
         .bind(aid)
-        .execute(&ctx.app.db)
+        .execute(uow.conn())
         .await?;
-    let _ = tokio::fs::remove_file(format!("{}/{a}", ctx.app.cfg.upload_dir)).await;
-    if !t.is_empty() {
-        let _ = tokio::fs::remove_file(format!("{}/{t}", ctx.app.cfg.upload_dir)).await;
-    }
     if pid > 0 {
         sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = $1")
             .bind(pid)
-            .execute(&ctx.app.db)
+            .execute(uow.conn())
             .await?;
     }
+    uow.job(crate::infra::outbox::Job::DeleteFiles {
+        paths: [a, t].into_iter().filter(|p| !p.is_empty()).collect(),
+    });
+    uow.commit(&ctx.app).await?;
     Ok(Json(serde_json::json!({"ok": true})).into_response())
 }
 

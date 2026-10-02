@@ -21,7 +21,13 @@ pub fn router() -> Router<crate::app::App> {
             "/usercp/signature",
             get(signature_form).post(signature_save),
         )
-        .route("/usercp/avatar", get(avatar_form).post(avatar_save))
+        .route(
+            "/usercp/avatar",
+            get(avatar_form).post(axum::handler::Handler::layer(
+                avatar_save,
+                crate::routes::upload_limit(),
+            )),
+        )
         .route("/usercp/email", get(email_form).post(email_save))
         .route("/usercp/password", get(password_form).post(password_save))
         .route("/usercp/username", get(username_form).post(username_save))
@@ -418,8 +424,8 @@ fn max_dims(ctx: &Ctx) -> (u32, u32) {
 pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let mut fields: HashMap<String, String> = HashMap::new();
-    let mut file: Option<Vec<u8>> = None;
-    let max_kb = ctx.settings().int("avatarsize").max(1) as usize;
+    let mut file: Option<crate::infra::uploads::Spooled> = None;
+    let max_kb = ctx.settings().int("avatarsize").max(1) as u64;
     while let Some(field) = mp
         .next_field()
         .await
@@ -427,17 +433,17 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     {
         let name = field.name().unwrap_or("").to_string();
         if name == "file" {
-            let data = field
-                .bytes()
-                .await
-                .map_err(|_| AppError::user("Upload failed."))?;
-            if !data.is_empty() {
-                if data.len() > max_kb * 1024 {
+            // Streamed to disk and cut off at the avatar size limit.
+            match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, max_kb * 1024).await
+            {
+                Ok(f) => file = Some(f),
+                Err(crate::infra::uploads::SpoolError::Empty) => {}
+                Err(crate::infra::uploads::SpoolError::TooLarge { .. }) => {
                     return Err(AppError::user(format!(
                         "The avatar is too large. Maximum size is {max_kb} KB."
                     )));
                 }
-                file = Some(data.to_vec());
+                Err(e) => return Err(e.into()),
             }
         } else {
             fields.insert(name, field.text().await.unwrap_or_default());
@@ -445,15 +451,16 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     }
     ctx.check_csrf(fields.get("my_post_key").map(String::as_str).unwrap_or(""))?;
     let action = fields.get("action").cloned().unwrap_or_default();
-    let dir = format!("{}/avatars", ctx.app.cfg.upload_dir);
+    let storage = ctx.app.storage.clone();
     let remove_old = |old: String| {
-        let dir = dir.clone();
+        let storage = storage.clone();
         async move {
             if let Some(name) = old.strip_prefix("/uploads/avatars/")
                 && !name.contains('/')
                 && !name.contains("..")
+                && let Err(e) = storage.delete(&format!("avatars/{name}")).await
             {
-                let _ = tokio::fs::remove_file(format!("{dir}/{name}")).await;
+                tracing::warn!("removing old avatar failed: {e:#}");
             }
         }
     };
@@ -509,33 +516,25 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
             if !ctx.perms.canuploadavatars {
                 return Err(AppError::no_perm());
             }
-            let data = file.ok_or_else(|| AppError::user("Please choose an image to upload."))?;
+            let upload = file.ok_or_else(|| AppError::user("Please choose an image to upload."))?;
             let (mw, mh) = max_dims(&ctx);
-            let png =
-                tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, u32, u32), String> {
-                    let img = crate::util::decode_image(&data).map_err(|_| {
-                        "The file is not a supported image (PNG, JPEG, GIF, WebP).".to_string()
-                    })?;
-                    let img = if img.width() > mw || img.height() > mh {
-                        img.resize(mw, mh, image::imageops::FilterType::Lanczos3)
-                    } else {
-                        img
-                    };
-                    let mut out = std::io::Cursor::new(Vec::new());
-                    img.write_to(&mut out, image::ImageFormat::Png)
-                        .map_err(|e| e.to_string())?;
-                    Ok((out.into_inner(), img.width(), img.height()))
-                })
-                .await
-                .map_err(|e| AppError::Other(e.into()))?
-                .map_err(AppError::User)?;
+            let png = crate::infra::uploads::with_image(upload.path().to_path_buf(), move |img| {
+                let img = if img.width() > mw || img.height() > mh {
+                    img.resize(mw, mh, image::imageops::FilterType::Lanczos3)
+                } else {
+                    img
+                };
+                Ok((crate::infra::uploads::png(&img)?, img.width(), img.height()))
+            })
+            .await
+            .map_err(AppError::User)?;
+            drop(upload);
             let name = format!("avatar_{}_{}.png", me.uid, util::random_token(8));
-            tokio::fs::create_dir_all(&dir)
+            ctx.app
+                .storage
+                .put_bytes(&format!("avatars/{name}"), png.0.into())
                 .await
-                .map_err(|e| AppError::Other(e.into()))?;
-            tokio::fs::write(format!("{dir}/{name}"), &png.0)
-                .await
-                .map_err(|e| AppError::Other(e.into()))?;
+                .map_err(AppError::Other)?;
             ctx.app.avatar_cache.invalidate(&me.uid);
             sqlx::query("UPDATE users SET avatar = $2, avatartype = 'upload', avatardimensions = $3 WHERE uid = $1")
                 .bind(me.uid)
@@ -1133,18 +1132,27 @@ pub async fn attachments(ctx: Ctx) -> AppResult<Response> {
 
 pub async fn attachments_delete(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
-    let files: Vec<(String, String, i32)> =
-        sqlx::query_as("DELETE FROM attachments WHERE uid = $1 AND aid = ANY($2) RETURNING attachname, thumbnail, pid").bind(me.uid).bind(&f.ids).fetch_all(&ctx.app.db).await?;
-    for (a, t, _) in &files {
-        let _ = tokio::fs::remove_file(format!("{}/{a}", ctx.app.cfg.upload_dir)).await;
-        if !t.is_empty() {
-            let _ = tokio::fs::remove_file(format!("{}/{t}", ctx.app.cfg.upload_dir)).await;
-        }
-    }
-    let _ = sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = ANY($1)")
+    let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
+    let files: Vec<(String, String, i32)> = sqlx::query_as(
+        "DELETE FROM attachments WHERE uid = $1 AND aid = ANY($2) RETURNING attachname, thumbnail, pid",
+    )
+    .bind(me.uid)
+    .bind(&f.ids)
+    .fetch_all(uow.conn())
+    .await?;
+    sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = ANY($1)")
         .bind(files.iter().map(|f| f.2).collect::<Vec<_>>())
-        .execute(&ctx.app.db)
-        .await;
+        .execute(uow.conn())
+        .await?;
+    let paths: Vec<String> = files
+        .into_iter()
+        .flat_map(|(a, t, _)| [a, t])
+        .filter(|p| !p.is_empty())
+        .collect();
+    if !paths.is_empty() {
+        uow.job(crate::infra::outbox::Job::DeleteFiles { paths });
+    }
+    uow.commit(&ctx.app).await?;
     Ok(ctx.redirect(
         "/usercp/attachments",
         "The selected attachments have been deleted.",

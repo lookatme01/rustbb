@@ -6,3 +6,5 @@ pub mod metrics;
 pub mod observe;
 pub mod outbox;
 pub mod storage;
+pub mod streams;
+pub mod uploads;

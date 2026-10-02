@@ -102,6 +102,24 @@ address is the client. Point `RBB_TRUSTED_PROXIES` at exactly your proxies — n
 and make the app port unreachable from anywhere else. `deploy/nginx.conf` shows a matching
 configuration, including per-route body limits and edge rate limits.
 
+## Uploads, request sizes and live streams
+
+* Request bodies are limited to 2 MiB, except upload routes (attachments, avatars, theme
+  banners), which accept up to `RBB_MAX_UPLOAD_MB` (default 25). Files stream to temporary
+  files under `RBB_UPLOAD_DIR/tmp` and are cut off as soon as they exceed the limit for their
+  kind; stale temporary files are swept hourly. Keep the reverse proxy's limits in line
+  (`deploy/nginx.conf`).
+* Images are decoded on blocking threads, at most half the cores at once, and refused above
+  10,000 px per side, 40 megapixels or 512 MiB of decoder memory.
+* Storage: `RBB_STORAGE=local` (default) keeps files in `RBB_UPLOAD_DIR` — with several web
+  nodes that directory must be shared. `RBB_STORAGE=s3` stores them in an S3-compatible bucket
+  (`RBB_S3_BUCKET`, optional `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX`, credentials
+  from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`), so nodes share nothing on disk. Stored files
+  are immutable; deleting content removes its files after the deletion commits.
+* Live-update (SSE) streams are capped per node: `RBB_SSE_MAX` (10,000), `RBB_SSE_MAX_PER_IP`
+  (20) and `RBB_SSE_MAX_PER_USER` (8). Over the cap the client gets 429 and retries later.
+  Each stream ends after an hour (the browser reconnects).
+
 ## Database settings
 
 Keep PostgreSQL's durability defaults in production. In particular never set

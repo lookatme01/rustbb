@@ -53,6 +53,17 @@ use axum::Router;
 use axum::response::Redirect;
 use axum::routing::{get, post};
 
+/// Body limit for upload routes: `RBB_MAX_UPLOAD_MB` plus room for the other form fields.
+/// (The configured value is read once; the file itself is also checked as it streams in.)
+pub fn upload_limit() -> axum::extract::DefaultBodyLimit {
+    let mb: usize = std::env::var("RBB_MAX_UPLOAD_MB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(25usize)
+        .clamp(1, 4096);
+    axum::extract::DefaultBodyLimit::max(mb * 1024 * 1024 + 64 * 1024)
+}
+
 pub fn router() -> Router<App> {
     Router::new()
         .route("/", get(index::index))
@@ -193,7 +204,10 @@ pub fn router() -> Router<App> {
         .route("/warning/{wid}/revoke", post(warnings::revoke))
         .route("/report", get(report::form).post(report::submit))
         .route("/attachment/{aid}", get(attachments::download))
-        .route("/attachment/upload", post(attachments::upload))
+        .route(
+            "/attachment/upload",
+            post(attachments::upload).layer(upload_limit()),
+        )
         .route("/attachment/{aid}/remove", post(attachments::remove))
         .route("/attachment/{aid}/approve", post(attachments::approve))
         .route("/captcha/{hash}", get(captcha::image))

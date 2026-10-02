@@ -297,16 +297,6 @@ pub fn valid_email(e: &str) -> bool {
 
 /// Decode an uploaded image with bounded dimensions and memory. A few-KB PNG can declare
 /// 60000×60000 pixels; decoding it unbounded would allocate gigabytes (decompression bomb).
-pub fn decode_image(data: &[u8]) -> image::ImageResult<image::DynamicImage> {
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(data)).with_guessed_format()?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(256 * 1024 * 1024);
-    reader.limits(limits);
-    reader.decode()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,23 +305,6 @@ mod tests {
         assert_eq!(slugify("Hello, World!"), "hello-world");
         assert_eq!(leading_id("12-hello"), Some(12));
         assert_eq!(leading_id("x"), None);
-    }
-    #[test]
-    fn image_bomb_rejected() {
-        // A tiny PNG header claiming 60000x60000 pixels must be refused before allocating.
-        let img = image::RgbImage::new(1, 1);
-        let mut png = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut png, image::ImageFormat::Png).unwrap();
-        let mut bytes = png.into_inner();
-        // IHDR width/height live at bytes 16..24; patch them (CRC mismatch is irrelevant: the
-        // dimension limit is checked first, and either way decoding must fail).
-        bytes[16..20].copy_from_slice(&60000u32.to_be_bytes());
-        bytes[20..24].copy_from_slice(&60000u32.to_be_bytes());
-        assert!(decode_image(&bytes).is_err());
-        let ok = image::RgbImage::new(64, 64);
-        let mut png = std::io::Cursor::new(Vec::new());
-        ok.write_to(&mut png, image::ImageFormat::Png).unwrap();
-        assert!(decode_image(&png.into_inner()).is_ok());
     }
 
     #[test]

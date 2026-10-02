@@ -1097,7 +1097,13 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for CsrfForm<T> {
             .ok_or(AppError::Csrf)?;
         let bytes = axum::body::Bytes::from_request(req, state)
             .await
-            .map_err(|_| AppError::user("Request body too large or invalid."))?;
+            .map_err(|e| {
+                if e.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                    AppError::TooLarge
+                } else {
+                    AppError::user("The request could not be read.")
+                }
+            })?;
         let key: KeyOnly = serde_html_form_parse(&bytes).unwrap_or(KeyOnly {
             my_post_key: String::new(),
         });
