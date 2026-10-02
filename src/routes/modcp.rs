@@ -192,7 +192,7 @@ pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResu
     let rs = ctx.staff().report_scope();
     let changed: Vec<i32> = sqlx::query_scalar(&format!(
         "UPDATE reportedcontent SET reportstatus = $2,
-            resolved_by = CASE WHEN $2 = 1 THEN $3 ELSE 0 END, resolved_at = CASE WHEN $2 = 1 THEN $4 ELSE 0 END,
+            resolved_by = CASE WHEN $2 = 1 THEN $3 ELSE NULL END, resolved_at = CASE WHEN $2 = 1 THEN $4 ELSE 0 END,
             resolution = CASE WHEN $2 = 1 THEN resolution ELSE '' END
          WHERE rid = ANY($1) AND reportstatus <> $2 AND {} RETURNING rid",
         ReportScope::clause("", 5)

@@ -119,30 +119,30 @@ pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<ReportForm>) -> AppResult<Re
     if reason.extra && comment.is_empty() {
         return Err(AppError::user("Please describe the problem."));
     }
-    let existing: Option<(i32, Vec<i32>)> = sqlx::query_as("SELECT rid, reporters FROM reportedcontent WHERE type = $1 AND id = $2 AND reportstatus = 0").bind(&f.r#type).bind(id).fetch_optional(&ctx.app.db).await?;
-    match existing {
-        Some((rid, reporters)) => {
-            if reporters.contains(&me.uid) {
-                return Ok(ctx.redirect("/", "You have already reported this content. Thank you."));
-            }
-            sqlx::query("UPDATE reportedcontent SET reports = reports + 1, reporters = array_append(reporters, $2), lastreport = $3 WHERE rid = $1").bind(rid).bind(me.uid).bind(now()).execute(&ctx.app.db).await?;
-        }
-        None => {
-            sqlx::query(
-                "INSERT INTO reportedcontent (id, id2, id3, uid, reasonid, reason, type, reports, reporters, dateline, lastreport) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $9)",
-            )
-            .bind(id)
-            .bind(id2)
-            .bind(id3)
-            .bind(me.uid)
-            .bind(reason.rid)
-            .bind(&comment)
-            .bind(&f.r#type)
-            .bind(vec![me.uid])
-            .bind(now())
-            .execute(&ctx.app.db)
-            .await?;
-        }
+    // One open report per piece of content (a unique index enforces it): the first report
+    // opens it, later ones join it — atomically, so simultaneous reports cannot open two.
+    let joined: Option<i32> = sqlx::query_scalar(
+        "INSERT INTO reportedcontent (id, id2, id3, uid, reasonid, reason, type, reports, reporters, dateline, lastreport)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 1, ARRAY[$4], $8, $8)
+         ON CONFLICT (type, id) WHERE reportstatus = 0 DO UPDATE
+            SET reports = reportedcontent.reports + 1,
+                reporters = array_append(reportedcontent.reporters, $4),
+                lastreport = $8
+            WHERE NOT ($4 = ANY(reportedcontent.reporters))
+         RETURNING rid",
+    )
+    .bind(id)
+    .bind(id2)
+    .bind(id3)
+    .bind(me.uid)
+    .bind(reason.rid)
+    .bind(&comment)
+    .bind(&f.r#type)
+    .bind(now())
+    .fetch_optional(&ctx.app.db)
+    .await?;
+    if joined.is_none() {
+        return Ok(ctx.redirect("/", "You have already reported this content. Thank you."));
     }
     ctx.app.mod_counts.invalidate_all();
     let back = if f.r#type == "post" {

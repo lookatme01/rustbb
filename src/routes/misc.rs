@@ -200,23 +200,28 @@ pub async fn rate_thread(
     if !(1..=5).contains(&f.rating) {
         return Err(AppError::user("Invalid rating."));
     }
-    let exists: Option<i32> =
-        sqlx::query_scalar("SELECT rid FROM threadratings WHERE tid = $1 AND uid = $2")
-            .bind(tid)
-            .bind(me.uid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
-    if exists.is_some() {
+    // One rating per member (unique index); the counters move only if this one was recorded.
+    let mut tx = ctx.app.db.begin().await?;
+    let added = sqlx::query(
+        "INSERT INTO threadratings (tid, uid, rating, ipaddress) VALUES ($1, $2, $3, $4) ON CONFLICT (tid, uid) DO NOTHING",
+    )
+    .bind(tid)
+    .bind(me.uid)
+    .bind(f.rating as i16)
+    .bind(crate::util::IpText::from(&ctx.ip))
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !added {
         return Err(AppError::user("You have already rated this thread."));
     }
-    sqlx::query("INSERT INTO threadratings (tid, uid, rating, ipaddress) VALUES ($1, $2, $3, $4)")
+    sqlx::query("UPDATE threads SET numratings = numratings + 1, totalratings = totalratings + $2 WHERE tid = $1")
         .bind(tid)
-        .bind(me.uid)
-        .bind(f.rating as i16)
-        .bind(crate::util::IpText::from(&ctx.ip))
-        .execute(&ctx.app.db)
+        .bind(f.rating)
+        .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE threads SET numratings = numratings + 1, totalratings = totalratings + $2 WHERE tid = $1").bind(tid).bind(f.rating).execute(&ctx.app.db).await?;
+    tx.commit().await?;
     Ok(ctx.redirect(
         &url_thread(tid as i64, Some(&thread.subject)),
         "Thank you for rating this thread.",

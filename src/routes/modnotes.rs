@@ -125,7 +125,7 @@ pub async fn retract(
         return Err(AppError::no_perm());
     }
     let (uid, author, created, retracted): (i32, i32, i64, i64) = sqlx::query_as(
-        "SELECT uid, author, created, retracted_at FROM moderator_notes WHERE id = $1",
+        "SELECT uid, COALESCE(author, 0), created, retracted_at FROM moderator_notes WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&ctx.app.db)
@@ -219,7 +219,7 @@ pub async fn history(
     let notes_visible = ctx.can(Cap::ReadModNotes);
     if want("notes") && notes_visible {
         let rows: Vec<(i64, i32, String, i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT n.id, n.author, n.note, n.created, n.retracted_at, a.username, r.username
+            "SELECT n.id, COALESCE(n.author, 0), n.note, n.created, n.retracted_at, a.username, r.username
              FROM moderator_notes n LEFT JOIN users a ON a.uid = n.author LEFT JOIN users r ON r.uid = n.retracted_by
              WHERE n.uid = $1 ORDER BY n.id DESC LIMIT $2",
         )

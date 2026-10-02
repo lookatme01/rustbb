@@ -151,7 +151,12 @@ impl TestApp {
         .await
         .expect("install");
         rbb::install::upgrade(&db.pool).await.expect("upgrade");
-        let cfg = test_config(&db.url);
+        let mut cfg = test_config(&db.url);
+        // Each test app gets its own upload directory (tests run in parallel).
+        cfg.upload_dir = std::env::temp_dir()
+            .join(format!("rbb-test-uploads-{}", db.name))
+            .to_string_lossy()
+            .into_owned();
         tokio::fs::create_dir_all(format!("{}/attachments", cfg.upload_dir))
             .await
             .unwrap();

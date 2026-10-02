@@ -1998,7 +1998,7 @@ pub async fn audit_rows(
     let per = 30;
     let pagination = util::paginate(total, per, util::clamp_page(page), base);
     let rows: Vec<(i64, String, String, String, i32, serde_json::Value, Option<String>)> = sqlx::query_as(
-        "SELECT a.dateline, a.action, COALESCE(host(a.ipaddress), ''), a.useragent, a.actor_uid, a.details, u.username
+        "SELECT a.dateline, a.action, COALESCE(host(a.ipaddress), ''), a.useragent, COALESCE(a.actor_uid, 0), a.details, u.username
          FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid AND a.actor_uid > 0
          WHERE a.uid = $1 AND ($2 = '' OR a.action = ANY($3)) ORDER BY a.id DESC LIMIT $4 OFFSET $5",
     )

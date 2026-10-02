@@ -89,7 +89,8 @@ async fn load(ctx: &Ctx, rid: i32) -> AppResult<Report> {
     require_reports(ctx)?;
     let r: Report = sqlx::query_as(
         "SELECT rid, id, id2, id3, type, reportstatus, reasonid, reason, reports, reporters, dateline, lastreport,
-                claimed_by, claimed_at, resolved_by, resolved_at, resolution FROM reportedcontent WHERE rid = $1",
+                COALESCE(claimed_by, 0) AS claimed_by, claimed_at, COALESCE(resolved_by, 0) AS resolved_by, resolved_at, resolution
+         FROM reportedcontent WHERE rid = $1",
     )
     .bind(rid)
     .fetch_optional(&ctx.app.db)
@@ -262,10 +263,12 @@ pub async fn claim(
                         .into(),
                 ));
             }
-            sqlx::query("UPDATE reportedcontent SET claimed_by = 0, claimed_at = 0 WHERE rid = $1")
-                .bind(rid)
-                .execute(db)
-                .await?;
+            sqlx::query(
+                "UPDATE reportedcontent SET claimed_by = NULL, claimed_at = 0 WHERE rid = $1",
+            )
+            .bind(rid)
+            .execute(db)
+            .await?;
             record_event(db, rid, me, "released", "").await?;
         }
         _ => return Err(AppError::user("Unknown action.")),
@@ -316,7 +319,7 @@ pub async fn reopen(
 ) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
     if r.reportstatus != 0 {
-        sqlx::query("UPDATE reportedcontent SET reportstatus = 0, resolved_by = 0, resolved_at = 0, resolution = '' WHERE rid = $1")
+        sqlx::query("UPDATE reportedcontent SET reportstatus = 0, resolved_by = NULL, resolved_at = 0, resolution = '' WHERE rid = $1")
             .bind(rid)
             .execute(&ctx.app.db)
             .await?;

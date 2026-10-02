@@ -432,8 +432,8 @@ impl Importer {
         // MyBB's free-text moderator notes become each member's first note (see migration 0010).
         sqlx::query(
             "INSERT INTO moderator_notes (uid, author, note, created)
-             SELECT u.uid, 0, u.usernotes, EXTRACT(EPOCH FROM now())::bigint FROM users u
-             WHERE btrim(u.usernotes) <> '' AND NOT EXISTS (SELECT 1 FROM moderator_notes n WHERE n.uid = u.uid AND n.author = 0)",
+             SELECT u.uid, NULL, u.usernotes, EXTRACT(EPOCH FROM now())::bigint FROM users u
+             WHERE btrim(u.usernotes) <> '' AND NOT EXISTS (SELECT 1 FROM moderator_notes n WHERE n.uid = u.uid AND n.author IS NULL)",
         )
         .execute(&self.pg)
         .await

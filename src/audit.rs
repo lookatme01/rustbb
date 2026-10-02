@@ -148,11 +148,7 @@ pub async fn record(
     } else {
         details
     };
-    let by = if actor.uid > 0 && actor.uid != uid {
-        actor.uid
-    } else {
-        0
-    };
+    let by: Option<i32> = (actor.uid > 0 && actor.uid != uid).then_some(actor.uid);
     sqlx::query(
         "INSERT INTO user_audit (uid, dateline, action, ipaddress, useragent, actor_uid, details) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
