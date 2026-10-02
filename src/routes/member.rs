@@ -1152,6 +1152,11 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
         let by = by.filter(|_| is_staff);
         minijinja::context! { reason => reason, since => since, until => until, by_uid => if by.is_some() { by_uid } else { 0 }, by => by }
     });
+    let history_notes = if ctx.uid() > 0 && (ctx.perms.canmodcp || ctx.is_any_mod()) {
+        Some(crate::routes::modnotes::note_count(&ctx.app, user.uid).await?)
+    } else {
+        None
+    };
     let system_activity = if user.is_system { Some(system_activity(&ctx, user.uid).await?) } else { None };
     let additional: Vec<String> = user
         .additionalgroups
@@ -1196,6 +1201,7 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
             timeonline => format_duration(if user.is_system { now() - user.regdate } else { user.timeonline }),
             system_activity => system_activity,
             ban => ban,
+            history_notes => history_notes,
         },
     )
     .await

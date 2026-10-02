@@ -32,7 +32,7 @@
     <label><input type="checkbox" name="suspendsignature" value="1"{% if user.suspendsignature %} checked{% endif %}> Suspend signature for <input type="number" name="suspendsignature_days" value="7" min="0" style="width:70px"> days</label>
   </div></div>
   {% endif %}
-  <div class="form-row"><label for="usernotes">Admin notes</label><textarea id="usernotes" name="usernotes" rows="3">{{ usernotes }}</textarea></div>
+  <div class="form-row"><span class="label"><strong>Notes</strong></span><div><a href="/modcp/member/{{ user.uid }}">Moderator notes and history</a></div></div>
   {% if not user.is_system %}<div class="form-row"><span class="label"><strong>Security</strong></span><div class="checks">{% if has2fa %}<label><input type="checkbox" name="reset2fa" value="1"> Turn off this user's two-factor authentication</label>{% endif %}<label><input type="checkbox" name="logoutall" value="1"> Log this user out everywhere</label></div></div>{% endif %}
   <div class="box-foot"><button class="btn">Save user</button></div>
 </form>

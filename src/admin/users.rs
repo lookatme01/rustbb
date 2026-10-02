@@ -248,7 +248,7 @@ pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
         "admin/user_edit.html",
         "users",
         &format!("Edit User: {}", user.username),
-        minijinja::context! { user => &user, usernotes => &user.usernotes, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty() },
+        minijinja::context! { user => &user, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty() },
     )
     .await
 }
@@ -324,10 +324,10 @@ pub async fn edit_save(
     };
     sqlx::query(
         "UPDATE users SET email = $2, usergroup = $3, additionalgroups = $4, displaygroup = $5, usertitle = $6, website = $7, signature = $8,
-            postnum = COALESCE($9, postnum), threadnum = COALESCE($10, threadnum), usernotes = $11, timezone = $12,
-            suspendposting = $13, suspensiontime = $14, moderateposts = $15, moderationtime = $16, suspendsignature = $17, suspendsigtime = $18,
-            avatar = CASE WHEN $19 THEN '' ELSE avatar END, avatartype = CASE WHEN $19 THEN '' ELSE avatartype END,
-            totp_secret = CASE WHEN $20 THEN '' ELSE totp_secret END
+            postnum = COALESCE($9, postnum), threadnum = COALESCE($10, threadnum), timezone = $11,
+            suspendposting = $12, suspensiontime = $13, moderateposts = $14, moderationtime = $15, suspendsignature = $16, suspendsigtime = $17,
+            avatar = CASE WHEN $18 THEN '' ELSE avatar END, avatartype = CASE WHEN $18 THEN '' ELSE avatartype END,
+            totp_secret = CASE WHEN $19 THEN '' ELSE totp_secret END
          WHERE uid = $1",
     )
     .bind(uid)
@@ -341,7 +341,6 @@ pub async fn edit_save(
     // A form without the statistics fields keeps the stored counts instead of zeroing them.
     .bind(fl.get("postnum").map(|v| i(Some(v)).max(0)))
     .bind(fl.get("threadnum").map(|v| i(Some(v)).max(0)))
-    .bind(s(fl.get("usernotes")))
     .bind(s(fl.get("timezone")).trim())
     .bind(!sys && b(fl.get("suspendposting")))
     .bind(until(b(fl.get("suspendposting")), i(fl.get("suspendposting_days"))))
@@ -458,7 +457,7 @@ pub async fn ban(
         serde_json::json!({"uid": uid, "username": user.username}),
     )
     .await;
-    crate::audit::log(&ctx, uid, "banned", serde_json::Value::Null).await;
+    crate::audit::log(&ctx, uid, "banned", serde_json::json!({"reason": s(f.fields.get("reason")).trim(), "days": i(f.fields.get("days"))})).await;
     Ok(ctx.redirect(
         &format!("/admin/users/{uid}"),
         &format!("{} has been banned.", user.username),

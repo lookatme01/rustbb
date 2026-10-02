@@ -47,7 +47,7 @@ fn require_modcp(ctx: &Ctx) -> AppResult<()> {
 }
 
 /// Forums the viewer moderates (None = all).
-fn mod_fids(ctx: &Ctx) -> Option<Vec<i32>> {
+pub(crate) fn mod_fids(ctx: &Ctx) -> Option<Vec<i32>> {
     ctx.cache
         .moderated_forums(ctx.uid(), &ctx.groups, &ctx.perms)
 }
@@ -702,7 +702,7 @@ pub async fn editprofile_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Respo
             .map(|(f, v)| (f.to_string(), v))
             .collect();
     let fields = ctx.cache.profilefields.to_vec();
-    page(&ctx, "modcp/editprofile.html", "finduser", &format!("Edit Profile: {}", user.username), minijinja::context! { user => &user, usernotes => &user.usernotes, fields => fields, values => values }).await
+    page(&ctx, "modcp/editprofile.html", "finduser", &format!("Edit Profile: {}", user.username), minijinja::context! { user => &user, fields => fields, values => values }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -713,8 +713,6 @@ pub struct EditProfileForm {
     pub website: String,
     #[serde(default, deserialize_with = "de::string")]
     pub signature: String,
-    #[serde(default, deserialize_with = "de::string")]
-    pub usernotes: String,
     #[serde(default, deserialize_with = "de::bool")]
     pub removeavatar: bool,
     #[serde(default, deserialize_with = "de::bool")]
@@ -756,16 +754,15 @@ pub async fn editprofile_save(
         }
     };
     sqlx::query(
-        "UPDATE users SET usertitle = $2, website = $3, signature = $4, usernotes = $5,
-            suspendposting = $6, suspensiontime = $7, moderateposts = $8, moderationtime = $9, suspendsignature = $10, suspendsigtime = $11,
-            avatar = CASE WHEN $12 THEN '' ELSE avatar END, avatartype = CASE WHEN $12 THEN '' ELSE avatartype END
+        "UPDATE users SET usertitle = $2, website = $3, signature = $4,
+            suspendposting = $5, suspensiontime = $6, moderateposts = $7, moderationtime = $8, suspendsignature = $9, suspendsigtime = $10,
+            avatar = CASE WHEN $11 THEN '' ELSE avatar END, avatartype = CASE WHEN $11 THEN '' ELSE avatartype END
          WHERE uid = $1",
     )
     .bind(uid)
     .bind(f.usertitle.trim())
     .bind(f.website.trim())
     .bind(f.signature.trim())
-    .bind(&f.usernotes)
     .bind(!sys && f.suspendposting)
     .bind(until(f.suspendposting, f.suspendposting_days))
     .bind(!sys && f.moderateposts)

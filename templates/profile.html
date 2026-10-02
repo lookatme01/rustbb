@@ -93,10 +93,11 @@
 <section class="box"><div class="box-head"><h2>Signature</h2></div><div class="box-body post-body">{{ author.signature|safe }}</div></section>
 {% endif %}
 
-{% if is_mod_viewer or can_edit_profile or can_ban %}
+{% if is_mod_viewer or can_edit_profile or can_ban or history_notes is not none %}
 <section class="box">
   <div class="box-head"><h2>Moderator options</h2></div>
   <div class="box-body actions" style="margin:0">
+    {% if history_notes is not none %}<a class="btn secondary small" href="/modcp/member/{{ user.uid }}">History ({{ history_notes }} note{{ '' if history_notes == 1 else 's' }})</a>{% endif %}
     {% if can_edit_profile %}<a class="btn secondary small" href="/modcp/editprofile/{{ user.uid }}">Edit profile</a>{% endif %}
     {% if can_ban %}<a class="btn secondary small" href="/modcp/ban?uid={{ user.uid }}">Ban user</a>{% endif %}
     {% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ user.uid }}">Edit in Admin CP</a>{% endif %}
