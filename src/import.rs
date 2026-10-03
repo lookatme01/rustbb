@@ -421,10 +421,8 @@ impl Importer {
             if int(o, "displaygroup") == 0 {
                 o.insert("displaygroup".into(), Value::from(0));
             }
-            for k in ["birthdayprivacy"] {
-                if text(o, k).is_empty() {
-                    o.insert(k.into(), Value::from("all"));
-                }
+            if text(o, "birthdayprivacy").is_empty() {
+                o.insert("birthdayprivacy".into(), Value::from("all"));
             }
             true
         })

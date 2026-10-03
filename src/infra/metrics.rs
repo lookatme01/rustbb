@@ -96,9 +96,15 @@ pub fn gauge_add(name: &'static str, l: &[(&str, &str)], d: f64) {
         .gauges
         .entry((name, labels(l)))
         .or_insert_with(|| AtomicU64::new(0f64.to_bits()));
-    let _ = e.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |b| {
-        Some((f64::from_bits(b) + d).to_bits())
-    });
+    let mut cur = e.load(Ordering::Relaxed);
+    while let Err(actual) = e.compare_exchange_weak(
+        cur,
+        (f64::from_bits(cur) + d).to_bits(),
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+    ) {
+        cur = actual;
+    }
 }
 
 /// Record a duration in seconds.
