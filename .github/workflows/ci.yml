@@ -65,6 +65,8 @@ jobs:
           cargo run --locked --quiet -- migrate
           cargo run --locked --quiet -- migrate
           RBB_ADMIN_PASSWORD=ci-admin-password cargo run --locked --quiet -- install --admin-email ci@example.com
+          # uploads/ is gitignored, so a fresh checkout doesn't have it.
+          mkdir -p uploads
           # Failures fail the build; warnings (mail goes to the log in CI) are expected.
           cargo run --locked --quiet -- doctor
           cargo run --locked --quiet -- check
