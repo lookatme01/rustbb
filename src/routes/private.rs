@@ -927,7 +927,7 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
     if pm.folder == 3 {
         return Ok(ctx.redirect(&format!("/pm/send?pmid={pmid}&mode=draft"), ""));
     }
-    if pm.status == 0 && pm.folder != 2 {
+    if pm.status == 0 && pm.folder != 2 && !ctx.is_prefetch() {
         let mut tx = ctx.app.db.begin().await?;
         sqlx::query("SELECT uid FROM users WHERE uid = $1 FOR UPDATE")
             .bind(me.uid)

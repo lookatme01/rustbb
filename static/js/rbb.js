@@ -338,7 +338,7 @@
   (function () {
     const done = new Set();
     let timer = 0;
-    const skip = /^\/(member\/logout|admin|modcp|attachment|live|syndication|captcha)/;
+    const skip = /^\/(member\/logout|pm(?:\/|$)|admin|modcp|attachment|live|syndication|captcha)/;
     function eligible(a) {
       if (!a || !a.href || a.target || a.hasAttribute("download") || a.dataset.noPrefetch !== undefined) return false;
       let u;

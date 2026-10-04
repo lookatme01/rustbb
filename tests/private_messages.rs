@@ -149,6 +149,26 @@ async fn concurrent_reads_only_decrement_unread_once() {
         .unwrap();
     let c = t.login_as(uid).await;
     let path = format!("/pm/read/{pmid}");
+    let prefetch = axum::http::Request::builder()
+        .uri(&path)
+        .header("sec-purpose", "prefetch")
+        .header(
+            "cookie",
+            format!(
+                "{}={}",
+                rbb::ctx::AUTH_COOKIE,
+                c.cookie(rbb::ctx::AUTH_COOKIE).unwrap()
+            ),
+        )
+        .body(axum::body::Body::empty())
+        .unwrap();
+    assert_eq!(c.request(prefetch).await.status, 200);
+    let unread: i32 = sqlx::query_scalar("SELECT unreadpms FROM users WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(unread, 3, "hovering a message must not mark it read");
     for r in futures::future::join_all((0..8).map(|_| c.get(&path))).await {
         assert_eq!(r.status, 200, "{}", r.body);
     }
