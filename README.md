@@ -178,7 +178,9 @@ is included, and both can be extended with child themes.
 
 * **PostgreSQL 17** is recommended: it's what rbb is developed and tested against. Version 12 is
   the hard minimum (generated columns); versions between 12 and 17 are untested.
-* **Rust 1.85 or newer** (edition 2024) to build from source; or Docker.
+* Nothing else to run a [release binary](#release-binaries) (Linux x86_64 or ARM64, glibc 2.17 or
+  newer). To build from source, **Rust** (the version pinned in `rust-toolchain.toml`, which rustup
+  installs automatically); or Docker.
 * Optional: an SMTP server for outgoing mail; MySQL/MariaDB access to import a MyBB board.
 
 ## Quick start
@@ -407,6 +409,33 @@ once. For very large boards, add PgBouncer and read replicas as usual. See
 
 ## Deployment
 
+### Release binaries
+
+Each [GitHub Release](../../releases) has `rbb-VERSION-x86_64-unknown-linux-gnu.tar.gz` and
+`rbb-VERSION-aarch64-unknown-linux-gnu.tar.gz`, plus `SHA256SUMS`. They're single binaries with
+templates and assets built in, linked against glibc 2.17, so they run on any mainstream Linux
+distribution from 2014 on (RHEL/CentOS 7, Debian 8, Ubuntu 14.04 and newer).
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+tar xzf rbb-0.6.0-x86_64-unknown-linux-gnu.tar.gz
+cd rbb-0.6.0-x86_64-unknown-linux-gnu && cp .env.example .env   # then edit .env
+./rbb doctor && ./rbb serve
+```
+
+To cut a release, set `version` in `Cargo.toml`, move the changelog's *Unreleased* notes under a
+`## VERSION` heading, commit, and push a matching tag (`git tag v0.6.0 && git push origin v0.6.0`).
+`.github/workflows/release.yml` builds both binaries with `cargo zigbuild`, checks they need
+nothing newer than glibc 2.17, runs the x86_64 one on CentOS 7, and publishes the release with
+that changelog section as its notes. A tag with a hyphen (`v0.6.0-rc.1`) makes a pre-release.
+Running the workflow by hand (Actions → release → Run workflow) builds the archives without
+releasing.
+
+For your own frequent deploys, `cargo build --profile deploy-fast` builds an optimized binary
+several times faster than `--release` (no LTO), at a small cost in throughput.
+
+### Running it
+
 * **systemd:** `deploy/rbb.service` runs rbb as an unprivileged user with sandboxing
   (`NoNewPrivileges`, `ProtectSystem=strict`, private `/tmp`), reading `/opt/rbb/.env`.
 * **nginx:** `deploy/nginx.conf` terminates TLS and proxies to rbb, including the long-lived SSE
@@ -444,6 +473,8 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 Endpoints cover forums, threads, posts, users, search, statistics and alerts, and apply the same
 permissions as the web interface.
+Thread and post listings return a `next` cursor; pass it as `?after=` to fetch the following
+page at constant cost.
 
 ## Plugins
 

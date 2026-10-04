@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added: release binaries (2026-10-03)
+- Pushing a `v*` tag publishes a GitHub Release with Linux x86_64 and ARM64 binaries (glibc 2.17,
+  so CentOS 7 / Debian 8 and newer) and `SHA256SUMS`, with the version's changelog section as
+  the notes. See README → Deployment → Release binaries.
+- `cargo build --profile deploy-fast`: optimized, much faster to build than `--release`.
+- The Rust toolchain is pinned in `rust-toolchain.toml` (1.99.0); CI and releases use it.
+
+### Changed: keyset pagination (2026-10-03)
+- The API's forum thread lists and thread post lists return a `next` cursor; pass it back as
+  `after` to continue, at the same cost however deep (`page` still works). The moderator log
+  pages by id ("Older entries") instead of counting the whole log. New composite indexes back
+  them (migration 0023).
+
 ### Added: privacy controls (2026-10-02)
 - New **Privacy** settings group. *Shorten IP addresses after (days)* truncates stored IPs to their
   network in posts, messages, logs, poll votes and the System log. *Keep account activity log*,
