@@ -1096,6 +1096,8 @@ article.pgp-tampered { box-shadow: inset 3px 0 0 var(--bad); }
 .award-card .award { flex: none; }
 .award-card h3 { margin: 0 0 2px; font-size: .95rem; }
 .award-card p { margin: 0; }
+.badge-arrange tr.muted .award { opacity: .5; }
+.badge-arrange td.num { white-space: nowrap; }
 
 /* ================================================================== passkeys */
 .auth-or { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; color: var(--ink-faint); font-size: .8rem; }

@@ -13,7 +13,7 @@
       <input type="number" name="val_{{ r.key }}" value="{{ r.value }}" style="width:100px" aria-label="Value"></div>{% endfor %}
     <span class="help">All ticked requirements must hold. Tick none to award this badge only by hand.</span>
   </div></div>
-  <div class="form-row"><label for="o_">Display order</label><div><input id="o_" type="number" name="disporder" value="{{ b.disporder if b else 0 }}" style="width:100px"><span class="help">Lower first. Posts show each member's first few, so put the most prestigious badges first.</span></div></div>
+  <div class="form-row"><label for="o_">Display order</label><div><input id="o_" type="number" name="disporder" value="{{ b.disporder if b else 0 }}" style="width:100px"><span class="help">Lower first. Posts show each member's first few, so put the most prestigious badges first. Members can rearrange their own.</span></div></div>
   <div class="form-row"><span class="label"><strong>Options</strong></span><div class="checks"><label><input type="checkbox" name="enabled" value="1"{% if not b or b.enabled %} checked{% endif %}> Enabled (disabled badges are hidden and not awarded)</label></div></div>
   <div class="box-foot"><button class="btn">Save badge</button></div>
 </form>

@@ -259,3 +259,127 @@ async fn staff_create_award_and_revoke_badges() {
     let r = m.get("/admin/badges").await;
     assert_ne!(r.status, 200);
 }
+
+/// Where each name first appears in `body` (usize::MAX if missing).
+fn at(body: &str, name: &str) -> usize {
+    body.find(&format!("<h3>{name}</h3>")).unwrap_or(usize::MAX)
+}
+
+#[tokio::test]
+async fn members_choose_which_badges_show_and_their_order() {
+    let t = test_app!();
+    let me = member(&t, "collector", 400, 2).await;
+    let other = member(&t, "neighbour", 400, 2).await;
+    sqlx::query("UPDATE users SET postnum = 100 WHERE uid = ANY($1)")
+        .bind([me, other])
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    rbb::badges::run(&t.app).await.unwrap();
+    let year = badge_id(&t, "1 Year of Service").await;
+    let regular = badge_id(&t, "Regular").await;
+    let first = badge_id(&t, "First Post").await;
+    let (y, r, f) = (year.to_string(), regular.to_string(), first.to_string());
+    let c = t.login_as(me).await;
+
+    // By default: the board's order (1 Year, Regular, First Post), all shown.
+    let page = c.get("/usercp/badges").await;
+    assert_eq!(page.status, 200);
+    assert!(page.body.contains("Regular") && page.body.contains("First Post"));
+    let profile = c.get(&format!("/user/{me}")).await;
+    assert!(at(&profile.body, "1 Year of Service") < at(&profile.body, "Regular"));
+    assert!(
+        profile.body.contains("/usercp/badges"),
+        "own profile links to arrange"
+    );
+
+    // Move Regular up, and hide First Post in the same submission.
+    let all = [("order", y.as_str()), ("order", &r), ("order", &f)];
+    let up = format!("up:{regular}");
+    let mut form = all.to_vec();
+    form.extend([("shown", y.as_str()), ("shown", &r), ("action", &up)]);
+    let res = c.post_form("/usercp/badges", &form).await;
+    assert_eq!(res.status, 303, "{}", res.body);
+    let profile = c.get(&format!("/user/{me}")).await;
+    assert!(at(&profile.body, "Regular") < at(&profile.body, "1 Year of Service"));
+    assert!(!profile.body.contains("<h3>First Post</h3>"), "hidden");
+
+    // Posts show the first shown badges in the member's order.
+    set(
+        &t,
+        &[
+            ("badgespostbit", "1"),
+            ("postfloodcheck", "0"),
+            ("postmergemins", "0"),
+        ],
+    )
+    .await;
+    c.post_form(
+        "/newthread/3",
+        &[("subject", "Order test"), ("message", "Hello there.")],
+    )
+    .await;
+    let tid: i32 = sqlx::query_scalar("SELECT MAX(tid) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let thread = t.client().get(&format!("/thread/{tid}")).await;
+    assert!(thread.body.contains(&format!("href=\"/badges/{regular}\"")));
+    assert!(!thread.body.contains(&format!("href=\"/badges/{year}\"")));
+    assert!(!thread.body.contains(&format!("href=\"/badges/{first}\"")));
+
+    // A hidden badge isn't listed among its holders or in the API, but is still theirs.
+    let holders = t.client().get(&format!("/badges/{first}")).await;
+    assert!(holders.body.contains("neighbour") && !holders.body.contains("collector"));
+    let api = c.get(&format!("/api/v1/users/{me}")).await;
+    assert!(!api.body.contains("First Post"), "{}", api.body);
+    assert!(has(&t, me, first).await);
+    assert!(c.get("/usercp/badges").await.body.contains("First Post"));
+
+    // Nobody else's badges changed.
+    let changed: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_badges WHERE uid = $1 AND (hidden OR position IS NOT NULL)",
+    )
+    .bind(other)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    assert_eq!(changed, 0);
+
+    // Back to the board's order; showing everything again.
+    let mut form = all.to_vec();
+    form.extend([
+        ("shown", y.as_str()),
+        ("shown", &r),
+        ("shown", &f),
+        ("action", "reset"),
+    ]);
+    c.post_form("/usercp/badges", &form).await;
+    let profile = c.get(&format!("/user/{me}")).await;
+    assert!(at(&profile.body, "1 Year of Service") < at(&profile.body, "Regular"));
+    assert!(at(&profile.body, "First Post") < usize::MAX);
+
+    // A disabled badge isn't on the page, so saving leaves it as it was: shown once re-enabled.
+    let toggle = |on: bool| {
+        sqlx::query("UPDATE badges SET enabled = $2 WHERE bid = $1")
+            .bind(regular)
+            .bind(on)
+            .execute(&t.db.pool)
+    };
+    toggle(false).await.unwrap();
+    t.app.invalidate(&["badges"]).await.unwrap();
+    c.post_form(
+        "/usercp/badges",
+        &[
+            ("order", y.as_str()),
+            ("order", &f),
+            ("shown", &y),
+            ("shown", &f),
+        ],
+    )
+    .await;
+    toggle(true).await.unwrap();
+    t.app.invalidate(&["badges"]).await.unwrap();
+    let profile = c.get(&format!("/user/{me}")).await;
+    assert!(at(&profile.body, "Regular") < usize::MAX);
+}

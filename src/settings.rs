@@ -1331,7 +1331,7 @@ pub static DEFS: &[SettingDef] = &[
         "features",
         "badgespostbit",
         "Badges Shown on Posts",
-        "How many of a member's badges appear next to their posts (the first ones in display order). 0 shows none; profiles always list them all.",
+        "How many of a member's badges appear next to their posts (the first ones in their order; members can hide badges and arrange them in the User CP). 0 shows none; profiles list every badge the member shows.",
         "numeric",
         "3"
     ),

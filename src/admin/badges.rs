@@ -166,8 +166,8 @@ pub async fn holders(ctx: Ctx, Query(q): Query<BidQ>) -> AppResult<Response> {
         .bid
         .and_then(|bid| ctx.cache.badge(bid).cloned())
         .ok_or_else(|| AppError::not_found("badge"))?;
-    let rows: Vec<(i32, String, i64, bool, Option<String>, String)> = sqlx::query_as(
-        "SELECT ub.uid, u.username, ub.dateline, ub.manual, a.username, ub.reason FROM user_badges ub
+    let rows: Vec<(i32, String, i64, bool, Option<String>, String, bool)> = sqlx::query_as(
+        "SELECT ub.uid, u.username, ub.dateline, ub.manual, a.username, ub.reason, ub.hidden FROM user_badges ub
          JOIN users u ON u.uid = ub.uid LEFT JOIN users a ON a.uid = ub.awarded_by
          WHERE ub.bid = $1 ORDER BY ub.dateline DESC, ub.uid LIMIT 500",
     )
@@ -176,7 +176,7 @@ pub async fn holders(ctx: Ctx, Query(q): Query<BidQ>) -> AppResult<Response> {
     .await?;
     let rows: Vec<_> = rows
         .into_iter()
-        .map(|r| minijinja::context! { uid => r.0, username => r.1, dateline => r.2, manual => r.3, by => r.4, reason => r.5 })
+        .map(|r| minijinja::context! { uid => r.0, username => r.1, dateline => r.2, manual => r.3, by => r.4, reason => r.5, hidden => r.6 })
         .collect();
     crate::admin::page(
         &ctx,

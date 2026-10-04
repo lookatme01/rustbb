@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub async fn list(ctx: Ctx) -> AppResult<Response> {
     let counts: Vec<(i32, i64)> = sqlx::query_as(
         "SELECT ub.bid, COUNT(*) FROM user_badges ub JOIN users u ON u.uid = ub.uid
-         WHERE u.usergroup <> 7 GROUP BY ub.bid",
+         WHERE u.usergroup <> 7 AND NOT ub.hidden GROUP BY ub.bid",
     )
     .fetch_all(&ctx.app.db)
     .await?;
@@ -67,7 +67,7 @@ pub async fn holders(
     const PER: usize = 50;
     let mut rows: Vec<(i32, String, i64)> = sqlx::query_as(
         "SELECT ub.uid, u.username, ub.dateline FROM user_badges ub JOIN users u ON u.uid = ub.uid
-         WHERE ub.bid = $1 AND u.usergroup <> 7 AND (ub.dateline, ub.uid) < ($2, $3)
+         WHERE ub.bid = $1 AND u.usergroup <> 7 AND NOT ub.hidden AND (ub.dateline, ub.uid) < ($2, $3)
          ORDER BY ub.dateline DESC, ub.uid DESC LIMIT $4",
     )
     .bind(bid)

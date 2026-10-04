@@ -1,0 +1,15 @@
+{% extends "usercp/base.html" %}
+{% import "macros.html" as m %}
+{% block ucp %}
+<form method="post" action="/usercp/badges" class="box badge-arrange">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Your badges</h2><span class="desc">Choose which badges appear on your profile and in what order.{% if on_posts > 0 %} The first {{ on_posts }} you show also appear next to your posts.{% endif %} Badges you earn later go after the ones you've moved.</span><a class="right small" href="/badges">All badges</a></div>
+  <table class="grid"><tbody>
+  {% for x in badges %}<tr{% if x.b.hidden %} class="muted"{% endif %}>
+    <td><input type="hidden" name="order" value="{{ x.b.bid }}">{{ m.award(x.b) }}<br><span class="small faint">Earned {{ x.b.dateline|date('date') }}</span>{% if x.on_posts %} <span class="tag">On posts</span>{% endif %}</td>
+    <td><label class="check"><input type="checkbox" name="shown" value="{{ x.b.bid }}"{% if not x.b.hidden %} checked{% endif %}> Show</label></td>
+    <td class="num"><button class="btn ghost small" name="action" value="up:{{ x.b.bid }}"{% if loop.first %} disabled{% endif %} aria-label="Move {{ x.b.name }} up" title="Move up">↑</button><button class="btn ghost small" name="action" value="down:{{ x.b.bid }}"{% if loop.last %} disabled{% endif %} aria-label="Move {{ x.b.name }} down" title="Move down">↓</button></td>
+  </tr>{% else %}<tr><td class="empty">You haven't earned any badges yet. <a href="/badges">See what you can earn.</a></td></tr>{% endfor %}
+  </tbody></table>
+  {% if badges %}<div class="box-foot"><button class="btn" name="action" value="">Save</button> <button class="btn secondary" name="action" value="reset">Use the board's order</button></div>{% endif %}
+</form>
+{% endblock %}

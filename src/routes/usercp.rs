@@ -48,6 +48,7 @@ pub fn router() -> Router<crate::app::App> {
         .route("/usercp/lists", get(lists))
         .route("/usercp/lists/add", post(lists_add))
         .route("/usercp/notepad", get(notepad).post(notepad_save))
+        .route("/usercp/badges", get(badges).post(badges_save))
         .route("/usercp/alerts", get(alerts))
         .route("/usercp/alerts/read", post(alerts_read))
         .route("/usercp/alerts/count", get(alerts_count))
@@ -1296,6 +1297,86 @@ pub async fn notepad_save(ctx: Ctx, CsrfForm(f): CsrfForm<NotepadForm>) -> AppRe
         .execute(&ctx.app.db)
         .await?;
     Ok(ctx.redirect("/usercp/notepad", "Your notepad has been saved."))
+}
+
+pub async fn badges(ctx: Ctx) -> AppResult<Response> {
+    let me = require_ucp(&ctx).await?;
+    let list = crate::badges::of_member_all(&ctx.app.db, &ctx.cache, me.uid).await?;
+    // Posts show the first few shown badges (same default as postbit.html).
+    let on_posts = match ctx.cache.settings.get("badgespostbit").trim() {
+        "" => 3,
+        n => n.parse::<usize>().unwrap_or(0),
+    };
+    let mut shown = 0;
+    let list: Vec<_> = list
+        .iter()
+        .map(|b| {
+            shown += usize::from(!b.hidden);
+            minijinja::context! { b => b, on_posts => !b.hidden && shown <= on_posts }
+        })
+        .collect();
+    page(
+        &ctx,
+        "usercp/badges.html",
+        "badges",
+        "Your Badges",
+        minijinja::context! { badges => list, on_posts => on_posts },
+    )
+    .await
+}
+
+#[derive(Deserialize)]
+pub struct BadgesForm {
+    /// Every badge, top to bottom, as the page showed them.
+    #[serde(default, deserialize_with = "de::vec_i32")]
+    pub order: Vec<i32>,
+    #[serde(default, deserialize_with = "de::vec_i32")]
+    pub shown: Vec<i32>,
+    /// "up:<bid>", "down:<bid>" or "reset" (the board's order); empty just saves.
+    #[serde(default, deserialize_with = "de::string")]
+    pub action: String,
+}
+
+pub async fn badges_save(ctx: Ctx, CsrfForm(f): CsrfForm<BadgesForm>) -> AppResult<Response> {
+    let me = require_ucp(&ctx).await?;
+    let current: Vec<i32> = crate::badges::of_member_all(&ctx.app.db, &ctx.cache, me.uid)
+        .await?
+        .iter()
+        .map(|b| b.bid)
+        .collect();
+    // The order the member saw, limited to badges they have; any they didn't see go last.
+    let mut order: Vec<i32> = Vec::with_capacity(current.len());
+    for bid in f.order.iter().chain(&current) {
+        if current.contains(bid) && !order.contains(bid) {
+            order.push(*bid);
+        }
+    }
+    let step = |dir: &str| {
+        f.action
+            .strip_prefix(dir)
+            .and_then(|b| b.parse::<i32>().ok())
+            .and_then(|bid| order.iter().position(|b| *b == bid))
+    };
+    let swap = match (step("up:"), step("down:")) {
+        (Some(i), _) if i > 0 => Some((i - 1, i)),
+        (_, Some(i)) if i + 1 < order.len() => Some((i, i + 1)),
+        _ => None,
+    };
+    if let Some((a, b)) = swap {
+        order.swap(a, b);
+    }
+    let order = if f.action == "reset" {
+        Some(&[][..])
+    } else {
+        (order != current).then_some(&order[..])
+    };
+    crate::badges::arrange(&ctx.app.db, me.uid, &current, &f.shown, order).await?;
+    let msg = if f.action.is_empty() {
+        "Your badges have been saved."
+    } else {
+        ""
+    };
+    Ok(ctx.redirect("/usercp/badges", msg))
 }
 
 pub fn describe_alert(

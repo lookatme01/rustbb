@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: members arrange their own badges (2026-10-04)
+- **User CP → Badges:** members choose which of their badges are shown and move them up or down.
+  Profiles, the badges next to posts (the first few shown) and `GET /api/v1/users/{uid}` follow
+  their choices; *Use the board's order* goes back to the Admin CP order.
+- Hidden badges are kept, but the member isn't listed among that badge's holders on
+  `/badges/{bid}` or counted on `/badges`. The Admin CP holder list still shows them, marked
+  hidden.
+- Members who haven't arranged their badges keep the board's order. Once they have, badges they
+  earn later go after the ones they've arranged.
+- Your own profile's Badges box links to the page (*Arrange*).
+
 ### Added: passkeys (2026-10-03)
 - **Sign in with a passkey** on the login page: no username or password, just the device's
   fingerprint, face or screen lock (or a security key). It skips the two-factor code, since a

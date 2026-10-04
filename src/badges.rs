@@ -91,24 +91,34 @@ pub struct Shown {
     pub icon: String,
     pub color: String,
     pub dateline: i64,
+    /// Hidden by the member; only `of_member_all` returns these.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// The member's own position, if they've arranged their badges.
+    #[serde(skip)]
+    position: Option<i32>,
 }
 
 /// Each member's enabled badges, in display order. One query for any number of members.
-pub async fn of_members(
+async fn load(
     db: &PgPool,
     cache: &Cache,
     uids: &[i32],
+    with_hidden: bool,
 ) -> sqlx::Result<HashMap<i32, Vec<Shown>>> {
     let mut out: HashMap<i32, Vec<Shown>> = HashMap::new();
     if uids.is_empty() || !cache.badges.iter().any(|b| b.enabled) {
         return Ok(out);
     }
-    let rows: Vec<(i32, i32, i64)> =
-        sqlx::query_as("SELECT uid, bid, dateline FROM user_badges WHERE uid = ANY($1)")
-            .bind(uids)
-            .fetch_all(db)
-            .await?;
-    for (uid, bid, dateline) in rows {
+    let rows: Vec<(i32, i32, i64, bool, Option<i32>)> = sqlx::query_as(
+        "SELECT uid, bid, dateline, hidden, position FROM user_badges
+         WHERE uid = ANY($1) AND ($2 OR NOT hidden)",
+    )
+    .bind(uids)
+    .bind(with_hidden)
+    .fetch_all(db)
+    .await?;
+    for (uid, bid, dateline, hidden, position) in rows {
         if let Some(b) = cache.badge(bid).filter(|b| b.enabled) {
             out.entry(uid).or_default().push(Shown {
                 bid,
@@ -117,6 +127,8 @@ pub async fn of_members(
                 icon: b.icon.clone(),
                 color: b.color.clone(),
                 dateline,
+                hidden,
+                position,
             });
         }
     }
@@ -127,9 +139,63 @@ pub async fn of_members(
         .map(|(i, b)| (b.bid, i))
         .collect();
     for list in out.values_mut() {
-        list.sort_by_key(|s| order.get(&s.bid).copied().unwrap_or(usize::MAX));
+        sort(list, &order);
     }
     Ok(out)
+}
+
+/// The member's arranged badges first, in their order; then the rest in the board's order.
+fn sort(list: &mut [Shown], board: &HashMap<i32, usize>) {
+    list.sort_by_key(|s| {
+        (
+            s.position.is_none(),
+            s.position.unwrap_or(0),
+            board.get(&s.bid).copied().unwrap_or(usize::MAX),
+        )
+    });
+}
+
+/// Each member's shown badges (enabled, not hidden by them), in their display order.
+pub async fn of_members(
+    db: &PgPool,
+    cache: &Cache,
+    uids: &[i32],
+) -> sqlx::Result<HashMap<i32, Vec<Shown>>> {
+    load(db, cache, uids, false).await
+}
+
+/// All of a member's enabled badges, hidden ones too, in their display order.
+pub async fn of_member_all(db: &PgPool, cache: &Cache, uid: i32) -> sqlx::Result<Vec<Shown>> {
+    Ok(load(db, cache, &[uid], true)
+        .await?
+        .remove(&uid)
+        .unwrap_or_default())
+}
+
+/// Save a member's choices for `badges` (the ones they were shown; others, such as disabled
+/// badges, are left alone): `shown` lists the badges to show, `order` them top to bottom (any
+/// left out follow, in the board's order). `None` keeps the current order, and an empty list goes
+/// back to the board's order.
+pub async fn arrange(
+    db: &PgPool,
+    uid: i32,
+    badges: &[i32],
+    shown: &[i32],
+    order: Option<&[i32]>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE user_badges SET hidden = NOT (bid = ANY($3)),
+             position = CASE WHEN $4 THEN array_position($5::int[], bid) ELSE position END
+         WHERE uid = $1 AND bid = ANY($2)",
+    )
+    .bind(uid)
+    .bind(badges)
+    .bind(shown)
+    .bind(order.is_some())
+    .bind(order.unwrap_or_default())
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 /// Alerts above this many per badge per run are still recorded, but not pushed live.
