@@ -194,11 +194,11 @@ cp .env.example .env
 # 3. Build, install and run
 cargo build --release
 ./target/release/rbb install --admin-user admin --admin-password 'choose-a-password' \
-    --admin-email you@example.com --board-name "My Board" --board-url http://127.0.0.1:8080
+    --admin-email you@example.com --board-name "My Board" --board-url http://localhost:8080
 ./target/release/rbb serve
 ```
 
-Open <http://127.0.0.1:8080>, sign in, and visit the **Admin CP** at `/admin`.
+Open <http://localhost:8080>, sign in, and visit the **Admin CP** at `/admin`.
 
 Something not working? `rbb doctor` checks the whole setup (secret, upload folder, database
 connection and authentication, required extensions, migrations, connection limits, mail) and

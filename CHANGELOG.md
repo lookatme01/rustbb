@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed: the default board URL is `http://localhost:8080` (2026-10-04)
+- `rbb install` without `--board-url` (and `rbb seed` on an empty database) now sets the board URL
+  to `http://localhost:8080` instead of `http://127.0.0.1:8080`. Browsers won't offer passkeys on
+  an IP-address URL, but they allow `localhost`. Existing boards keep their URL; change it under
+  Admin CP → Settings.
+
 ### Added: privacy controls (2026-10-02)
 - New **Privacy** settings group. *Shorten IP addresses after (days)* truncates stored IPs to their
   network in posts, messages, logs, poll votes and the System log. *Keep account activity log*,

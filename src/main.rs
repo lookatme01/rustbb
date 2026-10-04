@@ -43,7 +43,7 @@ enum Cmd {
         admin_email: String,
         #[arg(long, default_value = "rbb Community Forums")]
         board_name: String,
-        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        #[arg(long, default_value = "http://localhost:8080")]
         board_url: String,
     },
     /// Generate a large synthetic board for load testing.
@@ -229,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
                     &util::random_token(16),
                     "admin@example.com",
                     "rbb Community Forums",
-                    "http://127.0.0.1:8080",
+                    "http://localhost:8080",
                 )
                 .await?;
             }
