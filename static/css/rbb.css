@@ -105,6 +105,8 @@
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
 
 *, *::before, *::after { box-sizing: border-box; }
+/* Class rules that set display would otherwise un-hide [hidden] elements. */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--header-h) + 16px); }
 body {
   margin: 0; background: var(--canvas); color: var(--ink); min-height: 100vh; display: flex; flex-direction: column;
@@ -168,7 +170,6 @@ main { padding: 8px 0 64px; flex: 1 0 auto; width: 100%; }
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
   background: var(--signal); color: var(--signal-ink); font-size: .68rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
 }
-.badge[hidden] { display: none; }
 .icon-btn .badge { position: absolute; top: 2px; right: 1px; box-shadow: 0 0 0 2px var(--surface); }
 .name-system { font-weight: 700; color: var(--signal); }
 .name-system::after {
