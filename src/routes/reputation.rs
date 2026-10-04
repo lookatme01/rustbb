@@ -63,6 +63,19 @@ pub async fn list(
     .bind((pg.page - 1) * per)
     .fetch_all(&ctx.app.db)
     .await?;
+    let pids: Vec<i32> = rows.iter().map(|r| r.2).filter(|p| *p > 0).collect();
+    let posts: Vec<(i32, i32, i32, i16, i16)> = sqlx::query_as(
+        "SELECT p.pid, t.fid, t.uid, t.visible, p.visible FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = ANY($1)",
+    ).bind(&pids).fetch_all(&ctx.app.db).await?;
+    let readable: std::collections::HashSet<i32> = posts
+        .into_iter()
+        .filter(|(_, fid, author, tv, pv)| {
+            ctx.access().can_read_thread(*fid, *author, ctx.uid())
+                && ctx.visible_states(*fid).contains(tv)
+                && ctx.visible_states(*fid).contains(pv)
+        })
+        .map(|p| p.0)
+        .collect();
     let opts = crate::parser::ParseOptions {
         allow_imgcode: false,
         allow_videocode: false,
@@ -71,6 +84,7 @@ pub async fn list(
     let list: Vec<_> = rows
         .into_iter()
         .map(|(rid, adduid, pid, rep, dl, comments, name, g, d, tid, subj)| {
+            let (tid, subj) = if readable.contains(&pid) { (tid, subj) } else { (None, None) };
             minijinja::context! {
                 rid => rid, adduid => adduid, pid => pid, reputation => rep, dateline => dl,
                 comments => crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &opts, &comments),
@@ -130,13 +144,16 @@ async fn check_can_give(
         ));
     }
     let post = if pid > 0 && ctx.settings().bool("postrep") {
-        let p: Option<(i32, i32, String)> = sqlx::query_as("SELECT p.tid, p.uid, t.subject FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = $1").bind(pid).fetch_optional(&ctx.app.db).await?;
+        let p: Option<(i32, i32, String, i16)> = sqlx::query_as("SELECT p.tid, p.uid, t.subject, p.visible FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = $1").bind(pid).fetch_optional(&ctx.app.db).await?;
         let p = p.ok_or_else(|| AppError::not_found("post"))?;
         if p.1 != uid {
             return Err(AppError::user("That post was not made by this user."));
         }
-        crate::routes::showthread::check_thread(ctx, p.0).await?;
-        Some(p)
+        let (thread, _, _) = crate::routes::showthread::check_thread(ctx, p.0).await?;
+        if !ctx.visible_states(thread.fid).contains(&p.3) {
+            return Err(AppError::not_found("post"));
+        }
+        Some((p.0, p.1, p.2))
     } else {
         None
     };
@@ -201,7 +218,7 @@ pub async fn add_submit(
     let s = ctx.settings();
     let power = ctx.perms.reputationpower.max(1);
     let rep = f.reputation;
-    if rep.abs() > power
+    if !(-power..=power).contains(&rep)
         || (rep > 0 && !s.bool("posrep"))
         || (rep < 0 && !s.bool("negrep"))
         || (rep == 0 && !s.bool("neurep"))
@@ -216,13 +233,19 @@ pub async fn add_submit(
         .collect();
     let pid = if post.is_some() { f.pid } else { 0 };
     let day = now() - 86400;
+    let mut tx = ctx.app.db.begin().await?;
+    // Serialize daily limits by giver and totals by recipient, in a stable lock order.
+    sqlx::query("SELECT uid FROM users WHERE uid = ANY($1) ORDER BY uid FOR UPDATE")
+        .bind(vec![me.uid, uid])
+        .execute(&mut *tx)
+        .await?;
     let existing: Option<i32> = sqlx::query_scalar(
         "SELECT rid FROM reputation WHERE uid = $1 AND adduid = $2 AND pid = $3",
     )
     .bind(uid)
     .bind(me.uid)
     .bind(pid)
-    .fetch_optional(&ctx.app.db)
+    .fetch_optional(&mut *tx)
     .await?;
     if existing.is_none() {
         if ctx.perms.maxreputationsday > 0 {
@@ -231,7 +254,7 @@ pub async fn add_submit(
             )
             .bind(me.uid)
             .bind(day)
-            .fetch_one(&ctx.app.db)
+            .fetch_one(&mut *tx)
             .await?;
             if n >= ctx.perms.maxreputationsday as i64 {
                 return Err(AppError::user(
@@ -246,7 +269,7 @@ pub async fn add_submit(
             .bind(me.uid)
             .bind(uid)
             .bind(day)
-            .fetch_one(&ctx.app.db)
+            .fetch_one(&mut *tx)
             .await?;
             if n >= ctx.perms.maxreputationsperuser as i64 {
                 return Err(AppError::user(
@@ -260,7 +283,7 @@ pub async fn add_submit(
     }
     match existing {
         Some(rid) => {
-            sqlx::query("UPDATE reputation SET reputation = $2, comments = $3, dateline = $4 WHERE rid = $1").bind(rid).bind(rep).bind(&comments).bind(now()).execute(&ctx.app.db).await?;
+            sqlx::query("UPDATE reputation SET reputation = $2, comments = $3, dateline = $4 WHERE rid = $1").bind(rid).bind(rep).bind(&comments).bind(now()).execute(&mut *tx).await?;
         }
         None => {
             sqlx::query("INSERT INTO reputation (uid, adduid, pid, reputation, dateline, comments) VALUES ($1, $2, $3, $4, $5, $6)")
@@ -270,11 +293,12 @@ pub async fn add_submit(
                 .bind(rep)
                 .bind(now())
                 .bind(&comments)
-                .execute(&ctx.app.db)
+                .execute(&mut *tx)
                 .await?;
         }
     }
-    sqlx::query("UPDATE users SET reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1) WHERE uid = $1").bind(uid).execute(&ctx.app.db).await?;
+    sqlx::query("UPDATE users SET reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1) WHERE uid = $1").bind(uid).execute(&mut *tx).await?;
+    tx.commit().await?;
     crate::notify::alert(
         &ctx.app,
         uid,
@@ -308,11 +332,17 @@ pub async fn delete(
     if !((adduid == me.uid && ctx.perms.candeletereputations) || ctx.is_supermod()) {
         return Err(AppError::no_perm());
     }
+    let mut tx = ctx.app.db.begin().await?;
+    sqlx::query("SELECT uid FROM users WHERE uid = ANY($1) ORDER BY uid FOR UPDATE")
+        .bind(vec![adduid, uid])
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM reputation WHERE rid = $1")
         .bind(rid)
-        .execute(&ctx.app.db)
+        .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE users SET reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1) WHERE uid = $1").bind(uid).execute(&ctx.app.db).await?;
+    sqlx::query("UPDATE users SET reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1) WHERE uid = $1").bind(uid).execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(ctx.redirect(
         &format!("/reputation/{uid}"),
         "The rating has been deleted.",
