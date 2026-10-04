@@ -1,10 +1,14 @@
 name: release
 
 # Pushing a tag like v0.6.0 builds Linux binaries and publishes them as a GitHub Release.
-# Running this workflow by hand builds the same binaries as artifacts without releasing.
+# Running this workflow by hand, or changing the build setup, builds the same binaries as
+# artifacts without releasing.
 on:
   push:
     tags: ["v*"]
+    # Branch pushes run only when these files change (GitHub ignores paths for tag pushes).
+    branches: ["**"]
+    paths: [.github/workflows/release.yml, rust-toolchain.toml, Cargo.lock]
   workflow_dispatch:
 
 env:
