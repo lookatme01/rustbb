@@ -483,12 +483,12 @@ fn build_times(ctx: &Ctx, f: &EventForm) -> AppResult<(i64, i64, bool, serde_jso
         if usingtime {
             let t = chrono::NaiveTime::parse_from_str(time.trim(), "%H:%M")
                 .map_err(|_| AppError::user("Please enter times as HH:MM."))?;
-            Ok(ctx
+            ctx
                 .tz
                 .from_local_datetime(&date.and_time(t))
                 .earliest()
                 .map(|x| x.timestamp())
-                .unwrap_or(0))
+                .ok_or_else(|| AppError::user("This local time does not exist because the clocks move forward. Please choose another time."))
         } else {
             Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
         }
