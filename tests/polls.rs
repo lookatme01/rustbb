@@ -30,6 +30,66 @@ async fn poll(t: &common::TestApp, c: &common::Client, tid: i32) -> i32 {
 }
 
 #[tokio::test]
+async fn merging_threads_keeps_only_the_selected_poll() {
+    let Some((t, c, tid)) = setup().await else {
+        return;
+    };
+    let keep = poll(&t, &c, tid).await;
+    let r = c
+        .post_form(
+            "/newthread/3",
+            &[("subject", "Source"), ("message", "Source opening post")],
+        )
+        .await;
+    assert!(r.status.is_redirection());
+    let from: i32 = sqlx::query_scalar("SELECT MAX(tid) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    poll(&t, &c, from).await;
+    rbb::ops::merge_threads(&t.app, tid, from, None)
+        .await
+        .unwrap();
+    let remaining: Vec<i32> = sqlx::query_scalar("SELECT pid FROM polls WHERE tid = $1")
+        .bind(tid)
+        .fetch_all(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(remaining, vec![keep]);
+
+    // An empty destination instead adopts the source poll.
+    let r = c
+        .post_form(
+            "/newthread/3",
+            &[
+                ("subject", "Destination"),
+                ("message", "Destination opening post"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection());
+    let into: i32 = sqlx::query_scalar("SELECT MAX(tid) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    rbb::ops::merge_threads(&t.app, into, tid, None)
+        .await
+        .unwrap();
+    let adopted: i32 = sqlx::query_scalar("SELECT poll FROM threads WHERE tid = $1")
+        .bind(into)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(adopted, keep);
+    let poll_tid: i32 = sqlx::query_scalar("SELECT tid FROM polls WHERE pid = $1")
+        .bind(keep)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(poll_tid, into);
+}
+
+#[tokio::test]
 async fn concurrent_creation_adds_exactly_one_poll() {
     let Some((t, c, tid)) = setup().await else {
         return;

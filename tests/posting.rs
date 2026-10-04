@@ -82,6 +82,22 @@ async fn assert_consistent(t: &TestApp) {
 }
 
 #[tokio::test]
+async fn copying_a_thread_updates_its_authors_thread_count() {
+    let t = test_app!();
+    let fid = forum(&t).await;
+    let uid = t.create_user("copiedauthor", "Passw0rd-author").await;
+    let tid = new_thread(&t, &t.login_as(uid).await, fid).await;
+    rbb::ops::copy_thread(&t.app, tid, fid).await.unwrap();
+    let counts: (i32, i32) = sqlx::query_as("SELECT threadnum, postnum FROM users WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(counts, (2, 2));
+    assert_consistent(&t).await;
+}
+
+#[tokio::test]
 async fn concurrent_replies_keep_counters_consistent() {
     let t = test_app!();
     setting(&t, "postfloodcheck", "0").await;

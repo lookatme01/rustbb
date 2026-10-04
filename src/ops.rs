@@ -593,7 +593,7 @@ pub async fn merge_threads_in(
     .await?;
     // polls: keep `into`'s poll, else adopt `from`'s
     sqlx::query("UPDATE threads SET poll = (SELECT poll FROM threads WHERE tid = $2) WHERE tid = $1 AND poll = 0").bind(into).bind(from).execute(&mut *tx).await?;
-    sqlx::query("UPDATE polls SET tid = $1 WHERE tid = $2")
+    sqlx::query("UPDATE polls SET tid = $1 WHERE tid = $2 AND pid = (SELECT poll FROM threads WHERE tid = $1)")
         .bind(into)
         .bind(from)
         .execute(&mut *tx)
@@ -692,6 +692,7 @@ pub async fn copy_thread(app: &App, tid: i32, to_fid: i32) -> AppResult<i32> {
 
 pub async fn copy_thread_in(uow: &mut Uow, tid: i32, to_fid: i32) -> AppResult<i32> {
     let tx = uow.conn();
+    lock_threads(tx, &[tid]).await?;
     let new_tid: i32 = sqlx::query_scalar(
         "INSERT INTO threads (fid, subject, prefix, icon, uid, username, dateline, lastpost, lastposter, lastposteruid, closed, sticky, visible, notes)
          SELECT $2, subject, prefix, icon, uid, username, dateline, lastpost, lastposter, lastposteruid, closed, sticky, visible, notes FROM threads WHERE tid = $1
@@ -714,6 +715,7 @@ pub async fn copy_thread_in(uow: &mut Uow, tid: i32, to_fid: i32) -> AppResult<i
     settle(tx, vec![(new_tid, to_fid, Contrib::default())]).await?;
     let pids = all_pids_of_threads(tx, &[new_tid]).await?;
     adjust_user_postcounts(tx, &pids, 1).await?;
+    adjust_user_threadcounts(tx, &[new_tid], 1).await?;
     Ok(new_tid)
 }
 
