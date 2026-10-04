@@ -64,7 +64,7 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
         return Ok((
             [
                 (header::CONTENT_TYPE, ctype),
-                (header::CACHE_CONTROL, "public, max-age=300"),
+                (header::CACHE_CONTROL, "private, no-store"),
             ],
             body,
         )
@@ -136,7 +136,7 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
     Ok((
         [
             (header::CONTENT_TYPE, ctype),
-            (header::CACHE_CONTROL, "public, max-age=300"),
+            (header::CACHE_CONTROL, "private, no-store"),
         ],
         out,
     )

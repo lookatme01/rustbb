@@ -159,13 +159,16 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
     }
     flood_check(ctx).await?;
-    let (mut fids, own_only) = searchable_forums(ctx);
+    let (mut fids, mut own_only) = searchable_forums(ctx);
     if !p.forums.is_empty() && !p.forums.contains(&0) {
         let mut wanted = p.forums.clone();
-        for f in p.forums.clone() {
-            wanted.extend(ctx.cache.descendants(f));
+        if p.subforums {
+            for f in &p.forums {
+                wanted.extend(ctx.cache.descendants(*f));
+            }
         }
         fids.retain(|f| wanted.contains(f));
+        own_only.retain(|f| wanted.contains(f));
     }
     let author_uids: Vec<i32> = if author.is_empty() {
         vec![]
@@ -187,7 +190,7 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
     }
     let limit = s.int("searchhardlimit").max(50);
     let date_cond = if p.postdate > 0 {
-        now() - p.postdate * 86400
+        now().saturating_sub(p.postdate.saturating_mul(86400))
     } else {
         0
     };
