@@ -117,20 +117,23 @@ pub async fn check_credentials(
     let locked = max_attempts > 0 && user.loginlockoutexpiry > now();
     if locked || !pw_ok {
         if !pw_ok && !locked {
-            let attempts = user.loginattempts + 1;
-            let lock = if max_attempts > 0 && attempts as i64 >= max_attempts {
-                now() + s.int("failedlogintime").max(1) * 60
-            } else {
-                0
-            };
-            sqlx::query(
-                "UPDATE users SET loginattempts = $2, loginlockoutexpiry = $3 WHERE uid = $1",
+            let time = now();
+            let recorded: Option<(i32, i64)> = sqlx::query_as(
+                "UPDATE users SET
+                    loginattempts = CASE WHEN $2 > 0 AND loginattempts::bigint + 1 >= $2 THEN 0 ELSE LEAST(loginattempts::bigint + 1, 2147483647)::int END,
+                    loginlockoutexpiry = CASE WHEN $2 > 0 AND loginattempts::bigint + 1 >= $2 THEN $3 ELSE 0 END
+                 WHERE uid = $1 AND ($2 <= 0 OR loginlockoutexpiry <= $4)
+                 RETURNING loginattempts, loginlockoutexpiry",
             )
             .bind(user.uid)
-            .bind(if lock > 0 { 0 } else { attempts })
-            .bind(lock)
-            .execute(&ctx.app.db)
+            .bind(max_attempts)
+            .bind(time.saturating_add(s.int("failedlogintime").max(1).saturating_mul(60)))
+            .bind(time)
+            .fetch_optional(&ctx.app.db)
             .await?;
+            let Some((attempts, lock)) = recorded else {
+                return Ok(Err(LOGIN_FAILED.into()));
+            };
             crate::audit::log(
                 ctx,
                 user.uid,
@@ -139,7 +142,7 @@ pub async fn check_credentials(
                 } else {
                     "login_failed"
                 },
-                serde_json::json!({"attempts": attempts}),
+                serde_json::json!({"attempts": if lock > 0 { max_attempts } else { attempts as i64 }}),
             )
             .await;
         }

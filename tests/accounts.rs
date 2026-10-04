@@ -4,6 +4,44 @@ mod common;
 
 use common::TestApp;
 
+#[tokio::test]
+async fn concurrent_failed_logins_do_not_lose_attempts_or_clear_a_lockout() {
+    let t = test_app!();
+    set(&t, &[("failedlogincount", "5"), ("failedlogintime", "15")]).await;
+    let uid = t.create_user("locked", "Correct-Passw0rd").await;
+    let c = t.client();
+    // API login uses the same credential checker without browser CSRF setup.
+    let responses = futures::future::join_all((0..8).map(|_| {
+        c.send_json(
+            "POST",
+            "/api/v1/auth/token",
+            serde_json::json!({"username":"locked", "password":"wrong"}),
+            &[],
+        )
+    }))
+    .await;
+    for r in responses {
+        assert!(r.status.is_client_error(), "{}", r.status);
+    }
+    let (attempts, expiry): (i32, i64) =
+        sqlx::query_as("SELECT loginattempts, loginlockoutexpiry FROM users WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(attempts, 0);
+    assert!(expiry > rbb::util::now());
+    let r = c
+        .send_json(
+            "POST",
+            "/api/v1/auth/token",
+            serde_json::json!({"username":"locked", "password":"Correct-Passw0rd"}),
+            &[],
+        )
+        .await;
+    assert!(r.status.is_client_error());
+}
+
 async fn set(t: &TestApp, pairs: &[(&str, &str)]) {
     for (k, v) in pairs {
         sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
