@@ -457,6 +457,7 @@ pub async fn user(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     ok(serde_json::json!({
         "uid": a.uid, "username": a.username, "usertitle": a.usertitle, "avatar": a.avatar, "postnum": a.postnum, "threadnum": a.threadnum,
         "regdate": a.regdate, "reputation": a.reputation, "online": a.online, "group": a.grouptitle, "website": a.website,
+        "badges": a.badges.iter().map(|b| serde_json::json!({"bid": b.bid, "name": b.name, "description": b.description, "earned": b.dateline})).collect::<Vec<_>>(),
     }))
 }
 

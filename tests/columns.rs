@@ -31,6 +31,7 @@ async fn column_lists_match_their_structs() {
     check!(t, Announcement, ANNOUNCEMENT_COLUMNS, "announcements");
     check!(t, ReportReason, REPORTREASON_COLUMNS, "reportreasons");
     check!(t, Calendar, CALENDAR_COLUMNS, "calendars");
+    assert!(check!(t, Badge, BADGE_COLUMNS, "badges") > 0);
     check!(t, Post, POST_COLUMNS, "posts");
     // Joined, qualified variants.
     let n: Vec<User> = sqlx::query_as(&format!("SELECT {} FROM users u", USER_COLUMNS_U.as_str()))

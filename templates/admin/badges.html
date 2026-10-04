@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn small" href="/admin/badges/edit">Add badge</a><a class="btn secondary small" href="/badges">Public badge page</a></div>
+<section class="box"><div class="box-head"><h2>Badges</h2><span class="desc">Automatic badges are awarded hourly by the Badges task and kept for good. Posts show each member's first {{ bb.badgespostbit or 3 }} in this order (Settings → Features).</span></div>
+<table class="grid"><tbody>{% for x in list %}<tr><td>{{ m.award(x.b, true) }}</td><td><strong>{{ x.b.name }}</strong>{% if not x.b.enabled %} <span class="tag">disabled</span>{% endif %}<br><span class="small muted">{{ x.rule or 'Awarded by hand' }}</span></td><td class="small muted">Order {{ x.b.disporder }}</td>
+<td class="num"><a class="btn ghost small" href="/admin/badges/holders?bid={{ x.b.bid }}">{{ x.holders|num }} {{ 'holder' if x.holders == 1 else 'holders' }}</a> <a class="btn secondary small" href="/admin/badges/edit?bid={{ x.b.bid }}">Edit</a> <form method="post" action="/admin/badges/delete" style="display:inline" class="js-confirm" data-confirm="Delete this badge? Everyone who has it loses it.">{{ m.csrf_field() }}<input type="hidden" name="bid" value="{{ x.b.bid }}"><button class="btn secondary small">Delete</button></form></td></tr>{% else %}<tr><td class="empty">No badges.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

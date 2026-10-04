@@ -11,6 +11,7 @@
         {% if a.stars %}<span class="stars" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
         {% if a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
         {% if a.away %}<span class="tag">Away</span>{% endif %}
+        {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
         <dl class="author-stats">
           <div><dt>Posts</dt><dd><a href="/user/{{ a.uid }}/posts">{{ a.postnum|num }}</a></dd></div>
           <div><dt>Threads</dt><dd><a href="/user/{{ a.uid }}/threads">{{ a.threadnum|num }}</a></dd></div>

@@ -4,6 +4,7 @@
 //! ("ACP verification", valid for one hour per login) and, optionally, TOTP 2FA.
 
 pub mod automod;
+pub mod badges;
 pub mod crud;
 pub mod forums;
 pub mod groups;
@@ -38,6 +39,7 @@ pub fn router() -> Router<App> {
         .merge(tools::router())
         .merge(massmail::router())
         .merge(promotions::router())
+        .merge(badges::router())
         .merge(crud::router())
 }
 
@@ -57,6 +59,7 @@ pub static MODULES: &[(&str, &str)] = &[
     ("logs", "Logs"),
     ("massmail", "Mass mail"),
     ("promotions", "Promotions"),
+    ("badges", "Badges"),
     ("adminperms", "Admin permissions"),
 ];
 

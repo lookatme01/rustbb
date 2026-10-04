@@ -207,6 +207,8 @@ pub struct AuthorInfo {
     pub website: String,
     pub signature: String,
     pub fields: Vec<(String, String)>,
+    /// Enabled badges in display order.
+    pub badges: Vec<crate::badges::Shown>,
     pub can_pm: bool,
     pub can_email: bool,
 }
@@ -279,10 +281,12 @@ pub async fn load_authors(ctx: &CtxInner, uids: &[i32]) -> AppResult<HashMap<i32
             }
         }
     }
+    let mut badges = crate::badges::of_members(&ctx.app.db, &ctx.cache, &uids).await?;
     let mut out = HashMap::new();
     for r in rows {
         let mut a = author_info(ctx, &r);
         a.fields = fields.remove(&r.uid).unwrap_or_default();
+        a.badges = badges.remove(&r.uid).unwrap_or_default();
         out.insert(r.uid, a);
     }
     Ok(out)
@@ -362,6 +366,7 @@ pub fn author_info(ctx: &CtxInner, r: &AuthorRow) -> AuthorInfo {
         website: r.website.clone(),
         signature,
         fields: vec![],
+        badges: vec![],
         can_pm: r.receivepms,
         can_email: !r.hideemail,
     }

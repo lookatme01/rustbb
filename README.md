@@ -77,8 +77,13 @@ cargo build --release && ./target/release/rbb serve
   signatures, away status, birthdays, time online, referrals, reputation (including per-post
   reputation) and warnings. Banned members' profiles show a ban notice with the reason and expiry;
   staff also see who issued the ban.
+* **Badges:** achievements on profiles and next to posts. Twelve built-in badges are earned
+  automatically, from *First Post* and *1 Year of Service* up to *10 Years of Service* and
+  *Legend* (10,000 posts); admins can add their own, earned by post count, threads, time
+  registered, reputation, referrals or time online, or awarded by hand with a reason. `/badges`
+  lists them with how many members have each.
 * **Real-time updates:** new replies and alerts arrive over Server-Sent Events.
-* **Alerts** for quotes, mentions, replies, reactions, private messages and reputation;
+* **Alerts** for quotes, mentions, replies, reactions, private messages, reputation and badges;
   post reactions.
 * Dark mode, responsive phone-first layout, session management ("log out other devices"),
   GDPR data export and account self-deletion, language packs.

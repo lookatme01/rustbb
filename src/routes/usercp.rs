@@ -1359,6 +1359,13 @@ pub fn describe_alert(
             "You have received a warning".to_string(),
             format!("/warning/{object_id}"),
         ),
+        "badge" => (
+            format!(
+                "You earned the badge “{}”",
+                extra["badge"].as_str().unwrap_or("")
+            ),
+            format!("/badges/{object_id}"),
+        ),
         "thread_moved" => (
             format!("Your thread “{subject}” was moved"),
             url_thread(tid, None),

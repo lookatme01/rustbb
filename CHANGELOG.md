@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added: badges (2026-10-03)
+- Badges appear on profiles (all of them, with when each was earned) and next to posts (the
+  first few in display order; *Settings → Features → Badges Shown on Posts*, default 3).
+- Twelve built-in badges, earned automatically: 1, 2, 5 and 10 Years of Service; First Post,
+  Regular (100), Veteran (1,000) and Legend (10,000 posts); Conversation Starter (10 threads);
+  Well Regarded (10) and Respected (100 reputation); Recruiter (3 referrals).
+- **Admin CP → Users & groups → Badges:** add and edit badges (icon, colour, order and the
+  requirements that earn them; none means awarded by hand), see who holds each, award one to a
+  member with a reason, revoke it. New Admin Permissions module "Badges".
+- An hourly "Badges" task awards them, one set-based statement per badge. Earned badges are
+  kept even if a member later falls below the requirement. Members get an alert from System.
+- `/badges` lists every badge with what earns it and how many members hold it; `/badges/{bid}`
+  lists its holders. `GET /api/v1/users/{uid}` includes `badges`.
+
 ### Added: release binaries (2026-10-03)
 - Pushing a `v*` tag publishes a GitHub Release with Linux x86_64 and ARM64 binaries (glibc 2.17,
   so CentOS 7 / Debian 8 and newer) and `SHA256SUMS`, with the version's changelog section as

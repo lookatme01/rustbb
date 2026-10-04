@@ -4,6 +4,7 @@ pub mod api;
 pub mod appeals;
 pub mod archive;
 pub mod attachments;
+pub mod badges;
 pub mod calendar;
 pub mod captcha;
 pub mod forumdisplay;
@@ -154,6 +155,8 @@ pub fn router() -> Router<App> {
         .route("/user/{uid}/referrals", get(member::referrals))
         .route("/members", get(memberlist::memberlist))
         .route("/team", get(memberlist::showteam))
+        .route("/badges", get(badges::list))
+        .route("/badges/{bid}", get(badges::holders))
         // user cp
         .merge(usercp::router())
         .merge(private::router())

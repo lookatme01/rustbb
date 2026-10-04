@@ -1069,3 +1069,30 @@ article.pgp-tampered { box-shadow: inset 3px 0 0 var(--bad); }
 .btn.block { width: 100%; height: 44px; font-size: .95rem; }
 .auth-alt { margin: 20px 0 0; font-size: .9rem; color: var(--ink-soft); }
 .auth-card .notice { text-align: left; }
+
+/* ================================================================== badges */
+.award { --tone: #b07a45; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 7px;
+  border-radius: 999px; font-size: .8rem; font-weight: 600; text-decoration: none; line-height: 1.4;
+  color: color-mix(in oklab, var(--tone) 72%, var(--ink));
+  background: color-mix(in oklab, var(--tone) 14%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone) 32%, transparent); }
+.award:hover { text-decoration: none; background: color-mix(in oklab, var(--tone) 22%, var(--surface)); }
+.award svg { width: 15px; height: 15px; flex: none; }
+.award.compact { padding: 4px; }
+.award.compact svg { width: 14px; height: 14px; }
+.award-bronze { --tone: #b07a45; }
+.award-silver { --tone: #8a94a6; }
+.award-gold { --tone: #d4a20b; }
+.award-green { --tone: #1f9d6b; }
+.award-blue { --tone: #2f8fe0; }
+.award-purple { --tone: #9b5cf6; }
+.award-red { --tone: #e5487f; }
+.awards { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.post-author .awards { justify-content: center; }
+.award-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); padding: 14px; }
+.award-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: var(--radius);
+  background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--rule); }
+.award-card.earned { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--live) 45%, transparent); }
+.award-card .award { flex: none; }
+.award-card h3 { margin: 0 0 2px; font-size: .95rem; }
+.award-card p { margin: 0; }

@@ -36,6 +36,13 @@
   </div>
 </section>
 
+{% if author.badges %}
+<section class="box profile-badges">
+  <div class="box-head"><h2>Badges</h2><span class="desc">{{ author.badges|length }}</span><a class="right small" href="/badges">All badges</a></div>
+  <div class="award-list">{% for b in author.badges %}<div class="award-card">{{ m.award(b, true) }}<div><h3>{{ b.name }}</h3>{% if b.description %}<p class="small muted">{{ b.description }}</p>{% endif %}<p class="small faint">Earned {{ b.dateline|date('date') }}</p></div></div>{% endfor %}</div>
+</section>
+{% endif %}
+
 {% if pgp %}
 <section class="box pgp-profile">
   <div class="box-head"><h2>Identity key</h2><span class="desc">for signed and end-to-end encrypted messages</span>

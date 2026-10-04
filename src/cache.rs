@@ -33,6 +33,8 @@ pub struct Cache {
     pub reportreasons: Arc<Vec<ReportReason>>,
     pub announcements: Arc<Vec<Announcement>>,
     pub calendars: Arc<Vec<Calendar>>,
+    /// All badges, in display order (disabled ones too; check `enabled`).
+    pub badges: Arc<Vec<Badge>>,
     /// The built-in System account and its group (0 until `system::ensure` has run).
     pub system_uid: i32,
     pub system_gid: i32,
@@ -66,6 +68,7 @@ pub const PARTS: &[&str] = &[
     "reportreasons",
     "announcements",
     "calendars",
+    "badges",
 ];
 
 impl Cache {
@@ -273,6 +276,15 @@ impl Cache {
                     .await?,
                 )
             }
+            "badges" => {
+                self.badges = Arc::new(
+                    sqlx::query_as(&format!(
+                        "SELECT {BADGE_COLUMNS} FROM badges ORDER BY disporder, bid"
+                    ))
+                    .fetch_all(db)
+                    .await?,
+                )
+            }
             "profilefields" => {
                 self.profilefields = Arc::new(
                     sqlx::query_as(&format!(
@@ -377,6 +389,10 @@ impl Cache {
     /// Whether `uid` is the built-in System account.
     pub fn is_system(&self, uid: i32) -> bool {
         uid > 0 && uid == self.system_uid
+    }
+
+    pub fn badge(&self, bid: i32) -> Option<&Badge> {
+        self.badges.iter().find(|b| b.bid == bid)
     }
 
     pub fn group(&self, gid: i32) -> Option<&UserGroup> {

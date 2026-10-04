@@ -1321,6 +1321,14 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "features",
+        "badgespostbit",
+        "Badges Shown on Posts",
+        "How many of a member's badges appear next to their posts (the first ones in display order). 0 shows none; profiles always list them all.",
+        "numeric",
+        "3"
+    ),
+    s!(
+        "features",
         "enablereactions",
         "Enable Post Reactions",
         "",

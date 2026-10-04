@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<section class="box">
+  <div class="box-head"><h1>Badges</h1><span class="desc">Earned automatically for time and activity on the board, or awarded by the team.</span></div>
+  <div class="award-list">{% for x in badges %}<div class="award-card{% if x.mine %} earned{% endif %}">{{ m.award(x.b, true) }}<div>
+    <h3><a href="/badges/{{ x.b.bid }}">{{ x.b.name }}</a>{% if x.mine %} <span class="tag">Earned</span>{% endif %}</h3>
+    {% if x.b.description %}<p class="small muted">{{ x.b.description }}</p>{% endif %}
+    <p class="small faint">{% if x.rule %}{{ x.rule }}{% else %}Awarded by the team{% endif %} · {{ x.holders|num }} {{ 'member' if x.holders == 1 else 'members' }}</p>
+  </div></div>{% else %}<p class="empty">There are no badges yet.</p>{% endfor %}</div>
+</section>
+{% endblock %}

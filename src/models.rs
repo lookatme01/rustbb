@@ -419,6 +419,20 @@ pub const PREFIX_COLUMNS: &str = "pid, prefix, displaystyle, forums, groups";
 pub const MODERATOR_COLUMNS: &str = "mid, fid, id, isgroup, perms";
 pub const ATTACHTYPE_COLUMNS: &str =
     "atid, name, mimetype, extension, maxsize, icon, enabled, groups, forums, avatarfile";
+#[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
+pub struct Badge {
+    pub bid: i32,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub color: String,
+    pub requirements: serde_json::Value,
+    pub enabled: bool,
+    pub disporder: i32,
+}
+
+pub const BADGE_COLUMNS: &str =
+    "bid, name, description, icon, color, requirements, enabled, disporder";
 pub const PROFILEFIELD_COLUMNS: &str = "fid, name, description, disporder, type, options, regex, length, maxlength, required, registration, profile, postbit, viewableby, editableby, postnum, allowhtml, allowmycode, allowsmilies";
 pub const USERTITLE_COLUMNS: &str = "utid, posts, title, stars, starimage";
 pub const SMILIE_COLUMNS: &str = "sid, name, find, image, disporder, showclickable";

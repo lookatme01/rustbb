@@ -1,0 +1,20 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<form method="post" action="/admin/badges/edit" class="box">{{ m.csrf_field() }}<input type="hidden" name="bid" value="{{ b.bid if b else 0 }}">
+  <div class="box-head"><h2>{{ title }}</h2>{% if b %}{{ m.award(b) }}{% endif %}</div>
+  <div class="form-row"><label for="n_">Name</label><input id="n_" type="text" name="name" value="{{ b.name if b else '' }}" maxlength="100" required></div>
+  <div class="form-row"><label for="d_">Description</label><input id="d_" type="text" name="description" value="{{ b.description if b else '' }}" maxlength="300"></div>
+  <div class="form-row"><label for="i_">Icon</label><select id="i_" name="icon">{% for i in icons %}<option value="{{ i[0] }}"{% if b and b.icon == i[0] %} selected{% endif %}>{{ i[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><label for="c_">Colour</label><select id="c_" name="color">{% for c in colors %}<option value="{{ c[0] }}"{% if b and b.color == c[0] %} selected{% endif %}>{{ c[1] }}</option>{% endfor %}</select></div>
+  <div class="form-row"><span class="label"><strong>Earned automatically when</strong></span><div style="display:grid;gap:6px">
+    {% for r in reqs %}<div style="display:flex;gap:6px;align-items:center"><label class="check" style="min-width:170px"><input type="checkbox" name="req_{{ r.key }}" value="1"{% if r.enabled %} checked{% endif %}> {{ r.label }}</label>
+      <select name="op_{{ r.key }}" aria-label="Comparison">{% for o in ['>=','>','=','<=','<','!='] %}<option{% if r.op == o %} selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+      <input type="number" name="val_{{ r.key }}" value="{{ r.value }}" style="width:100px" aria-label="Value"></div>{% endfor %}
+    <span class="help">All ticked requirements must hold. Tick none to award this badge only by hand.</span>
+  </div></div>
+  <div class="form-row"><label for="o_">Display order</label><div><input id="o_" type="number" name="disporder" value="{{ b.disporder if b else 0 }}" style="width:100px"><span class="help">Lower first. Posts show each member's first few, so put the most prestigious badges first.</span></div></div>
+  <div class="form-row"><span class="label"><strong>Options</strong></span><div class="checks"><label><input type="checkbox" name="enabled" value="1"{% if not b or b.enabled %} checked{% endif %}> Enabled (disabled badges are hidden and not awarded)</label></div></div>
+  <div class="box-foot"><button class="btn">Save badge</button></div>
+</form>
+{% endblock %}

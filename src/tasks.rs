@@ -307,6 +307,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
         "privacy" => crate::privacy::run(app).await?,
         "delayedmoderation" => crate::routes::moderation::run_delayed(app).await?,
         "promotions" => crate::admin::promotions::run_promotions(app).await?,
+        "badges" => crate::badges::run(app).await?,
         "massmail" => crate::admin::massmail::run_batch(app).await?,
         other => format!("unknown task {other}"),
     })

@@ -8,6 +8,7 @@ pub mod assets;
 pub mod audit;
 pub mod auth;
 pub mod automod;
+pub mod badges;
 pub mod cache;
 pub mod config;
 pub mod ctx;

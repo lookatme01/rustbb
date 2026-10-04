@@ -37,6 +37,12 @@ pub static TASKS: &[TaskDef] = &[
         interval: 1200,
     },
     TaskDef {
+        key: "badges",
+        title: "Badges",
+        description: "Awards badges to members who have earned them.",
+        interval: 3600,
+    },
+    TaskDef {
         key: "banlifter",
         title: "Ban Lifter",
         description: "Lifts expired bans and suspensions.",

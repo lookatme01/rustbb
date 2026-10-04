@@ -20,7 +20,7 @@ pub fn router() -> Router<App> {
 }
 
 /// (key, label, SQL expression)
-const REQS: &[(&str, &str, &str)] = &[
+pub const REQS: &[(&str, &str, &str)] = &[
     ("posts", "Post count", "postnum"),
     ("threads", "Thread count", "threadnum"),
     (
@@ -34,7 +34,7 @@ const REQS: &[(&str, &str, &str)] = &[
     ("timeonline_hours", "Hours online", "timeonline / 3600"),
 ];
 
-fn op_sql(op: &str) -> &'static str {
+pub fn op_sql(op: &str) -> &'static str {
     match op {
         ">" => ">",
         "<" => "<",

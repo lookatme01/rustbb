@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% import "macros.html" as m %}
+{% block acp %}
+<div class="actions"><a class="btn secondary small" href="/admin/badges">All badges</a><a class="btn secondary small" href="/admin/badges/edit?bid={{ b.bid }}">Edit badge</a></div>
+<form method="post" action="/admin/badges/award" class="box">{{ m.csrf_field() }}<input type="hidden" name="bid" value="{{ b.bid }}">
+  <div class="box-head">{{ m.award(b) }}<span class="desc">{{ rule or 'Awarded by hand' }}</span></div>
+  <div class="form-row"><label for="u_">Award to</label><input id="u_" type="text" name="username" placeholder="Username" required></div>
+  <div class="form-row"><label for="r_">Reason</label><input id="r_" type="text" name="reason" maxlength="500" placeholder="Optional, shown here only"></div>
+  <div class="box-foot"><button class="btn">Award badge</button></div>
+</form>
+<section class="box"><div class="box-head"><h2>Holders</h2><span class="desc">Newest first{% if rows|length == 500 %}, latest 500{% endif %}</span></div>
+<table class="grid"><tbody>{% for r in rows %}<tr><td><a href="{{ url_user(r.uid, r.username) }}">{{ r.username }}</a></td><td class="small muted">{{ r.dateline|date }}</td><td class="small">{% if r.manual %}Awarded{% if r.by %} by {{ r.by }}{% endif %}{% if r.reason %}: {{ r.reason }}{% endif %}{% else %}<span class="muted">Earned</span>{% endif %}</td>
+<td class="num"><form method="post" action="/admin/badges/revoke" class="js-confirm" data-confirm="Revoke this badge from {{ r.username }}?">{{ m.csrf_field() }}<input type="hidden" name="bid" value="{{ b.bid }}"><input type="hidden" name="uid" value="{{ r.uid }}"><button class="btn secondary small">Revoke</button></form></td></tr>{% else %}<tr><td class="empty">Nobody has this badge yet.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}
