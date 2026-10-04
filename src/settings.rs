@@ -1320,6 +1320,14 @@ pub static DEFS: &[SettingDef] = &[
         "1"
     ),
     s!(
+        "security",
+        "enablepasskeys",
+        "Enable Passkeys",
+        "Members can sign in with a passkey (their device's fingerprint, face or screen lock, or a security key) instead of their password. Needs an HTTPS board URL with a domain name (or http://localhost for development).",
+        "yesno",
+        "1"
+    ),
+    s!(
         "features",
         "badgespostbit",
         "Badges Shown on Posts",

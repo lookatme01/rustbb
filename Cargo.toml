@@ -59,6 +59,8 @@ rhai = { version = "1", features = ["sync", "serde"] }
 fake = { version = "2", optional = true }
 object_store = { version = "0.14.2", features = ["aws"] }
 ipnetwork = "0.20"
+# Passkeys (WebAuthn relying party). Pure Rust (RustCrypto), so release builds stay OpenSSL-free.
+webauthn_rp = { version = "0.3", default-features = false, features = ["serde_relaxed", "serializable_server_state"] }
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -90,3 +92,9 @@ opt-level = 2
 
 [dev-dependencies]
 proptest = "1.11.0"
+# A software WebAuthn client and authenticator, to drive the passkey flows in tests.
+passkey = "0.6"
+# Browsers send base64url strings, not byte arrays.
+passkey-types = { version = "0.6", features = ["serialize_bytes_as_base64_string"] }
+async-trait = "0.1"
+public-suffix = "0.1"

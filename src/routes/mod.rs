@@ -18,6 +18,7 @@ pub mod moderation;
 pub mod modnotes;
 pub mod modreports;
 pub mod online;
+pub mod passkeys;
 pub mod pgp;
 pub mod polls;
 pub mod portal;
@@ -159,6 +160,7 @@ pub fn router() -> Router<App> {
         .route("/badges/{bid}", get(badges::holders))
         // user cp
         .merge(usercp::router())
+        .merge(passkeys::router())
         .merge(private::router())
         .merge(pgp::router())
         .merge(modcp::router())

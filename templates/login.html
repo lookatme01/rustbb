@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
+{% block head %}{% if passkeys %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="auth">
   <div class="auth-card">
@@ -14,6 +15,14 @@
       <label class="check"><input type="checkbox" name="remember" value="1" checked> Keep me logged in</label>
       <button class="btn block" type="submit">Log in</button>
     </form>
+    {% if passkeys %}
+    <form method="post" action="/member/login/passkey/begin" class="auth-form js-passkey-login" hidden>
+      {{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="auth-or"><span>or</span></div>
+      <p class="notice bad small js-passkey-error" role="alert" hidden></p>
+      <button class="btn secondary block" type="submit">{{ m.icon('lock') }} Sign in with a passkey</button>
+    </form>
+    {% endif %}
     {% if bb.disableregs != '1' %}<p class="auth-alt">New here? <a href="/member/register">Create an account</a></p>{% endif %}
   </div>
 </div>

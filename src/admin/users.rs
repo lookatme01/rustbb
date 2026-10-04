@@ -247,12 +247,16 @@ pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             .bind(uid)
             .fetch_optional(&ctx.app.db)
             .await?;
+    let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&ctx.app.db)
+        .await?;
     crate::admin::page(
         &ctx,
         "admin/user_edit.html",
         "users",
         &format!("Edit User: {}", user.username),
-        minijinja::context! { user => &user, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty() },
+        minijinja::context! { user => &user, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty(), passkeys => passkeys },
     )
     .await
 }
@@ -384,6 +388,22 @@ pub async fn edit_save(
     let mut errors = vec![];
     let vals = crate::routes::usercp::collect_profile_fields(&ctx, fl, &mut errors, false);
     crate::routes::usercp::save_profile_fields(&ctx.app.db, uid, &vals).await?;
+    if b(fl.get("removepasskeys")) {
+        let n = sqlx::query("DELETE FROM passkeys WHERE uid = $1")
+            .bind(uid)
+            .execute(&ctx.app.db)
+            .await?
+            .rows_affected();
+        if n > 0 {
+            crate::audit::log(
+                &ctx,
+                uid,
+                "passkey_removed",
+                serde_json::json!({"all": n, "via": "admin"}),
+            )
+            .await;
+        }
+    }
     if b(fl.get("logoutall")) {
         crate::auth::destroy_all_logins(
             &ctx.app,

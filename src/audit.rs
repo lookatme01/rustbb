@@ -39,6 +39,8 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
         "Turned on two-factor authentication",
         "security",
     ),
+    ("passkey_added", "Added a passkey", "security"),
+    ("passkey_removed", "Removed a passkey", "security"),
     (
         "twofa_disabled",
         "Turned off two-factor authentication",

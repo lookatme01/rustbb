@@ -1,6 +1,28 @@
 {% extends "usercp/base.html" %}
 {% import "macros.html" as m %}
+{% block head %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endblock %}
 {% block ucp %}
+<section class="box passkeys" id="passkeys"><div class="box-head"><h2>Passkeys</h2><span class="desc">Sign in with your fingerprint, face or screen lock instead of your password</span>{% if passkeys %}<span class="right"><span class="tag">{{ passkeys|length }}</span></span>{% endif %}</div>
+{% if passkeys %}
+<table class="grid"><thead><tr><th>Name</th><th>Added</th><th>Last used</th><th></th></tr></thead><tbody>
+{% for k in passkeys %}<tr><td>{{ k.name }}</td><td class="small">{{ k.created|date }}</td><td class="small">{% if k.last_used %}{{ k.last_used|date }}{% else %}never{% endif %}</td><td class="num"><form method="post" action="/usercp/passkeys/remove" class="js-confirm" data-confirm="Remove the passkey “{{ k.name }}”? You won't be able to sign in with it any more.">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ k.id }}"><button class="btn secondary small" type="submit">Remove</button></form></td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+{% if passkeys_unavailable %}
+  <div class="box-body small muted">Passkeys aren't available on this board: {{ passkeys_unavailable }}.</div>
+{% elif passkeys|length >= passkeys_max %}
+  <div class="box-body small muted">You have the maximum of {{ passkeys_max }} passkeys. Remove one to add another.</div>
+{% else %}
+  <form class="js-passkey-add" method="post" action="/usercp/passkeys/begin">{{ m.csrf_field() }}
+    {% if not passkeys %}<div class="box-body small">A passkey lives on your phone, computer or security key and is unlocked the same way you unlock the device. It can't be guessed, reused or phished, and you never have to type it.</div>{% endif %}
+    <div class="form-row"><label for="pk-name">Name</label><input id="pk-name" name="name" maxlength="60" placeholder="e.g. My phone" autocomplete="off"></div>
+    <div class="form-row"><label for="pk-pw">Password</label><input id="pk-pw" type="password" name="password" autocomplete="current-password" required></div>
+    <p class="notice bad small js-passkey-error" role="alert" hidden></p>
+    <noscript><p class="notice warn small">Adding a passkey needs JavaScript.</p></noscript>
+    <div class="box-foot"><button class="btn" type="submit">Add a passkey</button></div>
+  </form>
+{% endif %}
+</section>
 <section class="box"><div class="box-head"><h2>Two-factor authentication</h2><span class="right">{% if enabled %}<span class="tag">Enabled</span>{% else %}<span class="tag">Off</span>{% endif %}</span></div>
 {% if enabled %}
   <form method="post" action="/usercp/security/2fa">{{ m.csrf_field() }}<input type="hidden" name="disable" value="1">

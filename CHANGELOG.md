@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added: passkeys (2026-10-03)
+- **Sign in with a passkey** on the login page: no username or password, just the device's
+  fingerprint, face or screen lock (or a security key). It skips the two-factor code, since a
+  passkey is already two factors.
+- **User CP → Security → Passkeys:** add (needs your password), name and remove passkeys, up to
+  20, with when each was added and last used. Additions, removals and passkey sign-ins are in
+  the account activity log; passkeys and badges are in the data export.
+- **Admin CP → user editor:** "Remove this user's passkeys" for members who lost their device.
+- *Settings → Security & Anti-Spam → Enable Passkeys* (on by default). Passkeys need an HTTPS
+  board URL with a domain name (or `http://localhost`); otherwise they're hidden, the User CP
+  says why, and `rbb doctor` warns.
+- Ceremony state is stored in PostgreSQL (migration 0025), so any node can finish a ceremony
+  another started; each challenge works once and expires.
+
 ### Added: badges (2026-10-03)
 - Badges appear on profiles (all of them, with when each was earned) and next to posts (the
   first few in display order; *Settings → Features → Badges Shown on Posts*, default 3).

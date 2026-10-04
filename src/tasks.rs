@@ -155,6 +155,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t)
                 .execute(db)
                 .await?;
+            crate::passkeys::prune(db).await?;
             sqlx::query(
                 "DELETE FROM cluster_events WHERE created_at < now() - make_interval(secs => $1)",
             )

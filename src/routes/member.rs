@@ -23,7 +23,7 @@ pub async fn login_form(ctx: Ctx, Query(q): Query<ReturnQuery>) -> AppResult<Res
     if ctx.logged_in() {
         return Ok(Redirect::to("/").into_response());
     }
-    ctx.render("login.html", minijinja::context! { title => "Login", return_to => q.return_to, errors => Vec::<String>::new(), username => "" }).await
+    ctx.render("login.html", minijinja::context! { title => "Login", return_to => q.return_to, errors => Vec::<String>::new(), username => "", passkeys => crate::passkeys::available(&ctx.app).is_ok() }).await
 }
 
 #[derive(Deserialize)]
@@ -156,7 +156,7 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
             ctx.render_status(
                 axum::http::StatusCode::UNAUTHORIZED,
                 "login.html",
-                minijinja::context! { title => "Login", return_to => r, errors => vec![msg], username => u },
+                minijinja::context! { title => "Login", return_to => r, errors => vec![msg], username => u, passkeys => crate::passkeys::available(&ctx.app).is_ok() },
             )
             .await
         }

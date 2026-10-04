@@ -90,9 +90,18 @@ cargo build --release && ./target/release/rbb serve
 
 ### Account security
 
+* **Passkeys:** sign in with a fingerprint, face or device screen lock (or a security key)
+  instead of a password, on the login page with one click and no username. Members add and
+  remove them in User CP → Security (adding one needs the password, so a stolen session can't
+  plant one). Passkeys are phishing-resistant: they only work on the board's own address. They
+  need an HTTPS board URL with a domain name (`http://localhost` works for development);
+  `rbb doctor` says whether they're available. Verification uses the pure-Rust `webauthn_rp`
+  crate, and the tests drive the real endpoints with 1Password's software authenticator.
 * **Two-factor authentication** (TOTP) with single-use codes and per-account attempt limits.
+  Passkey sign-ins skip the code: a passkey is already two factors (the device, unlocked by
+  its owner).
 * **Account activity log:** every account has an audit trail in the User CP covering sign-ins,
-  failed attempts and lockouts; password, email, username and two-factor changes; devices signed
+  failed attempts and lockouts; password, email, username, passkey and two-factor changes; devices signed
   out; API tokens; data exports; and staff actions such as bans, warnings and edits. Each entry
   records the IP and browser. Members are warned about recent failed sign-ins, and admins can open
   any member's log from the Admin CP.

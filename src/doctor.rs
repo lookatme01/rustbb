@@ -150,6 +150,31 @@ pub fn check_proxy_cookies(bburl: &str, secure_cookies: bool, trust_proxy: bool)
     out
 }
 
+/// Whether members can use passkeys with this board URL.
+pub fn check_passkeys(enabled: bool, bburl: &str) -> Check {
+    if !enabled {
+        return check("Board", "Passkeys", Status::Ok, "turned off", None);
+    }
+    match crate::passkeys::relying_party(bburl) {
+        Ok(rp) => check(
+            "Board",
+            "Passkeys",
+            Status::Ok,
+            format!("available at {}", rp.origin),
+            None,
+        ),
+        Err(why) => check(
+            "Board",
+            "Passkeys",
+            Status::Warn,
+            format!("unavailable: {why}"),
+            Some(
+                "Use an https:// board URL with a domain name (http://localhost works for development), or turn passkeys off in Admin CP → Settings → Security & Anti-Spam.",
+            ),
+        ),
+    }
+}
+
 /// `server_version_num`, e.g. 170004 for 17.4.
 pub fn check_server_version(num: i32) -> Check {
     let (major, minor) = (num / 10000, num % 10000);
@@ -550,6 +575,7 @@ async fn board_checks(out: &mut Vec<Check>, db: &sqlx::PgPool) {
         env("RBB_SECURE_COOKIES").as_deref() == Some("true"),
         env("RBB_TRUST_PROXY").as_deref() == Some("true"),
     ));
+    out.push(check_passkeys(s.bool("enablepasskeys"), bburl));
     match s.get("mail_handler") {
         "smtp" if s.get("smtp_host").trim().is_empty() => out.push(check("Board", "Mail", Status::Fail, "SMTP is selected but no host is set",
             Some("Admin CP → Settings → Mail: set the SMTP host."))),
@@ -803,5 +829,25 @@ mod tests {
             check_pool(32, 100, 3).detail.contains("3 nodes"),
             "says how many nodes fit"
         );
+    }
+
+    #[test]
+    fn passkeys_need_a_secure_domain() {
+        assert_eq!(
+            check_passkeys(true, "https://forum.example.org").status,
+            Status::Ok
+        );
+        assert_eq!(
+            check_passkeys(true, "http://localhost:8088").status,
+            Status::Ok
+        );
+        let ip = check_passkeys(true, "http://127.0.0.1:8080");
+        assert_eq!(ip.status, Status::Warn);
+        assert!(ip.detail.contains("IP address"), "{}", ip.detail);
+        assert_eq!(
+            check_passkeys(true, "http://forum.example.org").status,
+            Status::Warn
+        );
+        assert_eq!(check_passkeys(false, "http://127.0.0.1").status, Status::Ok);
     }
 }

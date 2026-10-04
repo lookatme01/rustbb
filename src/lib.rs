@@ -27,6 +27,7 @@ pub mod notify;
 pub mod ops;
 pub mod pagecache;
 pub mod parser;
+pub mod passkeys;
 pub mod perms;
 pub mod pgp;
 pub mod plugins;

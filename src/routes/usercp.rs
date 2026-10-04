@@ -1488,6 +1488,17 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
         .into_iter()
         .map(|(id, name, scopes, created, last, expires)| minijinja::context! { id => id, name => name, scopes => scopes, created => created, last_used => last, expires => expires })
         .collect();
+    let keys: Vec<(i32, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, name, created, last_used FROM passkeys WHERE uid = $1 ORDER BY id",
+    )
+    .bind(me.uid)
+    .fetch_all(&ctx.app.db)
+    .await?;
+    let passkeys: Vec<_> = keys
+        .into_iter()
+        .map(|(id, name, created, last_used)| minijinja::context! { id => id, name => name, created => created, last_used => last_used })
+        .collect();
+    let passkeys_unavailable = crate::passkeys::available(&ctx.app).err();
     let enabled = !me.totp_secret.is_empty();
     let (secret, qr, uri) = if enabled {
         (String::new(), String::new(), String::new())
@@ -1507,7 +1518,7 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
             .unwrap_or_default();
         (secret, qr, uri)
     };
-    page(&ctx, "usercp/security.html", "security", "Security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions, api_tokens => api_tokens }).await
+    page(&ctx, "usercp/security.html", "security", "Security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions, api_tokens => api_tokens, passkeys => passkeys, passkeys_unavailable => passkeys_unavailable, passkeys_max => crate::passkeys::MAX_PER_MEMBER }).await
 }
 
 #[derive(Deserialize)]
@@ -1949,6 +1960,17 @@ pub async fn export(ctx: Ctx) -> AppResult<Response> {
     let pms: Vec<(i32, String, String, i64, i32)> =
         sqlx::query_as("SELECT pmid, subject, message, dateline, folder FROM privatemessages WHERE uid = $1 ORDER BY pmid").bind(me.uid).fetch_all(&ctx.app.db).await?;
     let fields = field_values(&ctx, me.uid).await?;
+    let passkeys: Vec<(String, i64, i64)> =
+        sqlx::query_as("SELECT name, created, last_used FROM passkeys WHERE uid = $1 ORDER BY id")
+            .bind(me.uid)
+            .fetch_all(&ctx.app.db)
+            .await?;
+    let badges: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT b.name, ub.dateline FROM user_badges ub JOIN badges b ON b.bid = ub.bid WHERE ub.uid = $1 ORDER BY ub.dateline",
+    )
+    .bind(me.uid)
+    .fetch_all(&ctx.app.db)
+    .await?;
     let data = serde_json::json!({
         "user": {
             "uid": me.uid, "username": me.username, "email": me.email, "regdate": me.regdate, "regip": me.regip, "lastip": me.lastip,
@@ -1956,6 +1978,8 @@ pub async fn export(ctx: Ctx) -> AppResult<Response> {
             "profile_fields": fields,
         },
         "posts": posts.iter().map(|p| serde_json::json!({"pid": p.0, "tid": p.1, "subject": p.2, "message": p.3, "dateline": p.4})).collect::<Vec<_>>(),
+        "passkeys": passkeys.iter().map(|p| serde_json::json!({"name": p.0, "created": p.1, "last_used": p.2})).collect::<Vec<_>>(),
+        "badges": badges.iter().map(|b| serde_json::json!({"name": b.0, "earned": b.1})).collect::<Vec<_>>(),
         "private_messages": pms.iter().map(|p| serde_json::json!({"pmid": p.0, "subject": p.1, "message": p.2, "dateline": p.3, "folder": p.4})).collect::<Vec<_>>(),
     });
     Ok((
