@@ -32,6 +32,22 @@ async fn load(ctx: &Ctx, tid: i32) -> AppResult<Option<PollRow>> {
         .await?)
 }
 
+// Match the thread-before-content lock order used by posting and moderation.
+async fn lock_poll(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tid: i32,
+) -> AppResult<(PollRow, bool)> {
+    let closed: String = sqlx::query_scalar("SELECT closed FROM threads WHERE tid = $1 FOR UPDATE")
+        .bind(tid)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(|| AppError::not_found("thread"))?;
+    let poll = sqlx::query_as("SELECT pid, question, options, votes, numvotes, timeout, closed, multiple, public, maxoptions FROM polls WHERE tid = $1 ORDER BY pid LIMIT 1 FOR UPDATE")
+        .bind(tid).fetch_optional(&mut **tx).await?
+        .ok_or_else(|| AppError::not_found("poll"))?;
+    Ok((poll, closed == "1"))
+}
+
 async fn my_votes(ctx: &Ctx, pid: i32) -> AppResult<Vec<i32>> {
     if ctx.uid() == 0 {
         return Ok(vec![]);
@@ -64,7 +80,7 @@ async fn build_view(
     force_results: bool,
 ) -> AppResult<serde_json::Value> {
     let mine = my_votes(ctx, p.pid).await?;
-    let closed = p.closed || (p.timeout > 0 && p.timeout < now()) || t.is_closed();
+    let closed = p.closed || (p.timeout > 0 && p.timeout <= now()) || t.is_closed();
     let can_vote = !force_results
         && ctx.uid() > 0
         && mine.is_empty()
@@ -119,13 +135,12 @@ pub async fn vote(
     let me = ctx.require_login()?.clone();
     let (t, _, fp) = check_thread(&ctx, tid).await?;
     ctx.write_scope(vec![format!("thread:{tid}")]);
-    let p = load(&ctx, tid)
-        .await?
-        .ok_or_else(|| AppError::not_found("poll"))?;
     if !fp.canvotepolls || !ctx.perms.canvotepolls {
         return Err(AppError::no_perm());
     }
-    if p.closed || (p.timeout > 0 && p.timeout < now()) || t.is_closed() {
+    let mut tx = ctx.app.db.begin().await?;
+    let (p, thread_closed) = lock_poll(&mut tx, tid).await?;
+    if p.closed || (p.timeout > 0 && p.timeout <= now()) || thread_closed {
         return Err(AppError::user("This poll is closed."));
     }
     let mut opts: Vec<i32> = f
@@ -146,11 +161,6 @@ pub async fn vote(
             p.maxoptions
         )));
     }
-    let mut tx = ctx.app.db.begin().await?;
-    sqlx::query("SELECT pid FROM polls WHERE pid = $1 FOR UPDATE")
-        .bind(p.pid)
-        .execute(&mut *tx)
-        .await?;
     let voted: Option<i32> =
         sqlx::query_scalar("SELECT vid FROM pollvotes WHERE pid = $1 AND uid = $2 LIMIT 1")
             .bind(p.pid)
@@ -192,10 +202,11 @@ pub async fn undo_vote(
     if !ctx.perms.canundovotes {
         return Err(AppError::no_perm());
     }
-    let p = load(&ctx, tid)
-        .await?
-        .ok_or_else(|| AppError::not_found("poll"))?;
     let mut tx = ctx.app.db.begin().await?;
+    let (p, thread_closed) = lock_poll(&mut tx, tid).await?;
+    if p.closed || (p.timeout > 0 && p.timeout <= now()) || thread_closed {
+        return Err(AppError::user("This poll is closed."));
+    }
     let removed: Vec<i32> = sqlx::query_scalar(
         "DELETE FROM pollvotes WHERE pid = $1 AND uid = $2 RETURNING voteoption",
     )
@@ -304,26 +315,35 @@ pub async fn edit_save(
     if !can_manage(&ctx, &t) {
         return Err(AppError::no_perm());
     }
-    let p = load(&ctx, tid)
-        .await?
-        .ok_or_else(|| AppError::not_found("poll"))?;
+    if f.question.trim().is_empty() {
+        return Err(AppError::user("Please enter a poll question."));
+    }
+    let timeout = crate::posting::poll_timeout(f.timeout)?;
     let opts = parse_options(&ctx, &f.options)?;
-    // Keep vote counts for options that still exist at the same position.
-    let votes: Vec<i32> = (0..opts.len())
-        .map(|i| {
-            if p.options.get(i) == opts.get(i) {
-                p.votes.get(i).copied().unwrap_or(0)
-            } else {
-                0
-            }
-        })
+    let mut tx = ctx.app.db.begin().await?;
+    let (p, _) = lock_poll(&mut tx, tid).await?;
+    // Votes for replaced/removed choices must not become votes for a different answer.
+    let retained: Vec<i32> = opts
+        .iter()
+        .enumerate()
+        .filter(|(i, o)| p.options.get(*i) == Some(*o))
+        .map(|(i, _)| (i + 1) as i32)
         .collect();
-    sqlx::query("DELETE FROM pollvotes WHERE pid = $1 AND voteoption > $2")
+    sqlx::query("DELETE FROM pollvotes WHERE pid = $1 AND NOT (voteoption = ANY($2))")
         .bind(p.pid)
-        .bind(opts.len() as i32)
-        .execute(&ctx.app.db)
+        .bind(&retained)
+        .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE polls SET question = $2, options = $3, votes = $4, multiple = $5, public = $6, closed = $7, timeout = $8, maxoptions = $9 WHERE pid = $1")
+    let counts: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT voteoption, COUNT(*) FROM pollvotes WHERE pid = $1 GROUP BY voteoption",
+    )
+    .bind(p.pid)
+    .fetch_all(&mut *tx)
+    .await?;
+    let votes: Vec<i32> = (1..=opts.len() as i32)
+        .map(|i| counts.iter().find(|r| r.0 == i).map_or(0, |r| r.1 as i32))
+        .collect();
+    sqlx::query("UPDATE polls SET question = $2, options = $3, votes = $4, multiple = $5, public = $6, closed = $7, timeout = $8, maxoptions = $9, numvotes = (SELECT COUNT(DISTINCT uid) FROM pollvotes WHERE pid = $1) WHERE pid = $1")
         .bind(p.pid)
         .bind(f.question.trim())
         .bind(&opts)
@@ -331,10 +351,11 @@ pub async fn edit_save(
         .bind(f.multiple)
         .bind(f.public)
         .bind(f.closed)
-        .bind(if f.timeout > 0 { now() + f.timeout * 86400 } else { 0 })
+        .bind(timeout)
         .bind(f.maxoptions.max(0))
-        .execute(&ctx.app.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     crate::ops::log_moderator_action(
         &ctx.app,
         ctx.uid(),
@@ -383,7 +404,17 @@ pub async fn new_save(
         return Err(AppError::user("Please enter a poll question."));
     }
     let opts = parse_options(&ctx, &f.options)?;
+    let timeout = crate::posting::poll_timeout(f.timeout)?;
     let votes = vec![0i32; opts.len()];
+    let mut tx = ctx.app.db.begin().await?;
+    let existing: i32 = sqlx::query_scalar("SELECT poll FROM threads WHERE tid = $1 FOR UPDATE")
+        .bind(tid)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| AppError::not_found("thread"))?;
+    if existing > 0 {
+        return Err(AppError::user("This thread already has a poll."));
+    }
     let pid: i32 = sqlx::query_scalar(
         "INSERT INTO polls (tid, question, dateline, options, votes, timeout, multiple, public, maxoptions) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING pid",
     )
@@ -392,17 +423,18 @@ pub async fn new_save(
     .bind(now())
     .bind(&opts)
     .bind(&votes)
-    .bind(if f.timeout > 0 { now() + f.timeout * 86400 } else { 0 })
+    .bind(timeout)
     .bind(f.multiple)
     .bind(f.public)
     .bind(f.maxoptions.max(0))
-    .fetch_one(&ctx.app.db)
+    .fetch_one(&mut *tx)
     .await?;
     sqlx::query("UPDATE threads SET poll = $2 WHERE tid = $1")
         .bind(tid)
         .bind(pid)
-        .execute(&ctx.app.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(ctx.redirect(
         &url_thread(tid as i64, Some(&t.subject)),
         "Your poll has been added.",

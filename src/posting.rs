@@ -42,6 +42,15 @@ pub struct PollInput {
     pub maxoptions: i32,
 }
 
+pub(crate) fn poll_timeout(days: i64) -> AppResult<i64> {
+    if days <= 0 {
+        return Ok(0);
+    }
+    days.checked_mul(86400)
+        .and_then(|seconds| now().checked_add(seconds))
+        .ok_or_else(|| AppError::user("The poll duration is too long."))
+}
+
 /// Validate subject/message against board settings.
 pub fn validate(ctx: &CtxInner, input: &PostInput, need_subject: bool) -> AppResult<()> {
     let s = ctx.settings();
@@ -237,7 +246,7 @@ pub async fn create_thread(
         .bind(t)
         .bind(&p.options)
         .bind(&votes)
-        .bind(if p.timeout_days > 0 { t + p.timeout_days * 86400 } else { 0 })
+        .bind(poll_timeout(p.timeout_days)?)
         .bind(p.multiple)
         .bind(p.public)
         .bind(p.maxoptions)
