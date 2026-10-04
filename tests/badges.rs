@@ -134,6 +134,10 @@ async fn disabled_badges_are_not_awarded_or_shown() {
     assert_eq!(page.status, 200);
     assert!(!page.body.contains("1 Year of Service"));
     assert!(page.body.contains("2 Years of Service"));
+    // Alerts still link to it: send them to the list rather than a 404.
+    let stale = t.client().get(&format!("/badges/{year}")).await;
+    assert_eq!(stale.status, 303);
+    assert_eq!(stale.headers["location"], "/badges");
 }
 
 #[tokio::test]

@@ -52,12 +52,10 @@ pub async fn holders(
     if !ctx.perms.canviewprofiles {
         return Err(AppError::no_perm());
     }
-    let b = ctx
-        .cache
-        .badge(bid)
-        .filter(|b| b.enabled)
-        .cloned()
-        .ok_or_else(|| AppError::not_found("badge"))?;
+    // Alerts and old links keep pointing at badges that were since deleted or disabled.
+    let Some(b) = ctx.cache.badge(bid).filter(|b| b.enabled).cloned() else {
+        return Ok(ctx.redirect("/badges", "That badge is no longer awarded."));
+    };
     let (bt, bu) = q
         .before
         .as_deref()
