@@ -4,6 +4,107 @@ mod common;
 
 use common::TestApp;
 
+#[tokio::test]
+async fn saved_searches_and_subscriptions_recheck_thread_visibility() {
+    let t = test_app!();
+    let (tid, _) = hidden_subforum(&t).await;
+    let viewer = t.create_user("searcher", "Passw0rd-searcher").await;
+    let c = t.login_as(viewer).await;
+    let pid: i32 = sqlx::query_scalar("SELECT firstpost FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    for (sid, kind, id) in [
+        ("savedthreads", "threads", tid),
+        ("savedposts", "posts", pid),
+    ] {
+        sqlx::query("INSERT INTO searchlog (sid, uid, resulttype, ids, keywords, dateline) VALUES ($1, $2, $3, $4, '', 1)")
+            .bind(sid).bind(viewer).bind(kind).bind(vec![id]).execute(&t.db.pool).await.unwrap();
+    }
+    sqlx::query("INSERT INTO threadsubscriptions (uid, tid, dateline) VALUES ($1, $2, 1)")
+        .bind(viewer)
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let paths = [
+        "/search/results/savedthreads",
+        "/search/results/savedposts",
+        "/usercp/subscriptions",
+    ];
+    for path in paths {
+        let r = c.get(path).await;
+        assert_eq!(r.status, 200, "{path}");
+        assert!(r.body.contains("Zebracorn sightings"), "{path}");
+    }
+    // A thread can be unapproved while its individual posts remain approved.
+    for state in [0i16, -1] {
+        sqlx::query("UPDATE threads SET visible = $2 WHERE tid = $1")
+            .bind(tid)
+            .bind(state)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        for path in paths {
+            let r = c.get(path).await;
+            assert_eq!(r.status, 200, "{path}");
+            assert!(
+                !r.body.contains("Zebracorn sightings"),
+                "hidden thread leaked at {path}"
+            );
+            assert!(
+                !r.body.contains("A zebracorn was seen today"),
+                "hidden post leaked at {path}"
+            );
+        }
+        let admin = t.login_as(1).await;
+        // Search ownership is separate from visibility; use an admin-owned stored search.
+        sqlx::query("UPDATE searchlog SET uid = 1")
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        assert!(
+            admin
+                .get(paths[0])
+                .await
+                .body
+                .contains("Zebracorn sightings")
+        );
+        sqlx::query("UPDATE searchlog SET uid = $1")
+            .bind(viewer)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn reactions_on_hidden_posts_are_not_public() {
+    let t = test_app!();
+    let (tid, uid) = hidden_subforum(&t).await;
+    let pid: i32 = sqlx::query_scalar("SELECT firstpost FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE posts SET visible = -1 WHERE pid = $1")
+        .bind(pid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    assert_eq!(c.get(&format!("/post/{pid}/reactions")).await.status, 404);
+    assert_eq!(
+        t.login_as(1)
+            .await
+            .get(&format!("/post/{pid}/reactions"))
+            .await
+            .status,
+        200
+    );
+}
+
 /// A subforum (fid 8) under General Discussion (3) with one thread containing "zebracorn".
 async fn hidden_subforum(t: &TestApp) -> (i32, i32) {
     sqlx::query(

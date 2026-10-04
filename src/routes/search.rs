@@ -481,16 +481,17 @@ pub async fn results(
         .fetch_all(&ctx.app.db)
         .await?;
         let tids: Vec<i32> = posts.iter().map(|p| p.tid).collect();
-        let thread_rows: Vec<(i32, String, i32, i32, i32)> = sqlx::query_as(
-            "SELECT tid, subject, replies, views, uid FROM threads WHERE tid = ANY($1)",
+        let thread_rows: Vec<(i32, String, i32, i32, i32, i16)> = sqlx::query_as(
+            "SELECT tid, subject, replies, views, uid, visible FROM threads WHERE tid = ANY($1)",
         )
         .bind(&tids)
         .fetch_all(&ctx.app.db)
         .await?;
         let thread_authors: HashMap<i32, i32> = thread_rows.iter().map(|r| (r.0, r.4)).collect();
+        let thread_states: HashMap<i32, i16> = thread_rows.iter().map(|r| (r.0, r.5)).collect();
         let subjects: HashMap<i32, (String, i32, i32)> = thread_rows
             .into_iter()
-            .map(|(t, s, r, v, _)| (t, (s, r, v)))
+            .map(|(t, s, r, v, _, _)| (t, (s, r, v)))
             .collect();
         let mut by_id: HashMap<i32, Post> = posts.into_iter().map(|p| (p.pid, p)).collect();
         let mut stale = vec![];
@@ -501,6 +502,9 @@ pub async fn results(
             let author = thread_authors.get(&p.tid).copied().unwrap_or(0);
             if !ctx.access().can_read_thread(p.fid, author, ctx.uid())
                 || !ctx.visible_states(p.fid).contains(&p.visible)
+                || !thread_states
+                    .get(&p.tid)
+                    .is_some_and(|v| ctx.visible_states(p.fid).contains(v))
             {
                 continue;
             }

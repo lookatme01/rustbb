@@ -69,6 +69,15 @@ pub fn prefix_html(ctx: &Ctx, pid: i32) -> String {
 
 /// Decorate threads with unread/dot/hot/multipage info for listings.
 pub async fn thread_rows(ctx: &Ctx, threads: Vec<Thread>) -> AppResult<Vec<ThreadRow>> {
+    // Stored searches and subscriptions may outlive moderation or permission changes.
+    let threads: Vec<Thread> = threads
+        .into_iter()
+        .filter(|t| {
+            ctx.access().can_read_thread(t.fid, t.uid, ctx.uid())
+                && (ctx.visible_states(t.fid).contains(&t.visible)
+                    || (t.visible == 0 && ctx.uid() > 0 && t.uid == ctx.uid()))
+        })
+        .collect();
     let s = ctx.settings();
     let people: Vec<i32> = threads
         .iter()

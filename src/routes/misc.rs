@@ -310,12 +310,16 @@ pub async fn react(
 }
 
 pub async fn reactions_list(ctx: Ctx, Path(pid): Path<i32>) -> AppResult<Response> {
-    let tid: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
-        .bind(pid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("post"))?;
-    check_thread(&ctx, tid).await?;
+    let (tid, visible): (i32, i16) =
+        sqlx::query_as("SELECT tid, visible FROM posts WHERE pid = $1")
+            .bind(pid)
+            .fetch_optional(&ctx.app.db)
+            .await?
+            .ok_or_else(|| AppError::not_found("post"))?;
+    let (thread, _, _) = check_thread(&ctx, tid).await?;
+    if !ctx.visible_states(thread.fid).contains(&visible) {
+        return Err(AppError::not_found("post"));
+    }
     let rows: Vec<(String, i32, String, i32, i32, i64)> = sqlx::query_as(
         "SELECT r.kind, u.uid, u.username, u.usergroup, u.displaygroup, r.dateline FROM reactions r JOIN users u ON u.uid = r.uid WHERE r.pid = $1 ORDER BY r.dateline",
     )
