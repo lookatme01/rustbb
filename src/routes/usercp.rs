@@ -973,6 +973,7 @@ pub async fn subscriptions(
             .collect()
     };
     let notif: HashMap<i32, i16> = rows.iter().map(|(t, n)| (t.tid, *n)).collect();
+    let subscribed: Vec<i32> = rows.iter().map(|(t, _)| t.tid).collect();
     let threads = crate::routes::forumdisplay::thread_rows(
         &ctx,
         rows.into_iter()
@@ -981,7 +982,13 @@ pub async fn subscriptions(
             .collect(),
     )
     .await?;
-    page(&ctx, "usercp/subscriptions.html", "subscriptions", "Thread Subscriptions", minijinja::context! { threads => threads, notif => notif.into_iter().map(|(k, v)| (k.to_string(), v)).collect::<HashMap<_, _>>(), pagination => pg }).await
+    // Threads the member can no longer see (moved, unapproved, deleted, permissions changed)
+    // are listed without their details, so they can still be unsubscribed from.
+    let unavailable: Vec<i32> = subscribed
+        .into_iter()
+        .filter(|tid| !threads.iter().any(|t| t.tid == *tid))
+        .collect();
+    page(&ctx, "usercp/subscriptions.html", "subscriptions", "Thread Subscriptions", minijinja::context! { threads => threads, unavailable => unavailable, notif => notif.into_iter().map(|(k, v)| (k.to_string(), v)).collect::<HashMap<_, _>>(), pagination => pg }).await
 }
 
 #[derive(Deserialize)]

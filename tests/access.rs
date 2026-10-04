@@ -358,3 +358,40 @@ async fn forum_moderators_are_limited_to_their_forums() {
         200
     );
 }
+
+#[tokio::test]
+async fn subscriptions_to_hidden_threads_can_still_be_removed() {
+    let t = test_app!();
+    let (tid, _) = hidden_subforum(&t).await;
+    let viewer = t.create_user("subscriber", "Passw0rd-subscriber").await;
+    let c = t.login_as(viewer).await;
+    sqlx::query("INSERT INTO threadsubscriptions (uid, tid, dateline) VALUES ($1, $2, 1)")
+        .bind(viewer)
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE threads SET visible = 0 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = c.get("/usercp/subscriptions").await;
+    assert!(!r.body.contains("Zebracorn sightings"), "no details leak");
+    assert!(r.body.contains("no longer available"), "{}", r.body);
+    assert!(r.body.contains(&format!("name=\"tids\" value=\"{tid}\"")));
+    let tid_s = tid.to_string();
+    let res = c
+        .post_form(
+            "/usercp/subscriptions",
+            &[("tids", tid_s.as_str()), ("action", "delete")],
+        )
+        .await;
+    assert_eq!(res.status, 303, "{}", res.body);
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threadsubscriptions WHERE uid = $1")
+        .bind(viewer)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0);
+}
