@@ -10,10 +10,12 @@ use crate::util::now;
 use webauthn_rp::bin::{Decode, Encode};
 use webauthn_rp::request::auth::AuthenticationVerificationOptions;
 use webauthn_rp::request::register::{
-    Nickname, PublicKeyCredentialUserEntity, RegistrationVerificationOptions, UserHandle64,
-    Username,
+    CredProtect, Nickname, PublicKeyCredentialUserEntity, RegistrationVerificationOptions,
+    UserHandle64, Username,
 };
-use webauthn_rp::request::{AsciiDomain, PublicKeyCredentialDescriptor, RpId, TimedCeremony};
+use webauthn_rp::request::{
+    AsciiDomain, ExtensionInfo, PublicKeyCredentialDescriptor, RpId, TimedCeremony,
+};
 use webauthn_rp::response::register::{CompressedPubKey, DynamicState, StaticState};
 use webauthn_rp::response::{AuthTransports, CredentialId};
 use webauthn_rp::{
@@ -145,6 +147,22 @@ async fn user_handle(app: &App, uid: i32) -> AppResult<UserHandle64> {
     Ok(handle)
 }
 
+/// The options for creating a passkey. These are the crate's passkey defaults, except for
+/// credProtect (see the comment in the body).
+fn creation_options<'a>(
+    rp_id: &'a RpId,
+    user: PublicKeyCredentialUserEntity<'a, 'a, 'a, 64>,
+    exclude: Vec<PublicKeyCredentialDescriptor<Vec<u8>>>,
+) -> PublicKeyCredentialCreationOptions<'a, 'a, 'a, 'a, 64> {
+    let mut options = PublicKeyCredentialCreationOptions::passkey(rp_id, user, exclude);
+    // The crate enforces credProtect, and Chrome then refuses authenticators that lack it, such
+    // as iCloud Keychain and the Chrome profile on a Mac. Still ask security keys for it, without
+    // insisting: every ceremony requires user verification anyway.
+    options.extensions.cred_protect =
+        CredProtect::UserVerificationRequired(ExtensionInfo::AllowDontEnforceValue);
+    options
+}
+
 /// Start adding a passkey: the options for `navigator.credentials.create()`.
 pub async fn begin_registration(
     app: &App,
@@ -182,7 +200,7 @@ pub async fn begin_registration(
         .or_else(|_| Username::try_from(fallback.as_str()))
         .map_err(|_| internal("username"))?;
     let display_name = Nickname::try_from(username).ok();
-    let (server, client) = PublicKeyCredentialCreationOptions::passkey(
+    let (server, client) = creation_options(
         &rp.id,
         PublicKeyCredentialUserEntity {
             name,
@@ -378,7 +396,34 @@ pub async fn finish_sign_in(app: &App, credential: &str) -> AppResult<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::relying_party;
+    use super::{creation_options, relying_party};
+    use webauthn_rp::request::register::{PublicKeyCredentialUserEntity, UserHandle64, Username};
+
+    /// Chrome won't create a passkey on an authenticator without credProtect support (such as
+    /// iCloud Keychain or the Chrome profile on a Mac) when the policy is enforced, and reports
+    /// "Your device can't be used with this site".
+    #[test]
+    fn creating_a_passkey_does_not_rule_out_platform_authenticators() {
+        let rp = relying_party("https://forum.example.org").unwrap();
+        let handle = UserHandle64::new();
+        let options = creation_options(
+            &rp.id,
+            PublicKeyCredentialUserEntity {
+                name: Username::try_from("alice").unwrap(),
+                id: &handle,
+                display_name: None,
+            },
+            Vec::new(),
+        );
+        let (_, client) = options.start_ceremony().unwrap();
+        let json = serde_json::to_value(&client).unwrap();
+        let ext = &json["extensions"];
+        assert_ne!(
+            ext["enforceCredentialProtectionPolicy"],
+            serde_json::json!(true),
+            "{json}"
+        );
+    }
 
     #[test]
     fn the_board_url_decides_where_passkeys_work() {
