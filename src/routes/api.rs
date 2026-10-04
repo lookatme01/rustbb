@@ -210,7 +210,8 @@ pub struct PageQ {
     pub after: Option<String>,
 }
 
-/// Parse a cursor of `n` dot-separated integers.
+/// Parse a cursor of `n` dot-separated integers. The last one is a row id (INT), so it must fit
+/// in an i32.
 fn cursor(s: &Option<String>, n: usize) -> AppResult<Option<Vec<i64>>> {
     let Some(s) = s.as_deref().filter(|s| !s.is_empty()) else {
         return Ok(None);
@@ -220,7 +221,7 @@ fn cursor(s: &Option<String>, n: usize) -> AppResult<Option<Vec<i64>>> {
         .map(|p| p.parse::<i64>())
         .collect::<Result<_, _>>()
         .map_err(|_| AppError::user("Invalid cursor."))?;
-    if parts.len() != n {
+    if parts.len() != n || parts.last().is_some_and(|id| i32::try_from(*id).is_err()) {
         return Err(AppError::user("Invalid cursor."));
     }
     Ok(Some(parts))

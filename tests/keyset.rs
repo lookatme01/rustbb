@@ -92,4 +92,11 @@ async fn api_cursors_walk_a_thread_and_a_forum() {
         c.get("/api/v1/forums/3/threads?after=garbage").await.status,
         422
     );
+    // An id past INT's range is rejected, not wrapped around into a different position.
+    assert_eq!(
+        c.get("/api/v1/forums/3/threads?after=0.0.4294967297")
+            .await
+            .status,
+        422
+    );
 }
