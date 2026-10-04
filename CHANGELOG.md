@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed: the default board URL is `http://localhost:8080` (2026-10-04)
+- `rbb install` without `--board-url` (and `rbb seed` on an empty database) now sets the board URL
+  to `http://localhost:8080` instead of `http://127.0.0.1:8080`. Browsers won't offer passkeys on
+  an IP-address URL, but they allow `localhost`. Existing boards keep their URL; change it under
+  Admin CP → Settings.
+
 ### Added: members arrange their own badges (2026-10-04)
 - **User CP → Badges:** members choose which of their badges are shown and move them up or down.
   Profiles, the badges next to posts (the first few shown) and `GET /api/v1/users/{uid}` follow
