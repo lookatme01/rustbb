@@ -141,6 +141,28 @@ async fn disabled_badges_are_not_awarded_or_shown() {
 }
 
 #[tokio::test]
+async fn saving_a_badge_that_no_longer_exists_says_so() {
+    let t = test_app!();
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM badges")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let r = admin(&t)
+        .await
+        .post_form(
+            "/admin/badges/edit",
+            &[("bid", "999999"), ("name", "Ghost"), ("enabled", "1")],
+        )
+        .await;
+    assert_eq!(r.status, 404, "{}", r.body);
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM badges")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+}
+
+#[tokio::test]
 async fn badges_appear_on_profiles_posts_and_the_badge_pages() {
     let t = test_app!();
     let old = member(&t, "oldtimer", 400, 2).await;

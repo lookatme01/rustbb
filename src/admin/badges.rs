@@ -120,7 +120,8 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Re
             "INSERT INTO badges (name, description, icon, color, requirements, enabled, disporder) VALUES ($2, $3, $4, $5, $6, $7, $8)",
         )
     };
-    q.bind(bid)
+    let saved = q
+        .bind(bid)
         .bind(&name)
         .bind(field(&f, "description").trim())
         .bind(&icon)
@@ -129,7 +130,12 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Re
         .bind(field(&f, "enabled") == "1")
         .bind(int(&f, "disporder"))
         .execute(&ctx.app.db)
-        .await?;
+        .await?
+        .rows_affected();
+    // Editing a badge that was deleted meanwhile (or never existed) saves nothing.
+    if saved == 0 {
+        return Err(AppError::not_found("badge"));
+    }
     ctx.app.invalidate(&["badges"]).await?;
     crate::admin::log(
         &ctx,
