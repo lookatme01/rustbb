@@ -78,6 +78,13 @@ codegen-units = 4
 opt-level = 3
 debug = false
 
+# Optimized like release but builds much faster (no LTO, parallel codegen), for frequent deploys
+# where a few percent of throughput matters less than build time: cargo build --profile deploy-fast
+[profile.deploy-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [profile.dev.package."*"]
 opt-level = 2
 
