@@ -32,7 +32,7 @@ jobs:
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Fuzz ${{ matrix.target }} for 5 minutes
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=300 -rss_limit_mb=2048 -timeout=10
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=300 -rss_limit_mb=2048 -timeout=10
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +61,7 @@ jobs:
       PSQL: psql
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
         with:

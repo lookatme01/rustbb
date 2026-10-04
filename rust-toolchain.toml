@@ -1,0 +1,6 @@
+# The exact Rust version rbb is built, linted and released with. CI and release builds use it, so
+# a new stable release (and its new lints) arrives as a deliberate change here, not a red build.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
