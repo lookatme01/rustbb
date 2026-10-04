@@ -1,5 +1,74 @@
 mod common;
 
+#[tokio::test]
+async fn tracking_distinguishes_deliveries_in_the_same_second_and_cancels_all_copies() {
+    let t = test_app!();
+    let to = t.create_user("recipient", "Passw0rd-recipient").await;
+    let bcc = t.create_user("hiddenrecipient", "Passw0rd-recipient").await;
+    let sender = t.login_as(1).await;
+    for subject in ["First", "Second"] {
+        let r = sender
+            .post_form(
+                "/pm/send",
+                &[
+                    ("to", "recipient"),
+                    ("bcc", "hiddenrecipient"),
+                    ("subject", subject),
+                    ("message", "Message body"),
+                    ("savecopy", "1"),
+                    ("receipt", "1"),
+                ],
+            )
+            .await;
+        assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    }
+    sqlx::query("UPDATE privatemessages SET dateline = 100")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let first: i32 =
+        sqlx::query_scalar("SELECT pmid FROM privatemessages WHERE uid = $1 AND subject = 'First'")
+            .bind(to)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        t.login_as(to)
+            .await
+            .get(&format!("/pm/read/{first}"))
+            .await
+            .status,
+        200
+    );
+    let receipts: Vec<i16> =
+        sqlx::query_scalar("SELECT receipt FROM privatemessages WHERE folder = 2 ORDER BY pmid")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(receipts, vec![2, 1]);
+    let second: i32 =
+        sqlx::query_scalar("SELECT pmid FROM privatemessages WHERE uid = 1 AND subject = 'Second'")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    let r = sender
+        .post_form(
+            "/pm/tracking",
+            &[("action", "cancel"), ("pmids", &second.to_string())],
+        )
+        .await;
+    assert!(r.status.is_redirection());
+    let remaining: Vec<(i32, String)> =
+        sqlx::query_as("SELECT uid, subject FROM privatemessages WHERE uid <> 1 ORDER BY uid")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(remaining, vec![(to, "First".into()), (bcc, "First".into())]);
+    assert_counts(&t, to).await;
+    assert_counts(&t, bcc).await;
+    assert_counts(&t, 1).await;
+}
+
 async fn assert_counts(t: &common::TestApp, uid: i32) {
     let cached: (i32, i32) = sqlx::query_as("SELECT totalpms, unreadpms FROM users WHERE uid = $1")
         .bind(uid)

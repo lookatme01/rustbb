@@ -796,9 +796,9 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
     }
     // System has no Sent folder, and the staff member's copy would show System as its sender.
     if f.savecopy && !f.as_system {
-        sqlx::query(
+        let sent_pmid: i32 = sqlx::query_scalar(
             "INSERT INTO privatemessages (uid, toid, fromid, recipients, folder, subject, message, dateline, status, receipt, smilieoff, ipaddress, pgp, pgp_fpr, pgp_payload, pgp_sig)
-             VALUES ($1, $2, $1, $3, 2, $4, $5, $6, 1, $7, $8, $9, $10, $11, $12, $13)",
+             VALUES ($1, $2, $1, $3, 2, $4, $5, $6, 1, $7, $8, $9, $10, $11, $12, $13) RETURNING pmid",
         )
         .bind(me.uid)
         .bind(to_ids.first().copied().unwrap_or(0))
@@ -813,8 +813,14 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
         .bind(&stored.fpr)
         .bind(&stored.payload)
         .bind(&stored.sig)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
+        let copies: Vec<i32> = rec_pmids.iter().map(|r| r.1).collect();
+        sqlx::query("UPDATE privatemessages SET sent_pmid = $2 WHERE pmid = ANY($1)")
+            .bind(&copies)
+            .bind(sent_pmid)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("UPDATE users SET totalpms = totalpms + 1 WHERE uid = $1")
             .bind(me.uid)
             .execute(&mut *tx)
@@ -943,9 +949,8 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
         tx.commit().await?;
         // Read receipt: mark the sender's copy.
         if changed > 0 && pm.receipt == 1 {
-            sqlx::query("UPDATE privatemessages SET receipt = 2, readtime = $3 WHERE fromid = $1 AND folder = 2 AND dateline = $2 AND receipt = 1")
-                .bind(pm.fromid)
-                .bind(pm.dateline)
+            sqlx::query("UPDATE privatemessages SET receipt = 2, readtime = $2 WHERE pmid = (SELECT sent_pmid FROM privatemessages WHERE pmid = $1) AND receipt = 1")
+                .bind(pm.pmid)
                 .bind(now())
                 .execute(&ctx.app.db)
                 .await?;
@@ -1185,25 +1190,33 @@ pub async fn tracking(ctx: Ctx) -> AppResult<Response> {
 
 pub async fn tracking_action(ctx: Ctx, CsrfForm(f): CsrfForm<ActionForm>) -> AppResult<Response> {
     let me = require_pm(&ctx)?;
+    if !ctx.perms.cantrackpms {
+        return Err(AppError::no_perm());
+    }
+    let mut tx = ctx.app.db.begin().await?;
+    let mut participants: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT r.uid FROM privatemessages r JOIN privatemessages s ON s.pmid = r.sent_pmid WHERE s.uid = $1 AND s.folder = 2 AND s.pmid = ANY($2)",
+    ).bind(me.uid).bind(&f.pmids).fetch_all(&mut *tx).await?;
+    participants.push(me.uid);
+    sqlx::query("SELECT uid FROM users WHERE uid = ANY($1) ORDER BY uid FOR UPDATE")
+        .bind(&participants)
+        .execute(&mut *tx)
+        .await?;
     // "Stop tracking" and cancelling unread messages (deletes the recipient copy if still unread).
     if f.action == "cancel" {
-        for pmid in &f.pmids {
-            let row: Option<(i32, i64)> = sqlx::query_as("SELECT toid, dateline FROM privatemessages WHERE pmid = $1 AND uid = $2 AND folder = 2").bind(pmid).bind(me.uid).fetch_optional(&ctx.app.db).await?;
-            if let Some((toid, dl)) = row {
-                sqlx::query("DELETE FROM privatemessages WHERE uid = $1 AND fromid = $2 AND dateline = $3 AND status = 0").bind(toid).bind(me.uid).bind(dl).execute(&ctx.app.db).await?;
-                sqlx::query(
-                    "UPDATE users SET unreadpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND status = 0 AND folder NOT IN (2,3)), totalpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1) WHERE uid = $1",
-                )
-                .bind(toid)
-                .execute(&ctx.app.db)
-                .await?;
-            }
+        sqlx::query("DELETE FROM privatemessages r USING privatemessages s WHERE r.sent_pmid = s.pmid AND s.uid = $1 AND s.folder = 2 AND s.pmid = ANY($2) AND s.receipt > 0 AND r.status = 0")
+            .bind(me.uid).bind(&f.pmids).execute(&mut *tx).await?;
+        for uid in &participants {
+            recount_pms(&mut tx, *uid).await?;
         }
     }
-    sqlx::query("UPDATE privatemessages SET receipt = 0 WHERE uid = $1 AND pmid = ANY($2)")
-        .bind(me.uid)
-        .bind(&f.pmids)
-        .execute(&ctx.app.db)
-        .await?;
+    sqlx::query(
+        "UPDATE privatemessages SET receipt = 0 WHERE uid = $1 AND folder = 2 AND pmid = ANY($2)",
+    )
+    .bind(me.uid)
+    .bind(&f.pmids)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(ctx.redirect("/pm/tracking", "Tracking updated."))
 }
