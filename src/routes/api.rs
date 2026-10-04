@@ -202,8 +202,28 @@ pub async fn forums(ctx: Ctx) -> AppResult<Response> {
 
 #[derive(Deserialize, Default)]
 pub struct PageQ {
+    /// Page number (offset pagination; prefer `after` for deep listings).
     pub page: Option<i64>,
     pub per_page: Option<i64>,
+    /// Keyset cursor from a previous response's `next`: the listing continues after it,
+    /// at constant cost however deep it goes.
+    pub after: Option<String>,
+}
+
+/// Parse a cursor of `n` dot-separated integers.
+fn cursor(s: &Option<String>, n: usize) -> AppResult<Option<Vec<i64>>> {
+    let Some(s) = s.as_deref().filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let parts: Vec<i64> = s
+        .split('.')
+        .map(|p| p.parse::<i64>())
+        .collect::<Result<_, _>>()
+        .map_err(|_| AppError::user("Invalid cursor."))?;
+    if parts.len() != n {
+        return Err(AppError::user("Invalid cursor."));
+    }
+    Ok(Some(parts))
 }
 
 fn thread_json(t: &Thread) -> serde_json::Value {
@@ -232,18 +252,34 @@ pub async fn forum_threads(
     } else {
         0
     };
-    let threads: Vec<Thread> = sqlx::query_as(
-        &format!("SELECT {} FROM threads WHERE fid = $1 AND visible = ANY($2) AND ($5 = 0 OR uid = $5) ORDER BY sticky DESC, lastpost DESC, tid DESC LIMIT $3 OFFSET $4", crate::models::THREAD_COLUMNS),
-    )
+    // Keyset: continue after (sticky, lastpost, tid) along threads_forum_list.
+    let after = cursor(&q.after, 3)?;
+    let threads: Vec<Thread> = sqlx::query_as(&format!(
+        "SELECT {} FROM threads WHERE fid = $1 AND visible = ANY($2) AND ($5 = 0 OR uid = $5)
+           AND ($6 OR (sticky, lastpost, tid) < ($7, $8, $9))
+         ORDER BY sticky DESC, lastpost DESC, tid DESC LIMIT $3 OFFSET $4",
+        crate::models::THREAD_COLUMNS
+    ))
     .bind(fid)
     .bind(&states)
     .bind(per)
-    .bind((page - 1) * per)
+    .bind(if after.is_some() { 0 } else { (page - 1) * per })
     .bind(own)
+    .bind(after.is_none())
+    .bind(after.as_ref().map(|c| c[0] != 0).unwrap_or(false))
+    .bind(after.as_ref().map(|c| c[1]).unwrap_or(0))
+    .bind(after.as_ref().map(|c| c[2] as i32).unwrap_or(0))
     .fetch_all(&ctx.app.db)
     .await?;
+    let next = (threads.len() as i64 == per)
+        .then(|| {
+            threads
+                .last()
+                .map(|t| format!("{}.{}.{}", t.sticky as i32, t.lastpost, t.tid))
+        })
+        .flatten();
     ok(
-        serde_json::json!({ "page": page, "per_page": per, "threads": threads.iter().map(thread_json).collect::<Vec<_>>() }),
+        serde_json::json!({ "page": page, "per_page": per, "next": next, "threads": threads.iter().map(thread_json).collect::<Vec<_>>() }),
     )
 }
 
@@ -252,13 +288,25 @@ pub async fn thread(ctx: Ctx, Path(tid): Path<i32>, Query(q): Query<PageQ>) -> A
     let per = q.per_page.unwrap_or(20).clamp(1, 100);
     let page = util::clamp_page(q.page);
     let states = ctx.visible_states(t.fid);
-    let posts: Vec<Post> = sqlx::query_as(&format!("SELECT {POST_COLUMNS} FROM posts WHERE tid = $1 AND visible = ANY($2) ORDER BY dateline, pid LIMIT $3 OFFSET $4"))
-        .bind(tid)
-        .bind(&states)
-        .bind(per)
-        .bind((page - 1) * per)
-        .fetch_all(&ctx.app.db)
-        .await?;
+    // Keyset: continue after (dateline, pid) along posts_tid_dateline.
+    let after = cursor(&q.after, 2)?;
+    let posts: Vec<Post> = sqlx::query_as(&format!(
+        "SELECT {POST_COLUMNS} FROM posts WHERE tid = $1 AND visible = ANY($2)
+           AND ($5 OR (dateline, pid) > ($6, $7))
+         ORDER BY dateline, pid LIMIT $3 OFFSET $4"
+    ))
+    .bind(tid)
+    .bind(&states)
+    .bind(per)
+    .bind(if after.is_some() { 0 } else { (page - 1) * per })
+    .bind(after.is_none())
+    .bind(after.as_ref().map(|c| c[0]).unwrap_or(0))
+    .bind(after.as_ref().map(|c| c[1] as i32).unwrap_or(0))
+    .fetch_all(&ctx.app.db)
+    .await?;
+    let next = (posts.len() as i64 == per)
+        .then(|| posts.last().map(|p| format!("{}.{}", p.dateline, p.pid)))
+        .flatten();
     let mut stale = vec![];
     let list: Vec<serde_json::Value> = posts
         .iter()
@@ -270,7 +318,7 @@ pub async fn thread(ctx: Ctx, Path(tid): Path<i32>, Query(q): Query<PageQ>) -> A
     crate::render::store_parsed(&ctx, stale);
     *ctx.app.thread_views.entry(tid).or_insert(0) += 1;
     ok(
-        serde_json::json!({ "thread": thread_json(&t), "page": page, "per_page": per, "posts": list }),
+        serde_json::json!({ "thread": thread_json(&t), "page": page, "per_page": per, "next": next, "posts": list }),
     )
 }
 

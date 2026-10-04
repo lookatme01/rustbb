@@ -427,7 +427,7 @@ pub async fn load_logs(
     uid: i32,
     tid: i32,
     limit: i64,
-    offset: i64,
+    before: i64,
 ) -> AppResult<Vec<minijinja::Value>> {
     if !ctx.can(Cap::ModLog) {
         return Ok(vec![]);
@@ -438,12 +438,13 @@ pub async fn load_logs(
         "SELECT l.id, l.uid, l.dateline, l.fid, l.tid, l.pid, l.action, l.data, COALESCE(host(l.ipaddress), ''), u.username, t.subject FROM moderatorlog l
          LEFT JOIN users u ON u.uid = l.uid LEFT JOIN threads t ON t.tid = l.tid
          WHERE ($1 = 0 OR l.uid = $1) AND ($2 = 0 OR l.tid = $2) AND ($5 OR l.fid = ANY($6))
-         ORDER BY l.id DESC LIMIT $3 OFFSET $4",
+           AND ($4 = 0 OR l.id < $4)
+         ORDER BY l.id DESC LIMIT $3",
     )
     .bind(uid)
     .bind(tid)
     .bind(limit)
-    .bind(offset)
+    .bind(before)
     .bind(all)
     .bind(&fids)
     .fetch_all(&ctx.app.db)
@@ -461,6 +462,8 @@ pub async fn load_logs(
 #[derive(Deserialize, Default)]
 pub struct LogQuery {
     pub page: Option<i64>,
+    /// Show entries older than this log id.
+    pub before: Option<i64>,
     pub uid: Option<i32>,
     pub tid: Option<i32>,
 }
@@ -471,29 +474,27 @@ pub async fn modlogs(ctx: Ctx, Query(q): Query<LogQuery>) -> AppResult<Response>
         return Err(AppError::no_perm());
     }
     let (uid, tid) = (q.uid.unwrap_or(0), q.tid.unwrap_or(0));
-    let (all, fids) = ctx.staff().scope(Cap::ModLog).sql();
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM moderatorlog WHERE ($1 = 0 OR uid = $1) AND ($2 = 0 OR tid = $2) AND ($3 OR fid = ANY($4))",
-    )
-    .bind(uid)
-    .bind(tid)
-    .bind(all)
-    .bind(&fids)
-    .fetch_one(&ctx.app.db)
-    .await?;
-    let pg = util::paginate(
-        total,
-        50,
-        util::clamp_page(q.page),
-        &format!("/modcp/modlogs?uid={uid}&tid={tid}&page={{page}}"),
-    );
-    let logs = load_logs(&ctx, uid, tid, 50, (pg.page - 1) * 50).await?;
+    // Keyset pagination by id: constant cost however far back, no count of the whole log.
+    let before = q.before.unwrap_or(0).max(0);
+    let mut logs = load_logs(&ctx, uid, tid, 51, before).await?;
+    let older = (logs.len() > 50).then(|| {
+        logs.truncate(50);
+        let last = logs
+            .last()
+            .and_then(|l| l.get_attr("id").ok())
+            .map(|v| v.to_string());
+        format!(
+            "/modcp/modlogs?uid={uid}&tid={tid}&before={}",
+            last.unwrap_or_default()
+        )
+    });
+    let newest = (before > 0).then(|| format!("/modcp/modlogs?uid={uid}&tid={tid}"));
     page(
         &ctx,
         "modcp/modlogs.html",
         "modlogs",
         "Moderator Logs",
-        minijinja::context! { logs => logs, pagination => pg },
+        minijinja::context! { logs => logs, older => older, newest => newest },
     )
     .await
 }
