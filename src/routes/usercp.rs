@@ -1344,9 +1344,15 @@ pub async fn badges_save(ctx: Ctx, CsrfForm(f): CsrfForm<BadgesForm>) -> AppResu
         .iter()
         .map(|b| b.bid)
         .collect();
-    // The order the member saw, limited to badges they have; any they didn't see go last.
+    // Only the badges the page showed: one earned (or re-enabled) since then had no Show box, so
+    // it's left as it is rather than hidden, and keeps following the arranged ones.
+    let current: Vec<i32> = current
+        .into_iter()
+        .filter(|bid| f.order.contains(bid))
+        .collect();
+    // The order the member saw, limited to badges they still have.
     let mut order: Vec<i32> = Vec::with_capacity(current.len());
-    for bid in f.order.iter().chain(&current) {
+    for bid in &f.order {
         if current.contains(bid) && !order.contains(bid) {
             order.push(*bid);
         }

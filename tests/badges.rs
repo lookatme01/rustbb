@@ -383,3 +383,44 @@ async fn members_choose_which_badges_show_and_their_order() {
     let profile = c.get(&format!("/user/{me}")).await;
     assert!(at(&profile.body, "Regular") < usize::MAX);
 }
+
+#[tokio::test]
+async fn saving_leaves_badges_earned_since_the_page_loaded_shown() {
+    let t = test_app!();
+    let me = member(&t, "latecomer", 400, 2).await;
+    rbb::badges::run(&t.app).await.unwrap();
+    let year = badge_id(&t, "1 Year of Service").await;
+    let regular = badge_id(&t, "Regular").await;
+    let y = year.to_string();
+    let c = t.login_as(me).await;
+    assert!(
+        c.get("/usercp/badges")
+            .await
+            .body
+            .contains("1 Year of Service")
+    );
+
+    // Earned while the page was open, so the form has no Show box for it.
+    sqlx::query("UPDATE users SET postnum = 100 WHERE uid = $1")
+        .bind(me)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    rbb::badges::run(&t.app).await.unwrap();
+    assert!(has(&t, me, regular).await);
+
+    let res = c
+        .post_form("/usercp/badges", &[("order", y.as_str()), ("shown", &y)])
+        .await;
+    assert_eq!(res.status, 303, "{}", res.body);
+    let hidden: bool =
+        sqlx::query_scalar("SELECT hidden FROM user_badges WHERE uid = $1 AND bid = $2")
+            .bind(me)
+            .bind(regular)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert!(!hidden, "a badge the page didn't show stays shown");
+    let profile = c.get(&format!("/user/{me}")).await;
+    assert!(profile.body.contains("<h3>Regular</h3>"));
+}
