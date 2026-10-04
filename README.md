@@ -438,12 +438,12 @@ cd rbb-0.6.0-x86_64-unknown-linux-gnu && cp .env.example .env   # then edit .env
 ./rbb doctor && ./rbb serve
 ```
 
-To cut a release, set `version` in `Cargo.toml`, move the changelog's *Unreleased* notes under a
-`## VERSION` heading, commit, and push a matching tag (`git tag v0.6.0 && git push origin v0.6.0`).
+To cut a release, set `version` in `Cargo.toml`, commit, and push a matching tag
+(`git tag v0.6.0 && git push origin v0.6.0`).
 `.github/workflows/release.yml` builds both binaries with `cargo zigbuild`, checks they need
 nothing newer than glibc 2.17, runs the x86_64 one on CentOS 7, and publishes the release with
-that changelog section as its notes. A tag with a hyphen (`v0.6.0-rc.1`) makes a pre-release.
-Running the workflow by hand (Actions → release → Run workflow) builds the archives without
+notes GitHub generates from the changes since the last tag. A tag with a hyphen (`v0.6.0-rc.1`)
+makes a pre-release. Running the workflow by hand (Actions → release → Run workflow) builds the archives without
 releasing.
 
 For your own frequent deploys, `cargo build --profile deploy-fast` builds an optimized binary

@@ -61,7 +61,7 @@ jobs:
           version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           name=rbb-$version-${{ matrix.target }}
           mkdir "$name"
-          cp target/${{ matrix.target }}/release/rbb README.md CHANGELOG.md .env.example "$name"/
+          cp target/${{ matrix.target }}/release/rbb README.md .env.example "$name"/
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
@@ -84,15 +84,9 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: sha256sum rbb-*.tar.gz > SHA256SUMS && cat SHA256SUMS
-      # The notes are this version's section of CHANGELOG.md ("## 0.6.0" up to the next "## ").
-      - name: Release notes
-        run: |
-          version=${GITHUB_REF_NAME#v}
-          awk -v v="## $version" '$0 == v {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --title "rbb ${GITHUB_REF_NAME#v}" --notes-file notes.md \
+          gh release create "$GITHUB_REF_NAME" dist/* --title "rbb ${GITHUB_REF_NAME#v}" --generate-notes \
             $(case "$GITHUB_REF_NAME" in *-*) echo --prerelease;; esac)

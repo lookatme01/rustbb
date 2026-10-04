@@ -3,3 +3,4 @@ data/
 .env
 uploads/
 .DS_Store
+CHANGELOG.md
