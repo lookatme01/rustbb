@@ -19,13 +19,15 @@ pub struct ReportQuery {
 async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, String)> {
     match kind {
         "post" => {
-            let (tid, fid, uid, subject): (i32, i32, i32, String) = sqlx::query_as("SELECT p.tid, p.fid, p.uid, t.subject FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = $1")
+            let (tid, fid, visible, subject): (i32, i32, i16, String) = sqlx::query_as("SELECT p.tid, p.fid, p.visible, t.subject FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = $1")
                 .bind(id)
                 .fetch_optional(&ctx.app.db)
                 .await?
                 .ok_or_else(|| AppError::not_found("post"))?;
             crate::routes::showthread::check_thread(ctx, tid).await?;
-            let _ = uid;
+            if !ctx.visible_states(fid).contains(&visible) {
+                return Err(AppError::not_found("post"));
+            }
             Ok((id, tid, fid, format!("a post in “{subject}”")))
         }
         "profile" => {

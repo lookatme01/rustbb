@@ -64,14 +64,15 @@ pub async fn online(ctx: Ctx) -> AppResult<Response> {
     .await?;
     // Thread titles for location2 (permission-checked).
     let tids: Vec<i32> = rows.iter().map(|r| r.8).filter(|t| *t > 0).collect();
-    let threads: HashMap<i32, (String, i32)> = sqlx::query_as::<_, (i32, String, i32)>(
-        "SELECT tid, subject, fid FROM threads WHERE tid = ANY($1)",
+    let threads: HashMap<i32, (String, i32)> = sqlx::query_as::<_, (i32, String, i32, i16)>(
+        "SELECT tid, subject, fid, visible FROM threads WHERE tid = ANY($1)",
     )
     .bind(&tids)
     .fetch_all(&ctx.app.db)
     .await?
     .into_iter()
-    .map(|(t, s, f)| (t, (s, f)))
+    .filter(|(_, _, fid, visible)| ctx.visible_states(*fid).contains(visible))
+    .map(|(t, s, f, _)| (t, (s, f)))
     .collect();
     let mut seen_users = std::collections::HashSet::new();
     let mut list = vec![];

@@ -241,7 +241,9 @@ pub async fn forum_threads(
 ) -> AppResult<Response> {
     let (_, _fp) = ctx.check_forum(fid)?;
     let access = ctx.access().forum(fid).map_err(|_| AppError::no_perm())?;
-    if access.threads == crate::domain::access::Threads::None {
+    if access.threads == crate::domain::access::Threads::None
+        || (access.threads == crate::domain::access::Threads::Own && ctx.uid() == 0)
+    {
         return Err(AppError::no_perm());
     }
     let per = q.per_page.unwrap_or(25).clamp(1, 100);
@@ -376,17 +378,16 @@ pub async fn create_thread(
     };
     crate::posting::validate(&ctx, &input, true)?;
     crate::posting::check_posting_allowed(&ctx).await?;
-    let prefix = if r.prefix > 0
-        && ctx
-            .cache
-            .prefixes_for(fid, &ctx.groups)
-            .iter()
-            .any(|p| p.pid == r.prefix)
-    {
-        r.prefix
-    } else {
-        0
-    };
+    let prefixes = ctx.cache.prefixes_for(fid, &ctx.groups);
+    if r.prefix != 0 && !prefixes.iter().any(|p| p.pid == r.prefix) {
+        return Err(AppError::user(
+            "The selected prefix is not available in this forum.",
+        ));
+    }
+    if forum.requireprefix && r.prefix == 0 && !prefixes.is_empty() {
+        return Err(AppError::user("You must select a thread prefix."));
+    }
+    let prefix = r.prefix;
     let (tid, pid, visible) = crate::posting::create_thread(
         &ctx,
         fid,
@@ -484,15 +485,17 @@ pub async fn search(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
     if !ctx.app.rate_check(&key, 10, 60) {
         return Err(AppError::RateLimited);
     }
-    let (fids, _) = crate::routes::search::searchable_forums(&ctx);
+    let (fids, own) = crate::routes::search::searchable_forums(&ctx);
     let rows: Vec<(i32, i32, String, String, i64, f32)> = sqlx::query_as(
         "SELECT p.pid, p.tid, t.subject, p.username, p.dateline, ts_rank(p.search_tsv, websearch_to_tsquery('english', $1)) AS r
-         FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.search_tsv @@ websearch_to_tsquery('english', $1) AND p.fid = ANY($2) AND p.visible = 1 AND t.visible = 1
+         FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.search_tsv @@ websearch_to_tsquery('english', $1) AND (p.fid = ANY($2) OR (p.fid = ANY($4) AND t.uid = $5 AND $5 > 0)) AND p.visible = 1 AND t.visible = 1
          ORDER BY r DESC, p.dateline DESC LIMIT $3",
     )
     .bind(q.q.trim())
     .bind(&fids)
     .bind(if q.limit > 0 { q.limit.min(100) } else { 25 })
+    .bind(&own)
+    .bind(ctx.uid())
     .fetch_all(&ctx.app.db)
     .await?;
     ok(

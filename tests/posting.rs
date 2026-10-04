@@ -4,6 +4,33 @@ mod common;
 
 use common::{Client, TestApp};
 
+#[tokio::test]
+async fn api_requires_an_available_prefix_when_the_forum_requires_one() {
+    let t = test_app!();
+    let fid = forum(&t).await;
+    sqlx::query("UPDATE forums SET requireprefix = TRUE WHERE fid = $1")
+        .bind(fid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let prefix: i32 = sqlx::query_scalar(
+        "INSERT INTO threadprefixes (prefix, forums) VALUES ('Required', $1) RETURNING pid",
+    )
+    .bind(vec![fid])
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["forums", "prefixes"]).await.unwrap();
+    let c = t.login_as(1).await;
+    let path = format!("/api/v1/forums/{fid}/threads");
+    for bad in [0, -1, i32::MAX] {
+        let r = c.send_json("POST", &path, serde_json::json!({"subject":"Missing prefix", "message":"Opening post", "prefix":bad}), &[("x-csrf-token", &c.csrf())]).await;
+        assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+    }
+    let r = c.send_json("POST", &path, serde_json::json!({"subject":"Valid prefix", "message":"Opening post", "prefix":prefix}), &[("x-csrf-token", &c.csrf())]).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+}
+
 async fn setting(t: &TestApp, k: &str, v: &str) {
     sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
         .bind(k)

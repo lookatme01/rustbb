@@ -5,6 +5,60 @@ mod common;
 use common::TestApp;
 
 #[tokio::test]
+async fn api_own_thread_forums_hide_other_authors_and_remain_searchable() {
+    let t = test_app!();
+    let (tid, uid) = hidden_subforum(&t).await;
+    sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES (8, 1, '{\"canonlyviewownthreads\":true}'), (8, 2, '{\"canonlyviewownthreads\":true}') ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+        .execute(&t.db.pool).await.unwrap();
+    t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+    let guest = t.client().get("/api/v1/forums/8/threads").await;
+    assert!(guest.status.is_client_error());
+    assert!(!guest.body.contains("Zebracorn sightings"));
+    let c = t.login_as(uid).await;
+    let r = c.get("/api/v1/search?q=zebracorn").await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("Zebracorn sightings"), "{}", r.body);
+    let other = t.create_user("outsider", "Passw0rd-outsider").await;
+    let c = t.login_as(other).await;
+    for path in ["/api/v1/forums/8/threads", "/api/v1/search?q=zebracorn"] {
+        let r = c.get(path).await;
+        assert_eq!(r.status, 200);
+        assert!(!r.body.contains("Zebracorn sightings"));
+    }
+    assert!(
+        c.get(&format!("/thread/{tid}"))
+            .await
+            .status
+            .is_client_error()
+    );
+}
+
+#[tokio::test]
+async fn online_locations_do_not_disclose_hidden_thread_titles() {
+    let t = test_app!();
+    let (tid, uid) = hidden_subforum(&t).await;
+    sqlx::query("INSERT INTO sessions (sid, uid, time, location, location2) VALUES ('viewer', $1, $2, $3, $4)")
+        .bind(uid).bind(rbb::util::now()).bind(format!("/thread/{tid}")).bind(tid)
+        .execute(&t.db.pool).await.unwrap();
+    let c = t.client();
+    assert!(c.get("/online").await.body.contains("Zebracorn sightings"));
+    sqlx::query("UPDATE threads SET visible = -1 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(!c.get("/online").await.body.contains("Zebracorn sightings"));
+    assert!(
+        t.login_as(1)
+            .await
+            .get("/online")
+            .await
+            .body
+            .contains("Zebracorn sightings")
+    );
+}
+
+#[tokio::test]
 async fn saved_searches_and_subscriptions_recheck_thread_visibility() {
     let t = test_app!();
     let (tid, _) = hidden_subforum(&t).await;
@@ -95,6 +149,10 @@ async fn reactions_on_hidden_posts_are_not_public() {
         .unwrap();
     let c = t.login_as(uid).await;
     assert_eq!(c.get(&format!("/post/{pid}/reactions")).await.status, 404);
+    assert_eq!(
+        c.get(&format!("/report?type=post&id={pid}")).await.status,
+        404
+    );
     assert_eq!(
         t.login_as(1)
             .await
