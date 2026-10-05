@@ -12,6 +12,7 @@ use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 
 #[derive(Deserialize, Default)]
 pub struct StQuery {
@@ -439,15 +440,8 @@ pub async fn showthread(
     } else {
         None
     };
-    let similar = if s.bool("showsimilarthreads") && pagination.page == 1 {
-        let rows = match ctx.app.similar_cache.get(&tid) {
-            Some(v) => v,
-            None => {
-                let v = similar_threads(&ctx, &thread).await.unwrap_or_default();
-                ctx.app.similar_cache.insert(tid, v.clone());
-                v
-            }
-        };
+    let similar = if s.bool("showsimilarthreads") {
+        let rows = related_threads(&ctx, &thread).await;
         // Filter by the viewer's permissions (the cache is shared by everyone).
         rows.as_array()
             .map(|a| {
@@ -548,26 +542,105 @@ pub async fn showthread(
     .await
 }
 
-/// Trigram-similar thread subjects (a strict threshold keeps the GIN index selective).
-async fn similar_threads(ctx: &Ctx, thread: &Thread) -> AppResult<serde_json::Value> {
-    let mut tx = ctx.app.db.begin().await?;
-    sqlx::query("SET LOCAL pg_trgm.similarity_threshold = 0.6")
-        .execute(&mut *tx)
-        .await?;
+/// How long a page waits for related threads that aren't cached yet. A slower lookup finishes
+/// in the background and fills the cache for the next view.
+const RELATED_WAIT: Duration = Duration::from_millis(150);
+
+/// Related threads for `thread`, best first, for every viewer (filter by permission before
+/// showing). Cached per thread; at most a few lookups run at once, so crawlers walking cold
+/// threads can't pile work onto the database.
+async fn related_threads(ctx: &Ctx, thread: &Thread) -> serde_json::Value {
+    if let Some(v) = ctx.app.similar_cache.get(&thread.tid) {
+        return v;
+    }
+    let app = ctx.app.clone();
+    let (tid, fid, firstpost) = (thread.tid, thread.fid, thread.firstpost);
+    let task = tokio::spawn(async move {
+        let Ok(_permit) = app.related_sem.try_acquire() else {
+            return None;
+        };
+        // Another view may have filled it while this one waited for the permit.
+        if let Some(v) = app.similar_cache.get(&tid) {
+            return Some(v);
+        }
+        let v = match find_related(&app.db, tid, fid, firstpost).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("related threads for {tid}: {e}");
+                return None;
+            }
+        };
+        app.similar_cache.insert(tid, v.clone());
+        Some(v)
+    });
+    match tokio::time::timeout(RELATED_WAIT, task).await {
+        Ok(Ok(Some(v))) => v,
+        _ => serde_json::Value::Array(vec![]),
+    }
+}
+
+/// Threads whose first post shares the most distinctive words with this thread's first post
+/// (subject words first, then the most repeated words of the message), ranked by full-text
+/// relevance with a bonus for the same forum; topped up with the forum's recently active threads.
+pub async fn find_related(
+    db: &sqlx::PgPool,
+    tid: i32,
+    fid: i32,
+    firstpost: i32,
+) -> AppResult<serde_json::Value> {
+    const WANT: i64 = 20;
+    let mut tx = db.begin().await?;
     sqlx::query("SET LOCAL statement_timeout = '2s'")
         .execute(&mut *tx)
         .await?;
-    let rows: Vec<(i32, String, i32, i64, String, i32)> = sqlx::query_as(
-        "SELECT tid, subject, replies, lastpost, lastposter, fid FROM threads
-         WHERE subject % $1 AND tid <> $2 AND visible = 1 AND closed NOT LIKE 'moved|%'
-         ORDER BY similarity(subject, $1) DESC LIMIT 15",
+    // The first post's lexemes are already stemmed with stop words removed; quoting them keeps
+    // them verbatim in a 'simple' query.
+    let query: Option<String> = sqlx::query_scalar(
+        "SELECT string_agg(quote_literal(lexeme), ' | ') FROM (
+             SELECT u.lexeme FROM posts p, unnest(p.search_tsv) u
+             WHERE p.pid = $1 AND length(u.lexeme) > 2 AND u.lexeme !~ '^[0-9]+$'
+             ORDER BY ('A' = ANY(u.weights)) DESC, array_length(u.positions, 1) DESC NULLS LAST, u.lexeme
+             LIMIT 10) terms",
     )
-    .bind(&thread.subject)
-    .bind(thread.tid)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap_or_default();
-    tx.commit().await?;
+    .bind(firstpost)
+    .fetch_one(&mut *tx)
+    .await?;
+    let mut rows: Vec<(i32, String, i32, i64, String, i32)> = vec![];
+    if let Some(q) = query.filter(|q| !q.is_empty()) {
+        rows = sqlx::query_as(
+            "SELECT t.tid, t.subject, t.replies, t.lastpost, t.lastposter, t.fid
+             FROM to_tsquery('simple', $1) q, posts p JOIN threads t ON t.firstpost = p.pid
+             WHERE p.search_tsv @@ q AND t.tid <> $2 AND t.visible = 1 AND t.closed NOT LIKE 'moved|%'
+             ORDER BY ts_rank(p.search_tsv, q) * CASE WHEN t.fid = $3 THEN 1.5 ELSE 1 END DESC, t.lastpost DESC
+             LIMIT $4",
+        )
+        .bind(&q)
+        .bind(tid)
+        .bind(fid)
+        .bind(WANT)
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap_or_default();
+    }
+    if (rows.len() as i64) < WANT {
+        // A failed or slow search above aborted the transaction; the top-up gets its own.
+        drop(tx);
+        let more: Vec<(i32, String, i32, i64, String, i32)> = sqlx::query_as(
+            "SELECT tid, subject, replies, lastpost, lastposter, fid FROM threads
+             WHERE fid = $1 AND visible = 1 AND tid <> $2 AND closed NOT LIKE 'moved|%'
+             ORDER BY lastpost DESC LIMIT $3",
+        )
+        .bind(fid)
+        .bind(tid)
+        .bind(WANT)
+        .fetch_all(db)
+        .await?;
+        for r in more {
+            if (rows.len() as i64) < WANT && !rows.iter().any(|x| x.0 == r.0) {
+                rows.push(r);
+            }
+        }
+    }
     Ok(serde_json::Value::Array(
         rows.into_iter()
             .map(|(t, sub, r, lp, lpn, f)| serde_json::json!({"tid": t, "subject": sub, "replies": r, "lastpost": lp, "lastposter": lpn, "fid": f}))

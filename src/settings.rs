@@ -445,15 +445,15 @@ pub static DEFS: &[SettingDef] = &[
     s!(
         "showthread",
         "showsimilarthreads",
-        "Show Similar Threads Table",
-        "",
+        "Show Related Threads",
+        "List threads on the same subject under the reply box, topped up with the forum's recently active threads.",
         "yesno",
         "1"
     ),
     s!(
         "showthread",
         "similarlimit",
-        "Similar Threads Limit",
+        "Related Threads Limit",
         "",
         "numeric",
         "5"

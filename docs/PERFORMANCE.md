@@ -49,8 +49,10 @@ cache answers. An uncached full-text search for two very common words in this co
   prebuilt when they change instead of on every request; templates are compiled at start-up; avatars
   for lists come from a short-lived in-memory cache.
 
-- **Similar threads**: a trigram query with `pg_trgm.similarity_threshold = 0.6`,
-  a 2 s statement timeout, and a 1 h per-thread cache (was ~300 ms per view).
+- **Related threads**: a full-text query over first posts built from the thread's ten most
+  distinctive words, with a 2 s statement timeout and a 1 h per-thread cache. A page waits at
+  most 150 ms for an uncached lookup (the rest finishes in the background and fills the cache),
+  and at most two lookups run at once, so crawlers walking cold threads can't load the database.
 - **Cookie-less guests** (crawlers, load tools) share one session keyed by IP hash
   instead of creating a session row per request.
 - **Online summary, board stats, birthdays and feeds** are cached for 30–60 s;

@@ -113,10 +113,12 @@ pub struct AppState {
     pub stats_cache: moka::sync::Cache<&'static str, serde_json::Value>,
     /// Short-lived (30s) cache for expensive shared fragments (online list, feeds).
     pub short_cache: moka::sync::Cache<String, serde_json::Value>,
-    /// Similar-threads results per thread (1 hour).
+    /// Related-threads results per thread (1 hour).
     pub similar_cache: moka::sync::Cache<i32, serde_json::Value>,
     /// Bounds concurrent full-text searches so they can't exhaust the DB pool.
     pub search_sem: tokio::sync::Semaphore,
+    /// Related-thread lookups running at once (see `routes::showthread`).
+    pub related_sem: tokio::sync::Semaphore,
     pub plugins: crate::plugins::Plugins,
     /// Where uploaded files live (local directory or object storage).
     pub storage: crate::infra::storage::Storage,
@@ -202,6 +204,7 @@ impl AppState {
                 .max_capacity(200_000)
                 .build(),
             search_sem: tokio::sync::Semaphore::new(8),
+            related_sem: tokio::sync::Semaphore::new(2),
             plugins,
             storage,
             streams: Arc::new(crate::infra::streams::StreamLimits::new(

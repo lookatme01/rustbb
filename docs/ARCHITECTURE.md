@@ -53,7 +53,7 @@ transactions.
   forum and every ancestor (existence, active, `canview`, passwords) and decides whether threads
   are readable in full, only the viewer's own, or not at all. Every reader of forum content uses
   it: forum and thread pages, the API, search, feeds, the sitemap (always as a guest), the portal,
-  statistics, the archive, similar threads, notifications and the counters aggregated on the
+  statistics, the archive, related threads, notifications and the counters aggregated on the
   index.
 * `domain::staff::Staff` turns group permissions and moderator assignments into explicit
   capabilities (notes, warnings, bans, post/member/PM reports, moderator log, queue, cross-forum
@@ -69,7 +69,7 @@ transactions.
 | Forum access memo | `ForumAccess` per permission set | dropped with every configuration reload | same as configuration |
 | Guest page cache (`pagecache.rs`) | finished HTML of guest pages, tagged by board/forum/thread | tags or everything, through `cluster_events`; entries also expire after 30 s | 30 s worst case |
 | Parsed post HTML | rendered posts, keyed by parser revision | parser revision bump; edits set `parser_rev = -1` | none (revision check on read) |
-| Short caches (stats, online list, similar threads, avatars) | derived display data | time-based | 30 s – 1 h, never used for authorization |
+| Short caches (stats, online list, related threads, avatars) | derived display data | time-based | 30 s – 1 h, never used for authorization |
 
 Authorization never depends on a cache that could miss an invalidation: permission data comes
 from the configuration cache, whose invalidations are durable (a node that misses a NOTIFY reads
