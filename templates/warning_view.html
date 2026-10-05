@@ -11,6 +11,6 @@
   {% if show_notes and w[8] %}<div>Notes</div><div>{{ w[8] }}</div>{% endif %}
   {% if w[6] %}<div>Revoked</div><div>{{ w[6]|date('datetime') }}{% if w[11] %} by {{ w[11] }}{% endif %}{% if w[9] %} — {{ w[9] }}{% endif %}</div>{% endif %}
 </div>
-{% if can_revoke %}<form method="post" action="/warning/{{ wid }}/revoke" class="box-foot actions" style="margin:0">{{ m.csrf_field() }}<input type="text" name="reason" placeholder="Reason for revoking" required><button class="btn secondary small">Revoke warning</button></form>{% endif %}
+{% if can_revoke %}<form method="post" action="/warning/{{ wid }}/revoke" class="box-foot actions" style="margin:0">{{ m.csrf_field() }}<input type="text" name="reason" aria-label="Reason for revoking" placeholder="Reason for revoking" required><button class="btn secondary small">Revoke warning</button></form>{% endif %}
 </section>
 {% endblock %}

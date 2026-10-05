@@ -30,7 +30,7 @@
 {% if t %}
 <form method="post" action="/admin/themes/{{ t.tid }}/banner" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Upload a banner</h2><span class="desc">JPEG, PNG, GIF or WebP. Wide images (2400 × 600 or so) look best; they are resized and compressed for you.</span></div>
-  <div class="box-body actions" style="margin:0"><input type="file" name="file" accept="image/*" required><button class="btn secondary">Upload</button></div>
+  <div class="box-body actions" style="margin:0"><input type="file" name="file" accept="image/*" required aria-label="Banner image"><button class="btn secondary">Upload</button></div>
 </form>
 {% endif %}
 {% endblock %}

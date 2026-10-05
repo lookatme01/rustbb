@@ -44,8 +44,8 @@
     <div>
       <label class="check"><input type="checkbox" name="postpoll" value="1" class="js-toggle" data-target="#poll-fields"{% if form.postpoll %} checked{% endif %}> Add a poll to this thread</label>
       <div id="poll-fields"{% if not form.postpoll %} hidden{% endif %} style="margin-top:8px;display:grid;gap:8px">
-        <input type="text" name="poll_question" value="{{ form.poll_question }}" placeholder="Poll question" maxlength="250">
-        <textarea name="poll_options" rows="5" placeholder="One option per line (max {{ max_poll_options }})" style="min-height:100px">{{ form.poll_options }}</textarea>
+        <input type="text" name="poll_question" aria-label="Poll question" value="{{ form.poll_question }}" placeholder="Poll question" maxlength="250">
+        <textarea name="poll_options" rows="5" aria-label="Poll options, one per line" placeholder="One option per line (max {{ max_poll_options }})" style="min-height:100px">{{ form.poll_options }}</textarea>
         <div class="checks">
           <label><input type="checkbox" name="poll_multiple" value="1"{% if form.poll_multiple %} checked{% endif %}> Allow multiple choice</label>
           <label><input type="checkbox" name="poll_public" value="1"{% if form.poll_public %} checked{% endif %}> Public poll (show who voted for what)</label>

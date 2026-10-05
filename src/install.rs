@@ -146,7 +146,7 @@ pub async fn install(
             1,
             "Super Moderators",
             "These users can moderate any forum.",
-            "<span style=\"color: #CC00CC;\"><strong>{username}</strong></span>",
+            SUPERMOD_STYLE,
             "Super Moderator",
             6,
             false,
@@ -157,7 +157,7 @@ pub async fn install(
             1,
             "Administrators",
             "The group all administrators belong to.",
-            "<span style=\"color: #1e8e3e;\"><strong><em>{username}</em></strong></span>",
+            ADMIN_STYLE,
             "Administrator",
             7,
             false,
@@ -179,7 +179,7 @@ pub async fn install(
             1,
             "Moderators",
             "These users moderate specific forums.",
-            "<span style=\"color: #CC00CC;\"><strong>{username}</strong></span>",
+            SUPERMOD_STYLE,
             "Moderator",
             5,
             false,
@@ -603,6 +603,12 @@ pub const MIDNIGHT_BRAND: &str = "#a78bfa";
 /// Midnight's stylesheet before the Halo theme (0.5), which fixed the accent colour in CSS.
 const MIDNIGHT_CSS_05: &str = ":root, :root[data-colormode] {\n  --canvas: #080b16; --surface: #0f1326; --surface-2: #13182f; --surface-3: #1a2040;\n  --signal: #a78bfa; --signal-strong: #c4b5fd; --signal-wash: #221b45; --link: #c4b5fd;\n}\n";
 
+/// Default group name styles (moderators share the super moderators'): one colour per colour scheme, each readable (4.5:1) on that
+/// scheme's backgrounds.
+const ADMIN_STYLE: &str = "<span style=\"color: light-dark(#18753a, #5fd08a);\"><strong><em>{username}</em></strong></span>";
+const SUPERMOD_STYLE: &str =
+    "<span style=\"color: light-dark(#a0109f, #f08cf0);\"><strong>{username}</strong></span>";
+
 pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
     crate::system::ensure(db).await?;
     hash_forum_passwords(db).await?;
@@ -623,6 +629,48 @@ pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
         .bind(crate::util::random_token(40))
         .execute(db)
         .await?;
+    // Post HTML cached by an older parser is re-rendered.
+    let code_rev: Option<String> =
+        sqlx::query_scalar("SELECT value FROM settings WHERE name = 'parser_code_rev'")
+            .fetch_optional(db)
+            .await?;
+    if code_rev.as_deref() != Some(crate::parser::CODE_REV.to_string().as_str()) {
+        sqlx::query(
+            "INSERT INTO settings (name, value) VALUES ('parser_rev', '1')
+             ON CONFLICT (name) DO UPDATE SET value = (COALESCE(NULLIF(settings.value, ''), '0')::int + 1)::text",
+        )
+        .execute(db)
+        .await?;
+        sqlx::query("INSERT INTO settings (name, value) VALUES ('parser_code_rev', $1) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+            .bind(crate::parser::CODE_REV.to_string())
+            .execute(db)
+            .await?;
+    }
+    // 0.7: default name colours that are readable in light and dark mode (unedited ones only).
+    for (gid, old, new) in [
+        (
+            4,
+            "<span style=\"color: #1e8e3e;\"><strong><em>{username}</em></strong></span>",
+            ADMIN_STYLE,
+        ),
+        (
+            3,
+            "<span style=\"color: #CC00CC;\"><strong>{username}</strong></span>",
+            SUPERMOD_STYLE,
+        ),
+        (
+            6,
+            "<span style=\"color: #CC00CC;\"><strong>{username}</strong></span>",
+            SUPERMOD_STYLE,
+        ),
+    ] {
+        sqlx::query("UPDATE usergroups SET namestyle = $3 WHERE gid = $1 AND namestyle = $2")
+            .bind(gid)
+            .bind(old)
+            .bind(new)
+            .execute(db)
+            .await?;
+    }
     for t in TASKS {
         sqlx::query("INSERT INTO tasks (key, title, description, interval_secs, nextrun) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (key) DO NOTHING")
             .bind(t.key)

@@ -17,7 +17,7 @@
   --surface-3: #efeff3;
   --ink: #16161a;
   --ink-soft: #5f5f6a;
-  --ink-faint: #9a9aa5;
+  --ink-faint: #686874;
   --rule: rgba(22, 22, 40, .08);
   --rule-strong: rgba(22, 22, 40, .15);
   --glass: rgba(255, 255, 255, .72);
@@ -71,7 +71,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-colormode="light"]) {
     --canvas: #0c0c10; --surface: #15151b; --surface-2: #1a1a21; --surface-3: #22222b;
-    --ink: #f1f1f5; --ink-soft: #a3a3b0; --ink-faint: #6c6c78;
+    --ink: #f1f1f5; --ink-soft: #a3a3b0; --ink-faint: #8e8e9a;
     --rule: rgba(255, 255, 255, .07); --rule-strong: rgba(255, 255, 255, .13); --glass: rgba(18, 18, 24, .7);
     --signal-strong: color-mix(in oklab, var(--brand) 80%, #fff); --signal-wash: color-mix(in oklab, var(--brand) 16%, var(--surface));
     --signal-soft: color-mix(in oklab, var(--brand) 26%, var(--surface)); --link: color-mix(in oklab, var(--brand) 62%, #fff);
@@ -86,7 +86,7 @@
 }
 :root[data-colormode="dark"] {
   --canvas: #0c0c10; --surface: #15151b; --surface-2: #1a1a21; --surface-3: #22222b;
-  --ink: #f1f1f5; --ink-soft: #a3a3b0; --ink-faint: #6c6c78;
+  --ink: #f1f1f5; --ink-soft: #a3a3b0; --ink-faint: #8e8e9a;
   --rule: rgba(255, 255, 255, .07); --rule-strong: rgba(255, 255, 255, .13); --glass: rgba(18, 18, 24, .7);
   --signal-strong: color-mix(in oklab, var(--brand) 80%, #fff); --signal-wash: color-mix(in oklab, var(--brand) 16%, var(--surface));
   --signal-soft: color-mix(in oklab, var(--brand) 26%, var(--surface)); --link: color-mix(in oklab, var(--brand) 62%, #fff);
@@ -115,6 +115,8 @@ body {
 }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+/* Links inside running text are underlined, not told apart by colour alone (WCAG 1.4.1). */
+.post-body a:not(.btn), .signature a, .notice a, p a:not(.btn), .box-body a:not(.btn), .box-foot a:not(.btn), .kv > div > a { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); }
 :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-radius: 6px; }
 img { max-width: 100%; height: auto; }
 h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; margin: 0 0 .5em; letter-spacing: -.022em; }
@@ -171,7 +173,7 @@ main { padding: 8px 0 64px; flex: 1 0 auto; width: 100%; }
   background: var(--signal); color: var(--signal-ink); font-size: .68rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
 }
 .icon-btn .badge { position: absolute; top: 2px; right: 1px; box-shadow: 0 0 0 2px var(--surface); }
-.name-system { font-weight: 700; color: var(--signal); }
+.name-system { font-weight: 700; color: var(--link); }
 .name-system::after {
   content: "BOT"; display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 5px; vertical-align: 1px;
   background: var(--signal); color: var(--signal-ink); font-size: .6rem; font-weight: 750; letter-spacing: .05em; line-height: 1.4;
@@ -403,7 +405,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
 .forum-stats b { display: block; font-size: 1rem; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 
 .lastpost { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: .84rem; color: var(--ink-soft); line-height: 1.35; }
-.lastpost .lp-text { min-width: 0; }
+.lastpost .lp-text { min-width: 0; line-height: 24px; } /* stacked links 24px apart (WCAG 2.5.8) */
 .lastpost .subject { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--ink); }
 .lastpost a { color: var(--ink-soft); }
 .lastpost a.subject { color: var(--ink); }
@@ -604,6 +606,7 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 }
 .editor-toolbar select { width: auto; padding-right: 26px; background-position: right 7px center; }
 .editor-toolbar select:focus { box-shadow: none; }
+.editor-toolbar select:focus-visible, .editor-toolbar button:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
 .editor-toolbar button:hover, .editor-toolbar select:hover { background: var(--surface-3); color: var(--ink); }
 .editor-toolbar .sep { width: 1px; height: 18px; background: var(--rule-strong); margin: 0 4px; }
 .editor-toolbar .tab { margin-left: auto; }
@@ -1123,3 +1126,6 @@ article.pgp-tampered { box-shadow: inset 3px 0 0 var(--bad); }
 .auth-or { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; color: var(--ink-faint); font-size: .8rem; }
 .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--rule-strong); }
 .js-passkey-login .btn svg { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
+
+/* Small calendar links get a 24px target (WCAG 2.5.8). */
+a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 24px; line-height: 24px; text-align: center; }

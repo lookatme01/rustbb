@@ -571,7 +571,7 @@ pub async fn mycode_help(ctx: Ctx) -> AppResult<Response> {
         ("Link", "[url=https://example.com]a link[/url]"),
         ("Email", "[email]someone@example.com[/email]"),
         ("Image", "[img]https://example.com/image.png[/img]"),
-        ("Colour", "[color=red]red text[/color]"),
+        ("Colour", "[color=#c62828]red text[/color]"),
         ("Size", "[size=large]large text[/size]"),
         ("Font", "[font=Georgia]Georgia text[/font]"),
         ("Alignment", "[align=center]centered[/align]"),

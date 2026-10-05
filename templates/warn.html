@@ -9,7 +9,7 @@
     {% if custom %}<label><input type="radio" name="warningtype" value="0"> Custom: <input type="text" name="custom_reason" placeholder="Reason"> <input type="number" name="custom_points" min="1" value="1" style="width:70px"> points, expires in <input type="number" name="expires_days" min="0" value="7" style="width:70px"> days</label>{% endif %}
   </div></div>
   <div class="form-row"><label for="notes">Administrative notes</label><textarea id="notes" name="notes" rows="3"></textarea></div>
-  <div class="form-row"><span class="label"><strong>Notify</strong></span><div class="checks"><label><input type="checkbox" name="sendpm" value="1" checked> Send the user a private message</label><textarea name="pm_message" rows="3" placeholder="Message (optional)"></textarea></div></div>
+  <div class="form-row"><span class="label"><strong>Notify</strong></span><div class="checks"><label><input type="checkbox" name="sendpm" value="1" checked> Send the user a private message</label><textarea name="pm_message" rows="3" aria-label="Message to the member" placeholder="Message (optional)"></textarea></div></div>
   <div class="box-foot"><button class="btn danger" type="submit">Issue warning</button></div>
 </form>
 {% endblock %}

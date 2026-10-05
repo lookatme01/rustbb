@@ -13,7 +13,7 @@
     <div>
       <h1>{{ author.formatted|safe }}</h1>
       <div class="muted">{{ author.usertitle }}{% if author.stars %} · {% for i in range(author.stars) %}<img src="{{ author.starimage }}" alt="" width="13" height="13">{% endfor %}{% endif %}</div>
-      <div class="small faint">{{ group_title }}{% if additional_groups %} · also {{ additional_groups|join(", ") }}{% endif %}{% if online %} · <span style="color:var(--live)">Online now</span>{% endif %}</div>
+      <div class="small faint">{{ group_title }}{% if additional_groups %} · also {{ additional_groups|join(", ") }}{% endif %}{% if online %} · <span style="color:var(--ok)">Online now</span>{% endif %}</div>
       {% if user.away %}<div class="notice warn small">Away{% if user.awayreason %}: {{ user.awayreason }}{% endif %}{% if user.returndate %} — returning {{ user.returndate }}{% endif %}</div>{% endif %}
     </div>
     <div class="actions">

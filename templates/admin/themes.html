@@ -11,7 +11,7 @@
 </tbody></table></section>
 <form method="post" action="/admin/themes/import" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Import a theme</h2></div>
-  <div class="box-body"><textarea name="json" rows="4" placeholder="Paste the contents of an exported theme .json file" required></textarea></div>
+  <div class="box-body"><textarea name="json" rows="4" aria-label="Exported theme JSON" placeholder="Paste the contents of an exported theme .json file" required></textarea></div>
   <div class="box-foot"><button class="btn small">Import</button></div>
 </form>
 {% endblock %}

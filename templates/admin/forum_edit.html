@@ -27,8 +27,8 @@
   </div></div>
   <div class="form-row"><span class="label"><strong>Forum rules</strong></span><div style="display:grid;gap:6px">
     <select name="rulestype" aria-label="Rules display">{% for o in [(0,"Don't show"),(1,'Show above threads'),(2,'Show as a collapsed link')] %}<option value="{{ o[0] }}"{% if f and f.rulestype == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
-    <input type="text" name="rulestitle" value="{{ f.rulestitle if f else '' }}" placeholder="Rules title">
-    <textarea name="rules" rows="4" placeholder="Rules (MyCode)">{{ f.rules if f else '' }}</textarea>
+    <input type="text" name="rulestitle" aria-label="Rules title" value="{{ f.rulestitle if f else '' }}" placeholder="Rules title">
+    <textarea name="rules" rows="4" aria-label="Forum rules" placeholder="Rules (MyCode)">{{ f.rules if f else '' }}</textarea>
   </div></div>
   <div class="box-foot actions" style="margin:0"><button class="btn" type="submit">Save forum</button></div>
 </form>

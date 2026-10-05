@@ -147,6 +147,10 @@ enum Node {
     },
 }
 
+/// Bump whenever the parser's output changes: `install::upgrade` then invalidates every post's
+/// cached HTML, so existing posts pick up the change. (2: titled video frames.)
+pub const CODE_REV: i32 = 2;
+
 const KNOWN: &[&str] = &[
     "b",
     "i",
@@ -1130,8 +1134,15 @@ fn video_embed(service: &str, url: &str) -> Option<String> {
         ),
         _ => return None,
     };
+    let title = match service {
+        "youtube" => "YouTube video",
+        "vimeo" => "Vimeo video",
+        "dailymotion" => "Dailymotion video",
+        "twitch" => "Twitch video",
+        _ => "Embedded video",
+    };
     Some(format!(
-        "<div class=\"mycode_video\"><iframe src=\"{src}\" loading=\"lazy\" allowfullscreen referrerpolicy=\"strict-origin-when-cross-origin\" sandbox=\"allow-scripts allow-same-origin allow-presentation allow-popups\"></iframe></div>"
+        "<div class=\"mycode_video\"><iframe src=\"{src}\" title=\"{title}\" loading=\"lazy\" allowfullscreen referrerpolicy=\"strict-origin-when-cross-origin\" sandbox=\"allow-scripts allow-same-origin allow-presentation allow-popups\"></iframe></div>"
     ))
 }
 

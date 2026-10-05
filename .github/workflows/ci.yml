@@ -87,6 +87,35 @@ jobs:
       - name: Rich-text editor conversions (MyCode <-> editable HTML)
         run: node --test 'tests/js/*.test.mjs'
 
+  a11y:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: rbb
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rbb" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: cargo build --locked
+      - name: Install the audit's browser
+        working-directory: tests/a11y
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Accessibility audit (axe WCAG 2.2 A/AA, keyboard focus)
+        env:
+          E2E_SERVER_URL: postgres://rbb@localhost:5432
+          PSQL: psql
+        run: scripts/a11y.sh
+
   audit:
     runs-on: ubuntu-latest
     steps:

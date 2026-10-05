@@ -32,7 +32,7 @@
 <table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in history|reverse %}<tr><td>{{ h[0]|date('date') }}</td><td class="num">{{ h[1]|num }}</td><td class="num">{{ h[2]|num }}</td><td class="num">{{ h[3]|num }}</td></tr>{% endfor %}</tbody></table></section>
 {% endif %}
 <div class="two-col">
-<form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6">{{ notes }}</textarea></div><div class="box-foot"><button class="btn small">Save notes</button></div></form>
+<form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6" aria-label="Your notes">{{ notes }}</textarea></div><div class="box-foot"><button class="btn small">Save notes</button></div></form>
 <section class="box"><div class="box-head"><h2>Recent admin actions</h2><a class="right" href="/admin/tools/adminlog">All</a></div>
 <table class="grid"><tbody>{% for l in logs %}<tr><td class="small">{{ l[5] or 'system' }}</td><td class="small">{{ l[2] }}</td><td class="small muted">{{ l[4]|date }}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></section>
 </div>

@@ -4,11 +4,11 @@
   {% set uname = a.username if a else (p.username or 'Guest') %}
   <aside class="post-author">
     <div class="post-author-inner">
-      {% if a %}<a href="{{ url_user(a.uid, a.username) }}" tabindex="-1">{{ m.face(a.avatar, a.username, a.uid, 88, '', a.online) }}</a>{% else %}{{ m.face('', uname, 0, 88) }}{% endif %}
+      {% if a %}<a href="{{ url_user(a.uid, a.username) }}" tabindex="-1" aria-label="{{ a.username }}">{{ m.face(a.avatar, a.username, a.uid, 88, '', a.online) }}</a>{% else %}{{ m.face('', uname, 0, 88) }}{% endif %}
       {% if a %}
         <a class="name" href="{{ url_user(a.uid, a.username) }}">{{ a.formatted|safe }}</a>
         {% if a.usertitle %}<span class="role">{{ a.usertitle }}</span>{% endif %}
-        {% if a.stars %}<span class="stars" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
+        {% if a.stars %}<span class="stars" role="img" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
         {% if a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
         {% if a.away %}<span class="tag">Away</span>{% endif %}
         {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
