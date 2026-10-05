@@ -614,6 +614,25 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .editor .live-preview { display: none; padding: 16px 18px; min-height: 260px; font-family: var(--font-read); line-height: 1.7; }
 .editor.previewing textarea { display: none; }
 .editor.previewing .live-preview { display: block; }
+/* rich-text mode (static/js/editor.mjs) */
+.wy-switch { display: inline-flex; gap: 2px; padding: 2px; margin-right: 6px; border-radius: 10px; background: var(--surface-3); }
+.editor-toolbar .wy-switch button { height: 28px; min-width: 0; padding: 0 10px; font-size: .8rem; }
+.editor-toolbar .wy-switch button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.editor.rich textarea { display: none; }
+.wy-surface { min-height: 260px; padding: 14px 16px; outline: none; white-space: pre-wrap; cursor: text; }
+.wy-surface[hidden], .editor.previewing .wy-surface { display: none; }
+/* The line break MyCode keeps after a block isn't shown once the post is rendered either. */
+.wy-surface :is(blockquote, pre, ul, ol, hr, .wy-spoiler, div[data-my]) + br { display: none; }
+.wy-surface blockquote { margin: 10px 0; padding: 10px 14px; background: var(--quote-bg); border-left: 3px solid var(--line); border-radius: 4px 12px 12px 4px; }
+.wy-surface blockquote[data-label]::before, .wy-surface .wy-spoiler::before { display: block; font: 650 .78rem/1.4 var(--font-ui); color: var(--ink-soft); margin-bottom: 4px; }
+.wy-surface blockquote[data-label]::before { content: attr(data-label) " wrote:"; }
+.wy-surface .wy-spoiler { margin: 10px 0; padding: 8px 12px; border: 1px dashed var(--rule-strong); border-radius: 10px; }
+.wy-surface .wy-spoiler::before { content: "Spoiler"; }
+.wy-surface .wy-spoiler[data-label]::before { content: "Spoiler: " attr(data-label); }
+.wy-surface pre { margin: 10px 0; padding: 10px 12px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 10px; font: .88em/1.5 var(--font-code); white-space: pre-wrap; }
+.wy-surface ul, .wy-surface ol { margin: 6px 0; padding-left: 1.6em; }
+.wy-surface a { color: var(--link, var(--signal)); text-decoration: underline; }
+.wy-atom { display: inline-block; max-width: 100%; margin: 0 2px; padding: 0 8px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--surface-2); color: var(--ink-soft); font: .82rem/1.7 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; user-select: all; }
 .editor-status { font-size: .74rem; color: var(--ink-faint); padding: 5px 12px; border-top: 1px solid var(--rule); display: flex; gap: 12px; }
 .smilie-picker { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 8px; border-top: 1px solid var(--rule); }
 .smilie-picker button { background: none; border: 0; border-radius: 8px; padding: 4px; cursor: pointer; transition: transform .1s, background .1s; }

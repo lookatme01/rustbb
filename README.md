@@ -63,6 +63,9 @@ cargo build --release && ./target/release/rbb serve
 * Threads with prefixes, icons, sticky/closed/moved (redirect) states, polls (single or multiple
   choice, public, timeouts, undo votes), ratings, views, "hot" threads, unread indicators, similar
   threads, print view, lite (archive) mode, RSS 2.0 / Atom feeds and an XML sitemap.
+* **Rich-text editor** that writes MyCode: format as you type (toolbar, Ctrl+B/I/U, paste from
+  web pages), switch to raw MyCode at any time. MyCode it can't edit as text (images, videos,
+  attachments, unknown tags) stays exactly as written, so editing never rewrites a post.
 * Posting with a MyCode toolbar, live preview, quick reply, multi-quote, drafts (server-side plus
   local autosave), drag-and-drop or paste attachments with thumbnails, edit history, edit reasons,
   edit time limits, automatic double-post merging, flood control, per-day post limits, and guest

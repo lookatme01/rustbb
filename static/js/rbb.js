@@ -130,6 +130,7 @@
     ta.dispatchEvent(new Event("input"));
   }
   function insertAtCursor(ta, text) {
+    if (ta.rbbRich && ta.rbbRich.active) return ta.rbbRich.insertText(text);
     const s = ta.selectionStart, v = ta.value;
     ta.value = v.slice(0, s) + text + v.slice(ta.selectionEnd);
     ta.selectionStart = ta.selectionEnd = s + text.length;
@@ -142,8 +143,18 @@
     $$(".js-editor").forEach((ed) => {
       const ta = $("textarea", ed);
       const form = ed.closest("form");
+      // In rich-text mode (static/js/editor.mjs) the same buttons format the rich view.
+      const rich = () => ed.rbbRich && ed.rbbRich.active ? ed.rbbRich : null;
+      const ask = (b) => {
+        if (b.dataset.prompt) return prompt(b.dataset.prompt, "https://");
+        if (b.dataset.tag === "img") return prompt("Image URL", "https://");
+        if (b.dataset.tag === "video") return prompt("Video URL", "https://");
+        return null;
+      };
       $$(".editor-toolbar button[data-tag]", ed).forEach((b) => b.addEventListener("click", () => {
         const tag = b.dataset.tag;
+        const r = rich();
+        if (r) return r.command(tag, { arg: b.dataset.arg, value: ask(b) });
         if (b.dataset.list) return wrap(ta, "[list]\n[*]", "\n[/list]");
         if (b.dataset.prompt) {
           const url = prompt(b.dataset.prompt, "https://");
@@ -156,6 +167,8 @@
       }));
       $$(".editor-toolbar select[data-tag]", ed).forEach((s) => s.addEventListener("change", () => {
         if (!s.value) return;
+        const r = rich();
+        if (r) { r.command(s.dataset.tag, { arg: s.value }); s.value = ""; return; }
         wrap(ta, "[" + s.dataset.tag + "=" + s.value + "]", "[/" + s.dataset.tag + "]");
         s.value = "";
       }));
@@ -176,7 +189,7 @@
         const r = await post("/preview", { message: ta.value, fid: (form && form.dataset.fid) || 0 });
         if (r.ok) { const j = await r.json(); pv.innerHTML = j.html; } else pv.textContent = "Preview failed.";
       });
-      if (tabW) tabW.addEventListener("click", () => { ed.classList.remove("previewing"); tabW.classList.add("active"); tabP.classList.remove("active"); ta.focus(); });
+      if (tabW) tabW.addEventListener("click", () => { ed.classList.remove("previewing"); tabW.classList.add("active"); tabP.classList.remove("active"); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
       // Character count.
       const cc = $(".js-charcount", ed);
       const count = () => { if (cc) cc.textContent = ta.value.length + " characters"; };
@@ -186,7 +199,7 @@
         const key = "rbb.draft." + location.pathname;
         const status = $(".js-draft-status", ed);
         const saved = store.get(key);
-        if (saved && !ta.value.trim()) { ta.value = saved; count(); if (status) status.textContent = "Restored unsent text."; }
+        if (saved && !ta.value.trim()) { ta.value = saved; count(); ta.dispatchEvent(new CustomEvent("input", { detail: { restored: true } })); if (status) status.textContent = "Restored unsent text."; }
         let t;
         ta.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { if (form.dataset.noAutosave) { store.del(key); return; } ta.value.trim() ? store.set(key, ta.value) : store.del(key); if (status) status.textContent = "Saved locally"; }, 800); });
         form.addEventListener("submit", (e) => { if (!e.submitter || !e.submitter.name || e.submitter.name === "savedraft") store.del(key); });
@@ -278,6 +291,7 @@
           li.append(name, size, ins, rm);
         }
       };
+      if (ta) ta.rbbUpload = upload; // files pasted or dropped into the rich-text view
       const input = $(".js-file", wrapEl);
       input.addEventListener("change", () => { upload(input.files); input.value = ""; });
       const dz = $(".js-dropzone", wrapEl);

@@ -25,3 +25,4 @@
   {% if smilies %}<div class="smilie-picker">{% for s in smilies %}<button type="button" class="js-smilie" data-code="{{ s.find }}" title="{{ s.name }}"><img class="smilie" src="{{ s.image }}" alt="{{ s.find }}"></button>{% endfor %}</div>{% endif %}
   <div class="editor-status"><span class="js-charcount"></span><span class="js-draft-status"></span></div>
 </div>
+<script type="module" src="{{ asset('js/editor.mjs') }}"></script>
