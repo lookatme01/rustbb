@@ -269,6 +269,7 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
             uthreads => uthreads, uposts => uposts, reports => reports, mailq => mailq, dbsize => dbsize, pgversion => pgversion, attach_size => attach_size,
             notes => notes, logs => logs, version => env!("CARGO_PKG_VERSION"), uptime => crate::routes::member::format_duration(t - ctx.app.started),
             history => history.into_iter().rev().collect::<Vec<_>>(), node => &ctx.app.node_id,
+            image_proxy => ctx.cache.image_proxy.as_ref().map(|p| match p.mode { crate::imageproxy::Mode::Builtin => "builtin", _ => "external" }).unwrap_or("off"),
         },
     )
     .await

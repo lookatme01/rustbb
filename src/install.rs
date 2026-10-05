@@ -618,6 +618,11 @@ pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
         .bind(MIDNIGHT_CSS)
         .execute(db)
         .await?;
+    // The built-in image proxy's signing key (never shown; see `imageproxy`).
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('imageproxy_builtin_key', $1) ON CONFLICT (name) DO NOTHING")
+        .bind(crate::util::random_token(40))
+        .execute(db)
+        .await?;
     for t in TASKS {
         sqlx::query("INSERT INTO tasks (key, title, description, interval_secs, nextrun) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (key) DO NOTHING")
             .bind(t.key)

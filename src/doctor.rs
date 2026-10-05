@@ -175,6 +175,51 @@ pub fn check_passkeys(enabled: bool, bburl: &str) -> Check {
     }
 }
 
+/// The image proxy: the built-in one reveals the server's address to image hosts.
+pub fn check_image_proxy(s: &crate::settings::Settings) -> Check {
+    use crate::imageproxy::{ImageProxy, Mode};
+    const NAME: &str = "Image proxy";
+    match (
+        Mode::from_settings(s),
+        ImageProxy::from_settings(s).is_some(),
+    ) {
+        (Mode::Off, _) => check(
+            "Board",
+            NAME,
+            Status::Ok,
+            "off (readers' browsers fetch remote images directly, which shows their IP addresses to image hosts; an external proxy avoids that)",
+            None,
+        ),
+        (Mode::External, true) => check(
+            "Board",
+            NAME,
+            Status::Ok,
+            format!("external, via {}", s.get("imageproxy_url").trim()),
+            None,
+        ),
+        (Mode::External, false) => check(
+            "Board",
+            NAME,
+            Status::Warn,
+            "external is selected but its URL or key is missing, so images aren't proxied",
+            Some("Admin CP → Settings → Remote Images: enter the camo/go-camo URL and key."),
+        ),
+        (Mode::Builtin, ok) => check(
+            "Board",
+            NAME,
+            Status::Warn,
+            if ok {
+                "built-in: this server fetches remote images, so anyone posting an image from a server they control learns its real IP address"
+            } else {
+                "built-in is selected but has no key yet (start `rbb serve` once)"
+            },
+            Some(
+                "If the board is behind a DDoS-protection CDN, run camo or go-camo on a separate host and choose External in Admin CP → Settings → Remote Images.",
+            ),
+        ),
+    }
+}
+
 /// `server_version_num`, e.g. 170004 for 17.4.
 pub fn check_server_version(num: i32) -> Check {
     let (major, minor) = (num / 10000, num % 10000);
@@ -576,6 +621,7 @@ async fn board_checks(out: &mut Vec<Check>, db: &sqlx::PgPool) {
         env("RBB_TRUST_PROXY").as_deref() == Some("true"),
     ));
     out.push(check_passkeys(s.bool("enablepasskeys"), bburl));
+    out.push(check_image_proxy(&s));
     match s.get("mail_handler") {
         "smtp" if s.get("smtp_host").trim().is_empty() => out.push(check("Board", "Mail", Status::Fail, "SMTP is selected but no host is set",
             Some("Admin CP → Settings → Mail: set the SMTP host."))),
@@ -805,6 +851,35 @@ mod tests {
             c.iter()
                 .any(|c| c.status == Status::Fail && c.detail.contains("changed"))
         );
+    }
+
+    #[test]
+    fn image_proxy_warns_only_when_it_exposes_the_server_or_is_broken() {
+        let s = |pairs: &[(&str, &str)]| {
+            crate::settings::Settings::from_rows(
+                pairs
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            )
+        };
+        assert_eq!(check_image_proxy(&s(&[])).status, Status::Ok);
+        let b = check_image_proxy(&s(&[
+            ("imageproxy", "builtin"),
+            ("imageproxy_builtin_key", "k"),
+        ]));
+        assert_eq!(b.status, Status::Warn);
+        assert!(b.fix.unwrap().contains("DDoS"));
+        assert_eq!(
+            check_image_proxy(&s(&[("imageproxy", "external")])).status,
+            Status::Warn
+        );
+        let e = check_image_proxy(&s(&[
+            ("imageproxy", "external"),
+            ("imageproxy_url", "https://img.example.net"),
+            ("imageproxy_key", "k"),
+        ]));
+        assert_eq!(e.status, Status::Ok);
     }
 
     #[test]

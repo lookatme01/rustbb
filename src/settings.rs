@@ -124,6 +124,11 @@ pub static GROUPS: &[SettingGroup] = &[
         description: "Contact form.",
     },
     SettingGroup {
+        name: "images",
+        title: "Remote Images",
+        description: "An image proxy for pictures linked from other sites, so readers' IP addresses aren't revealed to them.",
+    },
+    SettingGroup {
         name: "privacy",
         title: "Privacy",
         description: "How long personal data is kept, and what happens to it when an account is deleted.",
@@ -441,6 +446,38 @@ pub static DEFS: &[SettingDef] = &[
         "",
         "yesno",
         "1"
+    ),
+    s!(
+        "images",
+        "imageproxy",
+        "Image Proxy",
+        "How images linked from other sites ([img] and remote avatars) reach readers. Off: each reader's browser fetches them directly, revealing the reader's IP address to whoever hosts the image. External (recommended): a camo or go-camo server on a separate host fetches them. Built-in: this server fetches them — simple, but anyone who posts an image from a server they control learns this server's real IP address, so if the board is behind a DDoS-protection CDN (Cloudflare and the like), use an external proxy instead.",
+        "select:off=Off,external=External proxy (camo or go-camo; recommended),builtin=Built-in (fetches from this server; reveals its IP address)",
+        "off"
+    ),
+    s!(
+        "images",
+        "imageproxy_url",
+        "External Proxy URL",
+        "Base URL of the camo or go-camo server, e.g. https://img.example.net. Host it somewhere other than the board's own server.",
+        "text",
+        ""
+    ),
+    s!(
+        "images",
+        "imageproxy_key",
+        "External Proxy Key",
+        "The proxy's shared HMAC key (CAMO_KEY for camo, GOCAMO_HMAC for go-camo). Leave empty to keep the current key.",
+        "password",
+        ""
+    ),
+    s!(
+        "images",
+        "imageproxy_maxsize",
+        "Built-in Proxy Size Limit (KB)",
+        "Largest image the built-in proxy will fetch.",
+        "numeric",
+        "5120"
     ),
     s!(
         "showthread",
@@ -1586,7 +1623,12 @@ impl Settings {
     pub fn public_map(&self) -> HashMap<String, String> {
         self.map
             .iter()
-            .filter(|(k, _)| !matches!(k.as_str(), "smtp_pass" | "smtp_user"))
+            .filter(|(k, _)| {
+                !matches!(
+                    k.as_str(),
+                    "smtp_pass" | "smtp_user" | "imageproxy_key" | "imageproxy_builtin_key"
+                )
+            })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }

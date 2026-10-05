@@ -25,6 +25,7 @@ argon2 = "0.5"
 rand = "0.8"
 sha2 = "0.10"
 hmac = "0.12"
+sha1 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
@@ -41,6 +42,8 @@ futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 async-stream = "0.3"
 url = "2"
+# The built-in image proxy. Already in the tree through object_store; rustls only (no OpenSSL).
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"] }
 percent-encoding = "2"
 totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }

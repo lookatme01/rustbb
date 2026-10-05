@@ -77,6 +77,7 @@ pub fn build_env(cache: Arc<ArcSwap<Cache>>, dev_dir: Option<String>) -> Environ
     env.add_filter("bytes", |v: Value| -> String {
         util::format_bytes(v.as_i64().unwrap_or(0))
     });
+    env.add_filter("img", crate::imageproxy::img_filter);
     env.add_filter("slug", |v: String| -> String { util::slugify(&v) });
     env.add_filter("truncate_chars", |v: String, n: Option<usize>| -> String {
         util::truncate_chars(&v, n.unwrap_or(50))

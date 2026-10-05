@@ -1,6 +1,13 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
+{% if image_proxy == 'builtin' %}
+<div class="notice warn" role="status"><p><strong>The built-in image proxy reveals this server's IP address.</strong> It fetches remote images from this server, so anyone who posts an image hosted on a server they control can read the board's real address from their logs. If the board is behind a DDoS-protection CDN (Cloudflare and the like), that address is what the CDN is hiding: run an external proxy (camo or go-camo) on a separate host instead. <a href="/admin/settings/images">Image proxy settings</a></p></div>
+{% elif bb.imageproxy == 'external' and image_proxy == 'off' %}
+<div class="notice warn" role="status"><p><strong>The external image proxy is selected but not configured</strong>, so remote images load straight from other sites. Enter the proxy's URL and key in <a href="/admin/settings/images">Image proxy settings</a>.</p></div>
+{% elif image_proxy == 'off' %}
+<div class="notice" role="status"><p><strong>Tip:</strong> remote images in posts load straight from other sites, which shows readers' IP addresses to whoever hosts them. An image proxy on a separate host (camo or go-camo) prevents that without exposing this server. <a href="/admin/settings/images">Image proxy settings</a></p></div>
+{% endif %}
 <div class="two-col">
 <section class="box"><div class="box-head"><h2>Board</h2></div><div class="kv">
   <div>Members</div><div>{{ base.users|num }} (+{{ users_today }} today){% if awaiting %} · <a href="/admin/users/awaiting">{{ awaiting }} awaiting activation</a>{% endif %}</div>
@@ -16,6 +23,7 @@
   <div>Database size</div><div>{{ dbsize|bytes }}</div>
   <div>Attachments</div><div>{{ attach_size|bytes }}</div>
   <div>Uptime</div><div>{{ uptime }} (node {{ node }})</div>
+  <div>Image proxy</div><div>{% if image_proxy == 'external' %}External{% elif image_proxy == 'builtin' %}Built-in <span class="muted small">(reveals this server's IP)</span>{% else %}Off{% endif %} · <a href="/admin/settings/images">change</a></div>
   <div>Board</div><div>{% if bb.boardclosed == '1' %}<span class="flag closed">Closed</span> <a href="/admin/settings/general">open it</a>{% else %}Open{% endif %}</div>
 </div></section>
 </div>

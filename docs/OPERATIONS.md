@@ -152,6 +152,47 @@ address is the client. Point `RBB_TRUSTED_PROXIES` at exactly your proxies — n
 and make the app port unreachable from anywhere else. `deploy/nginx.conf` shows a matching
 configuration, including per-route body limits and edge rate limits.
 
+## Image proxy
+
+Images members link from other sites (`[img]`, remote avatars) are normally fetched by each
+reader's browser, which shows every reader's IP address to whoever hosts the image (and breaks
+plain-HTTP images on an HTTPS board). An image proxy fixes that: rbb rewrites those URLs to
+`<proxy>/<hmac>/<hex url>`, the URL format of [camo](https://github.com/atmos/camo) and
+[go-camo](https://github.com/cactus/go-camo), so readers only talk to the proxy. Choose one in
+Admin CP → Settings → Remote Images:
+
+| Mode | Who fetches images | Use when |
+| --- | --- | --- |
+| Off (default) | each reader's browser | you accept image hosts seeing readers' IPs |
+| **External** (recommended) | camo/go-camo on a separate host | always, and especially behind a DDoS-protection CDN |
+| Built-in (`/imgproxy/…`) | this rbb server | the server's IP address is public anyway |
+
+> **Behind Cloudflare or another DDoS-protection CDN, don't use the built-in proxy.** It makes
+> the board's server fetch images from addresses members choose, so anyone can post an image
+> hosted on their own server and read the board's real IP address from its access log, then
+> attack the origin directly and bypass the CDN. An external proxy on a different machine (a
+> small VPS is plenty) keeps the origin hidden. The Admin CP dashboard and `rbb doctor` warn
+> while the built-in proxy is on.
+
+Running go-camo next to nothing else:
+
+```sh
+# On the proxy host (not the board's server):
+GOCAMO_HMAC="$(openssl rand -hex 32)"   # also paste this into "External Proxy Key"
+go-camo --listen=0.0.0.0:8080 --max-size=5120   # put TLS in front, e.g. https://img.example.net
+```
+
+Then set *External Proxy URL* to `https://img.example.net` and *External Proxy Key* to the same
+key. Existing posts switch over immediately (cached post HTML is re-rendered).
+
+The built-in proxy only connects to public addresses (checked after DNS resolution and on every
+redirect, so a hostname or redirect can't reach the internal network), only on ports 80, 443,
+8080 and 8443, follows at most three redirects, accepts only PNG, JPEG, GIF, WebP, AVIF, BMP and
+ICO recognised by their contents (never SVG), stops at *Built-in Proxy Size Limit* (5 MB by
+default) and 10 seconds, runs at most 16 fetches at once, and keeps the last 64 MB of images in
+memory. Responses are cacheable for a day, so a CDN in front absorbs repeat requests. Metrics:
+`rbb_imageproxy_requests_total{result}`, `rbb_imageproxy_fetch_seconds`.
+
 ## Uploads, request sizes and live streams
 
 * Request bodies are limited to 2 MiB, except upload routes (attachments, avatars, theme

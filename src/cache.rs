@@ -38,6 +38,8 @@ pub struct Cache {
     /// The built-in System account and its group (0 until `system::ensure` has run).
     pub system_uid: i32,
     pub system_gid: i32,
+    /// The image proxy, when one is configured (see `imageproxy`).
+    pub image_proxy: Option<Arc<crate::imageproxy::ImageProxy>>,
     /// Bumped whenever parsing inputs change (smilies, word filters, MyCodes, forum parse options).
     pub parser_rev: i32,
     /// Public settings as a template value (`bb` in templates), built once per settings change
@@ -91,6 +93,7 @@ impl Cache {
                         .await?;
                 let s = Settings::from_rows(rows);
                 self.parser_rev = s.int("parser_rev") as i32;
+                self.image_proxy = crate::imageproxy::ImageProxy::from_settings(&s).map(Arc::new);
                 let mut bb = s.public_map();
                 bb.remove("tos");
                 bb.remove("privacypolicy");

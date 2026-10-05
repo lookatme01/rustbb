@@ -115,6 +115,11 @@ cargo build --release && ./target/release/rbb serve
 
 ### Privacy
 
+* **Image proxy** (Admin CP → Settings → Remote Images): remote images and avatars are served
+  through camo/go-camo on a separate host, or through rbb's own SSRF-hardened proxy, so image
+  hosts never see readers' IP addresses. Behind a DDoS-protection CDN use the external one: the
+  built-in proxy would reveal the server's address. See
+  [OPERATIONS.md](docs/OPERATIONS.md#image-proxy).
 * **Retention limits** (Admin CP → Settings → Privacy): after a set number of days, a daily task
   shortens IP addresses to their network (IPv4 /24, IPv6 /48) in posts, messages and logs, and
   prunes the account activity, spam and mail logs. Every limit is off or unchanged until set.

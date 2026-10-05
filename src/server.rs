@@ -146,6 +146,10 @@ pub fn build_router(app: app::App) -> Router {
     Router::new()
         .route("/static/{*path}", get(static_file))
         .route("/css/theme/{tid}", get(theme_css))
+        .route(
+            "/imgproxy/{sig}/{url}",
+            get(crate::imageproxy::handler),
+        )
         .route("/livez", get(observe::livez))
         .route("/readyz", get(observe::readyz))
         // Older name for the readiness check.

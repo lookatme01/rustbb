@@ -133,16 +133,27 @@ pub async fn save(
                 "The board URL must start with http:// or https://.",
             ));
         }
+        if d.name == "imageproxy_url"
+            && !value.trim().is_empty()
+            && !(value.trim().starts_with("https://") || value.trim().starts_with("http://"))
+        {
+            return Err(AppError::user(
+                "The external proxy URL must start with https:// (or http://).",
+            ));
+        }
         if ctx.settings().get(d.name) != value {
             changed.push(d.name);
         }
         sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = $2").bind(d.name).bind(&value).execute(&ctx.app.db).await?;
     }
     ctx.app.invalidate(&["settings"]).await?;
-    if changed
-        .iter()
-        .any(|c| c.starts_with("sig") || *c == "linknofollow" || *c == "enablementions")
-    {
+    if changed.iter().any(|c| {
+        c.starts_with("sig")
+            || c.starts_with("imageproxy")
+            || *c == "linknofollow"
+            || *c == "enablementions"
+            || *c == "bburl"
+    }) {
         ctx.app.bump_parser_rev().await?;
     }
     crate::admin::log(

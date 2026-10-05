@@ -35,11 +35,13 @@ pub fn parse_with(
     opts: &ParseOptions,
     msg: &str,
 ) -> String {
-    let html = Parser::new(&cache.parser, opts).parse(msg);
+    let mut html = Parser::new(&cache.parser, opts).parse(msg);
     if plugins.has_hook("parse_message") {
-        plugins.filter_string("parse_message", html)
-    } else {
-        html
+        html = plugins.filter_string("parse_message", html);
+    }
+    match &cache.image_proxy {
+        Some(p) => p.rewrite_html(&html).into_owned(),
+        None => html,
     }
 }
 

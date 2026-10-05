@@ -456,6 +456,7 @@ impl CtxInner {
             _tf => &self.timefmt,
             _lang => &self.lang,
             bb => bb,
+            _imgproxy => Value::from_object(crate::imageproxy::TemplateProxy(self.cache.image_proxy.clone())),
             me => self.viewer(),
             perms => &self.perms,
             csrf => if self.guest_cache.is_some() { crate::pagecache::CSRF_SLOT } else { self.csrf.as_str() },

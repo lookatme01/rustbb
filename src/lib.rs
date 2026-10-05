@@ -18,6 +18,7 @@ pub mod domain;
 pub mod error;
 pub mod fuzzing;
 pub mod i18n;
+pub mod imageproxy;
 pub mod import;
 pub mod infra;
 pub mod install;

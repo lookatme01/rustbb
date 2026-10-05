@@ -20,7 +20,7 @@
   <div class="form-row"><label for="signature">Signature</label><textarea id="signature" name="signature" rows="3">{{ user.signature }}</textarea></div>
   <div class="form-row"><label for="timezone">Timezone</label><input id="timezone" type="text" name="timezone" value="{{ user.timezone }}" placeholder="Board default"></div>
   {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
-  <div class="form-row"><span class="label"><strong>Avatar</strong></span><div>{% if user.avatar %}<img src="{{ user.avatar }}" alt="" width="64" height="64" style="border-radius:6px"> {% endif %}<label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div></div>
+  <div class="form-row"><span class="label"><strong>Avatar</strong></span><div>{% if user.avatar %}<img src="{{ user.avatar|img }}" alt="" width="64" height="64" style="border-radius:6px"> {% endif %}<label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div></div>
   <div class="box-sub">Statistics</div>
   <div class="form-row"><label for="postnum">Post count</label><input id="postnum" type="number" name="postnum" value="{{ user.postnum }}" style="width:120px"></div>
   <div class="form-row"><label for="threadnum">Thread count</label><input id="threadnum" type="number" name="threadnum" value="{{ user.threadnum }}" style="width:120px"></div>
