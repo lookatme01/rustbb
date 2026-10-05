@@ -32,6 +32,56 @@ with stale settings or forum permissions.
 * `rbb doctor --strict` checks configuration, database, migrations and plugins and explains how
   to fix what it finds; run it after changing the environment.
 
+### Upgrading safely
+
+Migrations only go forward: there are no "down" migrations, and an older rbb refuses to run
+against a database a newer one has migrated. Rolling back therefore means restoring the backup
+taken just before the upgrade. The procedure:
+
+```sh
+# 1. With the NEW binary, check the upgrade without changing anything.
+rbb migrate --check
+```
+
+`--check` lists the pending migrations and confirms the database still matches what this binary
+expects (no edited, failed or newer-than-binary migrations). It then *rehearses* them by applying
+them inside a transaction that it always rolls back, and prints how long each one took and
+which existing tables it locked:
+
+```
+applied migrations: 26
+pending migrations: 1
+  0027 pm tracking: ok in 3 ms
+         locks privatemessages (~62 rows, AccessExclusiveLock) — blocks reads and writes
+rehearsal rolled back; nothing was changed (took 3 ms)
+```
+
+The exit code is 1 if `rbb migrate` would fail. The rehearsal does the real work and holds the
+same locks while it runs, so on a large board run it against a restored copy of last night's
+backup (see the restore drill below) rather than the live database. A table that is already
+locked by live traffic makes the rehearsal fail after `--lock-timeout` seconds (default 10)
+instead of queueing behind it. `--no-rehearse` only lists and compares, and takes no locks.
+
+The timings tell you how long the board will be read-only or unavailable during the real
+upgrade. If a table is locked for too long, schedule a maintenance window, or, for index
+migrations, build the indexes beforehand with `CREATE INDEX CONCURRENTLY` (migrations use
+`IF NOT EXISTS` and skip them).
+
+```sh
+# 2. Back up, then migrate and switch binaries.
+pg_dump --format=custom --file=rbb-pre-upgrade.dump "$DATABASE_URL"
+rbb migrate                    # or let `rbb serve` do it (RBB_MIGRATE_ON_START)
+# start the new version on every node
+
+# 3. Rolling back (only if needed): stop all nodes, restore the dump, start the OLD binary.
+dropdb rbb && createdb -O rbb rbb
+pg_restore --no-owner --dbname=rbb rbb-pre-upgrade.dump
+```
+
+Posts written between the backup and the rollback are lost, so decide quickly, and put the board
+in maintenance mode (Admin CP → Settings → General → Board Closed) before upgrading if losing them
+isn't acceptable. Uploaded files are not touched by migrations and need no restoring.
+
 ## Health checks
 
 | Endpoint | Meaning | Use for |

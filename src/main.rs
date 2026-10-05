@@ -32,7 +32,21 @@ enum Cmd {
         url: Option<String>,
     },
     /// Apply database migrations.
-    Migrate,
+    Migrate {
+        /// Don't change anything: list pending migrations, check the database matches this
+        /// binary, and rehearse the pending migrations in a transaction that is rolled back
+        /// (reports how long each takes and which tables it locks). Exit code 1 if `rbb
+        /// migrate` would fail.
+        #[arg(long)]
+        check: bool,
+        /// With --check: only list and compare, without the rehearsal (takes no locks).
+        #[arg(long, requires = "check")]
+        no_rehearse: bool,
+        /// With --check: give up on a lock after this many seconds instead of waiting behind
+        /// live traffic.
+        #[arg(long, default_value_t = 10, requires = "check")]
+        lock_timeout: u64,
+    },
     /// Create default board data and an administrator account.
     Install {
         #[arg(long, default_value = "admin")]
@@ -138,7 +152,28 @@ async fn main() -> anyhow::Result<()> {
             serve(cfg).await
         }
         Cmd::Healthcheck { .. } => unreachable!("handled before the configuration is loaded"),
-        Cmd::Migrate => {
+        Cmd::Migrate {
+            check: true,
+            no_rehearse,
+            lock_timeout,
+        } => {
+            let db = connect(&cfg).await?;
+            let migrator = sqlx::migrate!("./migrations");
+            let migrations: Vec<_> = migrator.iter().cloned().collect();
+            let report = rbb::infra::migrations::check(
+                &db,
+                &migrations,
+                !no_rehearse,
+                std::time::Duration::from_secs(lock_timeout),
+            )
+            .await?;
+            print!("{}", rbb::infra::migrations::render(&report, !no_rehearse));
+            if !report.ok() {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Cmd::Migrate { .. } => {
             let db = connect(&cfg).await?;
             migrate(&db).await?;
             println!("migrations applied");

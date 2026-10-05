@@ -3,6 +3,7 @@
 
 pub mod cluster;
 pub mod metrics;
+pub mod migrations;
 pub mod observe;
 pub mod outbox;
 pub mod storage;

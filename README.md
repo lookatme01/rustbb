@@ -271,6 +271,7 @@ Admin CP and stored in the database.
 |---|---|
 | `rbb serve` | Run the web server (applies migrations first). The default command. |
 | `rbb migrate` | Apply database migrations only. |
+| `rbb migrate --check` | Check an upgrade without changing anything: lists pending migrations and rehearses them in a rolled-back transaction, reporting time and table locks. See [OPERATIONS.md](docs/OPERATIONS.md#upgrading-safely). |
 | `rbb install …` | Create the default groups, forums, settings and the admin account. |
 | `rbb seed --users N --threads N --posts N` | Generate a synthetic board for load testing. |
 | `rbb recount` | Rebuild all denormalized counters. |
