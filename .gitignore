@@ -5,3 +5,4 @@ uploads/
 .DS_Store
 CHANGELOG.md
 node_modules/
+docs/
