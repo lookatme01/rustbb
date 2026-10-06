@@ -3849,7 +3849,7 @@ dependencies = [
 
 [[package]]
 name = "rbb"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "ammonia",
  "anyhow",
