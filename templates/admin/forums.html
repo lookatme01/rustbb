@@ -6,7 +6,7 @@
 <div class="box-head"><h2>Forums</h2></div>
 <table class="grid"><thead><tr><th>Forum</th><th class="num">Threads</th><th class="num">Posts</th><th>Order</th><th></th></tr></thead><tbody>
 {% for f in forums %}<tr>
-  <td><div style="padding-left:{{ f.depth * 22 }}px">{% if f.category %}<strong>{{ f.name }}</strong> <span class="tag">category</span>{% else %}<a href="/forum/{{ f.fid }}">{{ f.name }}</a>{% endif %}
+  <td><div class="forum-tree" style="padding-left:{{ f.depth * 22 }}px">{% if f.category %}<strong>{{ f.name }}</strong> <span class="tag">category</span>{% else %}<a href="/forum/{{ f.fid }}">{{ f.name }}</a>{% endif %}
     {% if not f.active %}<span class="tag">inactive</span>{% endif %}{% if not f.open %}<span class="tag">closed</span>{% endif %}{% if f.linkto %}<span class="tag">link</span>{% endif %}
     {% if f.custom_perms %}<span class="tag" title="Custom permissions">{{ f.custom_perms }} perm overrides</span>{% endif %}{% if f.mods %}<span class="tag">{{ f.mods }} moderators</span>{% endif %}</div></td>
   <td class="num">{{ f.threads|num }}</td><td class="num">{{ f.posts|num }}</td>
