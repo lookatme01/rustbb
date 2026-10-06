@@ -1,6 +1,39 @@
 mod common;
 
 #[tokio::test]
+async fn tracking_migration_only_links_unambiguous_historical_deliveries() {
+    let t = test_app!();
+    let uid = t.create_user("legacyrecipient", "Passw0rd-recipient").await;
+    for subject in ["Unique", "Ambiguous", "Ambiguous"] {
+        sqlx::query("INSERT INTO privatemessages (uid, fromid, toid, folder, subject, message, dateline, status) VALUES (1, 1, $1, 2, $2, 'Body', 100, 1)")
+            .bind(uid).bind(subject).execute(&t.db.pool).await.unwrap();
+    }
+    for subject in ["Unique", "Ambiguous"] {
+        sqlx::query("INSERT INTO privatemessages (uid, fromid, toid, folder, subject, message, dateline, status) VALUES ($1, 1, $1, 1, $2, 'Body', 100, 0)")
+            .bind(uid).bind(subject).execute(&t.db.pool).await.unwrap();
+    }
+    // Recreate the pre-migration shape in this disposable test database.
+    sqlx::query("ALTER TABLE privatemessages DROP COLUMN sent_pmid")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(include_str!("../migrations/0027_pm_tracking.sql"))
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let rows: Vec<(String, Option<i32>)> = sqlx::query_as(
+        "SELECT subject, sent_pmid FROM privatemessages WHERE uid = $1 ORDER BY subject",
+    )
+    .bind(uid)
+    .fetch_all(&t.db.pool)
+    .await
+    .unwrap();
+    assert_eq!(rows[0], ("Ambiguous".into(), None));
+    assert_eq!(rows[1].0, "Unique");
+    assert!(rows[1].1.is_some());
+}
+
+#[tokio::test]
 async fn tracking_distinguishes_deliveries_in_the_same_second_and_cancels_all_copies() {
     let t = test_app!();
     let to = t.create_user("recipient", "Passw0rd-recipient").await;

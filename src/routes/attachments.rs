@@ -259,8 +259,11 @@ pub async fn download(
         {
             return Err(AppError::not_found("attachment"));
         }
+        // A thumbnail request falls back to the original file when there is no separate
+        // thumbnail, so only a real thumbnail is exempt from the download permission.
+        let serves_original = !thumb || thumbnail.is_empty();
         let fp = ctx.forum_perms(fid);
-        if !thumb && (!fp.candlattachments || !ctx.perms.candlattachments) {
+        if serves_original && (!fp.candlattachments || !ctx.perms.candlattachments) {
             return Err(AppError::NoPermission(
                 "You do not have permission to download attachments.".into(),
             ));

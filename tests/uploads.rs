@@ -124,6 +124,44 @@ async fn attachments_round_trip_through_storage() {
 }
 
 #[tokio::test]
+async fn thumbnail_requests_do_not_bypass_the_download_permission() {
+    let t = test_app!();
+    sqlx::query("UPDATE usergroups SET perms = jsonb_set(perms, '{candlattachments}', 'false') WHERE gid = 1")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["groups", "forumperms"]).await.unwrap();
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT p.pid FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.visible = 1 AND t.visible = 1 ORDER BY p.pid LIMIT 1",
+    )
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let key = "attachments/test/notes.attach";
+    t.app
+        .storage
+        .put_bytes(key, bytes::Bytes::from_static(b"not for guests"))
+        .await
+        .unwrap();
+    // A non-image attachment has no separate thumbnail.
+    let aid: i32 = sqlx::query_scalar(
+        "INSERT INTO attachments (pid, uid, filename, filetype, filesize, attachname, visible, thumbnail, dateuploaded) VALUES ($1, 1, 'notes.txt', 'text/plain', 14, $2, TRUE, '', 1) RETURNING aid",
+    )
+    .bind(pid)
+    .bind(key)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let guest = t.client();
+    assert_eq!(guest.get(&format!("/attachment/{aid}")).await.status, 403);
+    let r = guest.get(&format!("/attachment/{aid}?thumb=1")).await;
+    assert_eq!(
+        r.status, 403,
+        "the thumbnail fallback served the original file"
+    );
+}
+
+#[tokio::test]
 async fn live_streams_are_capped_per_address() {
     let t = test_app!();
     let uid = t.create_user("streamer", "Passw0rd-streamer").await;
