@@ -2041,53 +2041,305 @@ pub async fn delete_account(ctx: Ctx, CsrfForm(f): CsrfForm<DeleteForm>) -> AppR
     Ok(ctx.redirect("/", "Your account has been deleted."))
 }
 
-/// Download all personal data as JSON (GDPR data portability).
+/// Audit log actions that are sign-ins (or attempts); the rest of the log is account activity.
+const SIGN_IN_ACTIONS: &[&str] = &[
+    "login",
+    "login_failed",
+    "login_locked",
+    "login_2fa_failed",
+    "logout",
+    "session_revoked",
+];
+
+const EXPORT_README: &str = "\
+Your account data from this board. Times are UTC.
+
+user/              profile, IP addresses, sign-ins, devices, account activity
+posts/             your posts
+private_messages/  one file per folder (encrypted messages stay encrypted)
+";
+
+/// A unix timestamp as an ISO 8601 UTC string; null when unset.
+fn iso(ts: i64) -> serde_json::Value {
+    match chrono::DateTime::from_timestamp(ts, 0) {
+        Some(d) if ts > 0 => d.to_rfc3339().into(),
+        _ => serde_json::Value::Null,
+    }
+}
+
+/// A file name for a private message folder: lowercase, `[a-z0-9_]` only.
+fn folder_file(id: i32, name: &str) -> String {
+    let slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let slug = slug.trim_matches('_');
+    if id >= 5 || slug.is_empty() {
+        format!("folder_{id}_{slug}")
+            .trim_end_matches('_')
+            .to_string()
+    } else {
+        slug.to_string()
+    }
+}
+
+fn zip_files(files: &[(String, Vec<u8>)]) -> anyhow::Result<Vec<u8>> {
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for (name, body) in files {
+        w.start_file(name.as_str(), opts)?;
+        std::io::Write::write_all(&mut w, body)?;
+    }
+    Ok(w.finish()?.into_inner())
+}
+
+/// Download a copy of the account's data (GDPR data portability): a zip of JSON files for the
+/// account itself (profile, IP addresses, sign-ins), its posts and its private messages.
 pub async fn export(ctx: Ctx) -> AppResult<Response> {
+    use serde_json::json;
     let me = require_ucp(&ctx).await?;
     crate::audit::log(&ctx, me.uid, "data_exported", serde_json::Value::Null).await;
-    let posts: Vec<(i32, i32, String, String, i64)> = sqlx::query_as(
-        "SELECT pid, tid, subject, message, dateline FROM posts WHERE uid = $1 ORDER BY pid",
-    )
-    .bind(me.uid)
-    .fetch_all(&ctx.app.db)
-    .await?;
-    let pms: Vec<(i32, String, String, i64, i32)> =
-        sqlx::query_as("SELECT pmid, subject, message, dateline, folder FROM privatemessages WHERE uid = $1 ORDER BY pmid").bind(me.uid).fetch_all(&ctx.app.db).await?;
+    let db = &ctx.app.db;
+    let mut files: Vec<(String, serde_json::Value)> = Vec::new();
+
+    // Profile.
     let fields = field_values(&ctx, me.uid).await?;
     let passkeys: Vec<(String, i64, i64)> =
         sqlx::query_as("SELECT name, created, last_used FROM passkeys WHERE uid = $1 ORDER BY id")
             .bind(me.uid)
-            .fetch_all(&ctx.app.db)
+            .fetch_all(db)
             .await?;
     let badges: Vec<(String, i64)> = sqlx::query_as(
         "SELECT b.name, ub.dateline FROM user_badges ub JOIN badges b ON b.bid = ub.bid WHERE ub.uid = $1 ORDER BY ub.dateline",
     )
     .bind(me.uid)
-    .fetch_all(&ctx.app.db)
+    .fetch_all(db)
     .await?;
-    let data = serde_json::json!({
-        "user": {
-            "uid": me.uid, "username": me.username, "email": me.email, "regdate": me.regdate, "regip": me.regip, "lastip": me.lastip,
-            "website": me.website, "birthday": me.birthday, "signature": me.signature, "timezone": me.timezone, "notepad": me.notepad,
-            "profile_fields": fields,
-        },
-        "posts": posts.iter().map(|p| serde_json::json!({"pid": p.0, "tid": p.1, "subject": p.2, "message": p.3, "dateline": p.4})).collect::<Vec<_>>(),
-        "passkeys": passkeys.iter().map(|p| serde_json::json!({"name": p.0, "created": p.1, "last_used": p.2})).collect::<Vec<_>>(),
-        "badges": badges.iter().map(|b| serde_json::json!({"name": b.0, "earned": b.1})).collect::<Vec<_>>(),
-        "private_messages": pms.iter().map(|p| serde_json::json!({"pmid": p.0, "subject": p.1, "message": p.2, "dateline": p.3, "folder": p.4})).collect::<Vec<_>>(),
-    });
+    files.push(("user/profile.json".into(), json!({
+        "uid": me.uid, "username": me.username, "email": me.email, "usertitle": me.usertitle,
+        "registered": iso(me.regdate), "last_active": iso(me.lastactive),
+        "website": me.website, "birthday": me.birthday, "signature": me.signature, "timezone": me.timezone,
+        "notepad": me.notepad, "posts": me.postnum, "threads": me.threadnum, "reputation": me.reputation,
+        "two_factor_enabled": !me.totp_secret.is_empty(),
+        "profile_fields": fields,
+        "passkeys": passkeys.iter().map(|p| json!({"name": p.0, "created": iso(p.1), "last_used": iso(p.2)})).collect::<Vec<_>>(),
+        "badges": badges.iter().map(|b| json!({"name": b.0, "earned": iso(b.1)})).collect::<Vec<_>>(),
+    })));
+
+    // IP addresses: everywhere the board recorded one for this account. Audit entries made by
+    // staff carry the staff member's address, and received messages the sender's, so both are left out.
+    let ips: Vec<(String, String, Option<i64>, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT host(ip), source, MIN(d) FILTER (WHERE d > 0), MAX(d) FILTER (WHERE d > 0), COUNT(*) FROM (
+             SELECT regip AS ip, 'registration' AS source, regdate AS d FROM users WHERE uid = $1
+             UNION ALL SELECT lastip, 'most recent sign-in', lastactive FROM users WHERE uid = $1
+             UNION ALL SELECT ipaddress, action, dateline FROM user_audit WHERE uid = $1 AND actor_uid IS NULL
+             UNION ALL SELECT ip, 'signed-in device', lastused FROM logins WHERE uid = $1
+             UNION ALL SELECT ipaddress, 'post', dateline FROM posts WHERE uid = $1
+             UNION ALL SELECT ipaddress, 'private message', dateline FROM privatemessages WHERE uid = $1 AND fromid = $1
+             UNION ALL SELECT ipaddress, 'poll vote', dateline FROM pollvotes WHERE uid = $1
+             UNION ALL SELECT ipaddress, 'thread rating', 0 FROM threadratings WHERE uid = $1
+         ) s WHERE ip IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2",
+    )
+    .bind(me.uid)
+    .fetch_all(db)
+    .await?;
+    let mut by_ip: Vec<(String, Option<i64>, Option<i64>, Vec<serde_json::Value>)> = Vec::new();
+    for (ip, source, first, last, count) in ips {
+        let source = match crate::audit::ACTIONS.iter().find(|a| a.0 == source) {
+            Some(a) => a.1.to_string(),
+            None => source,
+        };
+        if by_ip.last().is_none_or(|e| e.0 != ip) {
+            by_ip.push((ip, None, None, Vec::new()));
+        }
+        let e = by_ip.last_mut().expect("pushed above");
+        e.1 = match (e.1, first) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        e.2 = e.2.max(last);
+        e.3.push(json!({"source": source, "times": count, "first_seen": iso(first.unwrap_or(0)), "last_seen": iso(last.unwrap_or(0))}));
+    }
+    by_ip.sort_by_key(|e| std::cmp::Reverse(e.2));
+    files.push((
+        "user/ip_addresses.json".into(),
+        by_ip
+            .into_iter()
+            .map(|(ip, first, last, seen)| json!({"address": ip, "first_seen": iso(first.unwrap_or(0)), "last_seen": iso(last.unwrap_or(0)), "seen_in": seen}))
+            .collect(),
+    ));
+
+    // The account audit log, split into sign-ins and everything else.
+    let audit: Vec<(i64, String, Option<String>, String, Option<i32>, Option<String>, serde_json::Value)> = sqlx::query_as(
+        "SELECT a.dateline, a.action, host(a.ipaddress), a.useragent, a.actor_uid, u.username, a.details
+         FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid WHERE a.uid = $1 ORDER BY a.id",
+    )
+    .bind(me.uid)
+    .fetch_all(db)
+    .await?;
+    let (mut sign_ins, mut activity) = (Vec::new(), Vec::new());
+    for (dateline, action, ip, ua, actor, actor_name, details) in audit {
+        let (label, category) = crate::audit::describe(&action);
+        let mut e = json!({"time": iso(dateline), "action": action, "description": label});
+        if actor.is_some() {
+            e["by_staff"] = json!(actor_name.unwrap_or_else(|| "a former staff member".into()));
+        } else {
+            e["ip_address"] = json!(ip);
+            e["device"] = json!(crate::audit::device_label(&ua));
+            e["user_agent"] = json!(ua);
+        }
+        if SIGN_IN_ACTIONS.contains(&e["action"].as_str().unwrap_or("")) {
+            sign_ins.push(e);
+        } else {
+            e["category"] = json!(category);
+            if details.as_object().is_some_and(|d| !d.is_empty()) {
+                e["details"] = details;
+            }
+            activity.push(e);
+        }
+    }
+    files.push(("user/sign_ins.json".into(), sign_ins.into()));
+    files.push(("user/account_activity.json".into(), activity.into()));
+
+    let devices: Vec<(i64, i64, i64, Option<String>, String)> = sqlx::query_as(
+        "SELECT created, lastused, expires, host(ip), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC",
+    )
+    .bind(me.uid)
+    .bind(now())
+    .fetch_all(db)
+    .await?;
+    files.push((
+        "user/devices.json".into(),
+        devices
+            .iter()
+            .map(|d| json!({"signed_in": iso(d.0), "last_used": iso(d.1), "expires": iso(d.2), "ip_address": d.3, "device": crate::audit::device_label(&d.4), "user_agent": d.4}))
+            .collect(),
+    ));
+
+    // Posts.
+    let posts: Vec<(i32, i32, String, String, String, String, i64, i64, Option<String>, i16)> = sqlx::query_as(
+        "SELECT p.pid, p.tid, t.subject, COALESCE(f.name, ''), p.subject, p.message, p.dateline, p.edittime, host(p.ipaddress), p.visible
+         FROM posts p JOIN threads t ON t.tid = p.tid LEFT JOIN forums f ON f.fid = p.fid
+         WHERE p.uid = $1 ORDER BY p.pid",
+    )
+    .bind(me.uid)
+    .fetch_all(db)
+    .await?;
+    files.push((
+        "posts/posts.json".into(),
+        posts
+            .iter()
+            .map(|p| json!({
+                "pid": p.0, "tid": p.1, "thread": p.2, "forum": p.3, "subject": p.4, "message": p.5,
+                "posted": iso(p.6), "edited": iso(p.7), "ip_address": p.8,
+                "status": match p.9 { 1 => "visible", 0 => "awaiting approval", _ => "deleted" },
+            }))
+            .collect(),
+    ));
+
+    // Private messages, one file per folder. Blind-copy recipients are only shown on your own copies.
+    let pms: Vec<(i32, i32, i32, Option<String>, sqlx::types::Json<serde_json::Value>, String, String, i64, i16, i64, i16, Option<String>)> = sqlx::query_as(
+        "SELECT p.pmid, p.folder, p.fromid, u.username, p.recipients, p.subject, p.message, p.dateline, p.status, p.readtime, p.pgp,
+                CASE WHEN p.fromid = p.uid THEN host(p.ipaddress) END
+         FROM privatemessages p LEFT JOIN users u ON u.uid = p.fromid WHERE p.uid = $1 ORDER BY p.pmid",
+    )
+    .bind(me.uid)
+    .fetch_all(db)
+    .await?;
+    let ids = |v: &serde_json::Value| -> Vec<i32> {
+        v.as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_i64().map(|x| x as i32))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let all_ids: Vec<i32> = pms
+        .iter()
+        .flat_map(|p| [ids(&p.4.0["to"]), ids(&p.4.0["bcc"])].concat())
+        .collect();
+    let names: HashMap<i32, String> =
+        sqlx::query_as("SELECT uid, username FROM users WHERE uid = ANY($1)")
+            .bind(&all_ids)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
+    let name_list = |v: &serde_json::Value| -> Vec<String> {
+        ids(v)
+            .iter()
+            .map(|id| {
+                names
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("deleted member #{id}"))
+            })
+            .collect()
+    };
+    // Messages in a custom folder that has since been removed still get a file.
+    let mut folders = crate::routes::private::folder_list(&me);
+    for p in &pms {
+        if !folders.iter().any(|f| f.0 == p.1) {
+            folders.push((p.1, format!("Folder {}", p.1)));
+        }
+    }
+    for (folder, folder_name) in folders {
+        let msgs: Vec<serde_json::Value> = pms
+            .iter()
+            .filter(|p| p.1 == folder)
+            .map(|p| {
+                let mine = p.2 == me.uid;
+                let mut m = json!({
+                    "pmid": p.0, "from": p.3.clone().unwrap_or_else(|| if p.2 == 0 { "board".into() } else { format!("deleted member #{}", p.2) }),
+                    "to": name_list(&p.4.0["to"]), "subject": p.5, "message": p.6, "sent": iso(p.7),
+                    "status": match p.8 { 0 => "unread", 3 => "replied", 4 => "forwarded", _ => "read" },
+                    "encrypted": p.10 == 2, "signed": p.10 == 1,
+                });
+                if mine {
+                    m["bcc"] = json!(name_list(&p.4.0["bcc"]));
+                    m["ip_address"] = json!(p.11);
+                }
+                if p.9 > 0 {
+                    m["read"] = iso(p.9);
+                }
+                m
+            })
+            .collect();
+        files.push((
+            format!(
+                "private_messages/{}.json",
+                folder_file(folder, &folder_name)
+            ),
+            json!({"folder": folder_name, "messages": msgs}),
+        ));
+    }
+
+    let mut out: Vec<(String, Vec<u8>)> =
+        vec![("README.txt".into(), EXPORT_README.as_bytes().to_vec())];
+    out.extend(
+        files
+            .into_iter()
+            .map(|(name, v)| (name, serde_json::to_vec_pretty(&v).unwrap_or_default())),
+    );
+    let zip = tokio::task::spawn_blocking(move || zip_files(&out))
+        .await
+        .map_err(anyhow::Error::from)??;
     Ok((
         [
             (
                 axum::http::header::CONTENT_TYPE,
-                "application/json".to_string(),
+                "application/zip".to_string(),
             ),
             (
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"rbb-export-{}.json\"", me.uid),
+                format!("attachment; filename=\"rbb-data-{}.zip\"", me.uid),
             ),
+            (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
         ],
-        serde_json::to_string_pretty(&data).unwrap_or_default(),
+        zip,
     )
         .into_response())
 }

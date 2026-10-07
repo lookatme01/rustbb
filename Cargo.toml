@@ -64,6 +64,8 @@ object_store = { version = "0.14.2", features = ["aws"] }
 ipnetwork = "0.20"
 # Passkeys (WebAuthn relying party). Pure Rust (RustCrypto), so release builds stay OpenSSL-free.
 webauthn_rp = { version = "0.3", default-features = false, features = ["serde_relaxed", "serializable_server_state"] }
+# Account data exports (User CP). Deflate through flate2 only: pure Rust, no zopfli.
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [lints.rust]
 unsafe_code = "forbid"

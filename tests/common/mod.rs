@@ -222,6 +222,8 @@ pub struct Response {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: String,
+    /// The raw body, for binary downloads.
+    pub bytes: Vec<u8>,
 }
 
 impl Response {
@@ -289,6 +291,7 @@ impl Client {
             status,
             headers,
             body: String::from_utf8_lossy(&bytes).into_owned(),
+            bytes: bytes.to_vec(),
         }
     }
 
