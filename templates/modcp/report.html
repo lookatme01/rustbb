@@ -21,6 +21,20 @@
     {% endif %}
   </div>
 </section>
+{% if pm %}
+<section class="box">
+  <div class="box-head"><h2>Reported message</h2></div>
+  {% if pm.missing %}<div class="box-body small">No copy of this message was kept (reported before message snapshots were added).</div>
+  {% else %}
+  <div class="kv">
+    <div>Subject</div><div>{{ pm.subject }}</div>
+    <div>From</div><div>{% if pm.from_name %}<a href="{{ url_user(pm.fromid) }}">{{ pm.from_name }}</a>{% else %}A deleted member{% endif %}</div>
+    <div>Sent</div><div>{{ pm.sent|date }}</div>
+  </div>
+  <div class="box-body">{% if pm.encrypted %}<span class="small">This message was end-to-end encrypted; its content isn't available to moderators.</span>{% else %}{{ pm.html|safe }}{% endif %}</div>
+  {% endif %}
+</section>
+{% endif %}
 {% if report.open %}
 <form method="post" action="/modcp/reports/{{ report.rid }}/resolve" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Resolve</h2></div>

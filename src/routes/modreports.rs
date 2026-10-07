@@ -132,6 +132,36 @@ async fn username(db: &sqlx::PgPool, uid: i32) -> String {
         .unwrap_or_default()
 }
 
+/// The frozen copy of a reported private message, rendered as the recipient would see it.
+async fn pm_snapshot(ctx: &Ctx, rid: i32) -> AppResult<minijinja::Value> {
+    let row: Option<(i32, String, String, i64, bool, bool)> = sqlx::query_as(
+        "SELECT fromid, subject, message, sent, smilieoff, encrypted FROM report_pm_snapshots WHERE rid = $1",
+    )
+    .bind(rid)
+    .fetch_optional(&ctx.app.db)
+    .await?;
+    let Some((fromid, subject, message, sent, smilieoff, encrypted)) = row else {
+        return Ok(minijinja::context! { missing => true });
+    };
+    let s = ctx.settings();
+    let opts = crate::parser::ParseOptions {
+        allow_mycode: s.bool("pmsallowmycode"),
+        allow_smilies: s.bool("pmsallowsmilies") && !smilieoff,
+        allow_imgcode: s.bool("pmsallowimgcode"),
+        allow_videocode: s.bool("pmsallowvideocode"),
+        ..Default::default()
+    };
+    let html = if encrypted {
+        String::new()
+    } else {
+        crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &opts, &message)
+    };
+    Ok(minijinja::context! {
+        missing => false, fromid => fromid, from_name => username(&ctx.app.db, fromid).await,
+        subject => subject, sent => sent, encrypted => encrypted, html => html,
+    })
+}
+
 pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
     let r = load(&ctx, rid).await?;
     let db = &ctx.app.db;
@@ -176,6 +206,11 @@ pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
         .find(|x| x.rid == r.reasonid)
         .map(|x| x.title.clone())
         .unwrap_or_default();
+    let pm = if r.r#type == "pm" {
+        Some(pm_snapshot(&ctx, rid).await?)
+    } else {
+        None
+    };
     ctx.render(
         "modcp/report.html",
         minijinja::context! {
@@ -188,7 +223,7 @@ pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
                 resolved_by => username(db, r.resolved_by).await, resolved_at => r.resolved_at, resolution => &r.resolution,
             },
             target => minijinja::context! { uid => target, username => username(db, target).await },
-            latest_note => latest_note, reporters => reporters, events => events,
+            pm => pm, latest_note => latest_note, reporters => reporters, events => events,
         },
     )
     .await

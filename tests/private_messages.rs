@@ -213,3 +213,111 @@ async fn concurrent_reads_only_decrement_unread_once() {
         .unwrap();
     assert_eq!(unread, 2);
 }
+
+/// Sends "sender" -> "reporter" a message, has the reporter report it, and returns the report id.
+async fn reported_pm(t: &common::TestApp, pgp: i16) -> (i32, i32) {
+    let sender = t.create_user("pmsender", "Passw0rd-sender").await;
+    let reporter = t.create_user("pmreporter", "Passw0rd-reporter").await;
+    let pmid: i32 = sqlx::query_scalar("INSERT INTO privatemessages (uid, fromid, toid, folder, subject, message, dateline, status, pgp) VALUES ($1, $2, $1, 1, 'Nasty subject', 'Evidence body [b]text[/b]', 100, 0, $3) RETURNING pmid")
+        .bind(reporter).bind(sender).bind(pgp).fetch_one(&t.db.pool).await.unwrap();
+    let reason: i32 = sqlx::query_scalar(
+        "SELECT rid FROM reportreasons WHERE appliesto = 'all' AND NOT extra LIMIT 1",
+    )
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["reportreasons"]).await.unwrap();
+    let c = t.login_as(reporter).await;
+    let page = c.get(&format!("/report?type=pm&id={pmid}")).await;
+    assert_eq!(page.status, 200);
+    let r = c
+        .post_form(
+            "/report",
+            &[
+                ("type", "pm"),
+                ("id", &pmid.to_string()),
+                ("reason", &reason.to_string()),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    // The reporter deletes the evidence.
+    sqlx::query("DELETE FROM privatemessages WHERE pmid = $1")
+        .bind(pmid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let rid = sqlx::query_scalar("SELECT rid FROM reportedcontent WHERE type = 'pm' AND id = $1")
+        .bind(pmid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    (rid, sender)
+}
+
+#[tokio::test]
+async fn reported_messages_survive_deletion_and_stay_staff_only() {
+    let t = test_app!();
+    let (rid, _) = reported_pm(&t, 0).await;
+    let admin = t.login_as(1).await;
+    let r = admin.get(&format!("/modcp/reports/{rid}")).await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("Reported message"), "{}", r.body);
+    assert!(r.body.contains("Nasty subject"));
+    assert!(r.body.contains("Evidence body"));
+    assert!(
+        r.body.contains(">text</strong>"),
+        "body not rendered as MyCode"
+    );
+    // A forum-only moderator cannot see the report, or its text in the queue.
+    let mod_uid = t.create_user("forummod", "Passw0rd-forummod").await;
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES (4, $1, FALSE, '{}')")
+        .bind(mod_uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let m = t.login_as(mod_uid).await;
+    assert!(
+        m.get(&format!("/modcp/reports/{rid}"))
+            .await
+            .status
+            .is_client_error()
+    );
+    let list = m.get("/modcp/reports").await;
+    assert!(!list.body.contains("Evidence body") && !list.body.contains("Nasty subject"));
+}
+
+#[tokio::test]
+async fn encrypted_reported_messages_keep_no_body() {
+    let t = test_app!();
+    let (rid, _) = reported_pm(&t, 2).await;
+    let stored: (String, bool) =
+        sqlx::query_as("SELECT message, encrypted FROM report_pm_snapshots WHERE rid = $1")
+            .bind(rid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, (String::new(), true));
+    let r = t
+        .login_as(1)
+        .await
+        .get(&format!("/modcp/reports/{rid}"))
+        .await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("end-to-end encrypted"));
+    assert!(!r.body.contains("Evidence body"));
+}
+
+#[tokio::test]
+async fn reports_without_a_snapshot_say_so() {
+    let t = test_app!();
+    let rid: i32 = sqlx::query_scalar("INSERT INTO reportedcontent (id, id2, uid, type, reason, dateline, lastreport) VALUES (1, 1, 1, 'pm', '', 1, 1) RETURNING rid")
+        .fetch_one(&t.db.pool).await.unwrap();
+    let r = t
+        .login_as(1)
+        .await
+        .get(&format!("/modcp/reports/{rid}"))
+        .await;
+    assert!(r.body.contains("No copy of this message was kept"));
+}

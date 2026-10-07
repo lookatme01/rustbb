@@ -5,6 +5,7 @@
   <div class="box-head"><h2>Report {{ desc }}</h2></div>
   <div class="form-row"><span class="label"><strong>Reason</strong></span><div class="checks">{% for r in reasons %}<label><input type="radio" name="reason" value="{{ r.rid }}" required> {{ r.title }}</label>{% endfor %}</div></div>
   <div class="form-row"><label for="comment">Details</label><textarea id="comment" name="comment" rows="4" maxlength="500" placeholder="Tell the moderators what's wrong (required for “Other”)."></textarea></div>
+  {% if kind == 'pm' %}<p class="small" style="margin:0 12px 8px">{% if encrypted %}This message is end-to-end encrypted, so moderators won't be able to read it. Describe the problem in Details.{% else %}Moderators who handle private-message reports will be able to read this message.{% endif %}</p>{% endif %}
   <div class="box-foot"><button class="btn" type="submit">Send report</button></div>
 </form>
 {% endblock %}

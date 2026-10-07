@@ -15,8 +15,9 @@ pub struct ReportQuery {
     pub id: i32,
 }
 
-/// Resolve (id, id2, id3, description) for the reported object, checking visibility.
-async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, String)> {
+/// Resolve (id, id2, id3, description, end-to-end encrypted) for the reported object, checking
+/// visibility. Only a private message can be encrypted.
+async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, String, bool)> {
     match kind {
         "post" => {
             let (tid, fid, visible, subject): (i32, i32, i16, String) = sqlx::query_as("SELECT p.tid, p.fid, p.visible, t.subject FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = $1")
@@ -28,7 +29,7 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
             if !ctx.visible_states(fid).contains(&visible) {
                 return Err(AppError::not_found("post"));
             }
-            Ok((id, tid, fid, format!("a post in “{subject}”")))
+            Ok((id, tid, fid, format!("a post in “{subject}”"), false))
         }
         "profile" => {
             let (name, g): (String, i32) =
@@ -45,7 +46,7 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
             {
                 return Err(AppError::user("This user cannot be reported."));
             }
-            Ok((id, id, 0, format!("the profile of {name}")))
+            Ok((id, id, 0, format!("the profile of {name}"), false))
         }
         "reputation" => {
             let uid: i32 = sqlx::query_scalar("SELECT uid FROM reputation WHERE rid = $1")
@@ -53,11 +54,11 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
                 .fetch_optional(&ctx.app.db)
                 .await?
                 .ok_or_else(|| AppError::not_found("rating"))?;
-            Ok((id, uid, 0, "a reputation comment".into()))
+            Ok((id, uid, 0, "a reputation comment".into(), false))
         }
         "pm" => {
-            let from: i32 = sqlx::query_scalar(
-                "SELECT fromid FROM privatemessages WHERE pmid = $1 AND uid = $2",
+            let (from, pgp): (i32, i16) = sqlx::query_as(
+                "SELECT fromid, pgp FROM privatemessages WHERE pmid = $1 AND uid = $2",
             )
             .bind(id)
             .bind(ctx.uid())
@@ -69,7 +70,7 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
                     "Automated messages from the System account can't be reported.",
                 ));
             }
-            Ok((id, from, 0, "a private message".into()))
+            Ok((id, from, 0, "a private message".into(), pgp == 2))
         }
         _ => Err(AppError::user("Unknown content type.")),
     }
@@ -77,7 +78,7 @@ async fn target(ctx: &Ctx, kind: &str, id: i32) -> AppResult<(i32, i32, i32, Str
 
 pub async fn form(ctx: Ctx, Query(q): Query<ReportQuery>) -> AppResult<Response> {
     ctx.require_login()?;
-    let (_, _, _, desc) = target(&ctx, &q.r#type, q.id).await?;
+    let (_, _, _, desc, encrypted) = target(&ctx, &q.r#type, q.id).await?;
     let reasons: Vec<_> = ctx
         .cache
         .reportreasons
@@ -85,7 +86,7 @@ pub async fn form(ctx: Ctx, Query(q): Query<ReportQuery>) -> AppResult<Response>
         .filter(|r| r.appliesto == "all" || r.appliesto.split(',').any(|a| a.trim() == q.r#type))
         .cloned()
         .collect();
-    ctx.render("report.html", minijinja::context! { title => "Report Content", kind => q.r#type, id => q.id, desc => desc, reasons => reasons }).await
+    ctx.render("report.html", minijinja::context! { title => "Report Content", kind => q.r#type, id => q.id, desc => desc, encrypted => encrypted, reasons => reasons }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -109,7 +110,7 @@ pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<ReportForm>) -> AppResult<Re
     {
         return Err(AppError::RateLimited);
     }
-    let (id, id2, id3, _) = target(&ctx, &f.r#type, f.id).await?;
+    let (id, id2, id3, _, encrypted) = target(&ctx, &f.r#type, f.id).await?;
     let reason = ctx
         .cache
         .reportreasons
@@ -123,6 +124,9 @@ pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<ReportForm>) -> AppResult<Re
     }
     // One open report per piece of content (a unique index enforces it): the first report
     // opens it, later ones join it — atomically, so simultaneous reports cannot open two.
+    // A private-message report also freezes a copy of the message, in the same transaction, so
+    // moderators can still read it after the reporter deletes it or their account.
+    let mut tx = ctx.app.db.begin().await?;
     let joined: Option<i32> = sqlx::query_scalar(
         "INSERT INTO reportedcontent (id, id2, id3, uid, reasonid, reason, type, reports, reporters, dateline, lastreport)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 1, ARRAY[$4], $8, $8)
@@ -141,8 +145,24 @@ pub async fn submit(ctx: Ctx, CsrfForm(f): CsrfForm<ReportForm>) -> AppResult<Re
     .bind(&comment)
     .bind(&f.r#type)
     .bind(now())
-    .fetch_optional(&ctx.app.db)
+    .fetch_optional(&mut *tx)
     .await?;
+    if let (Some(rid), "pm") = (joined, f.r#type.as_str()) {
+        // Ciphertext is useless to the server, so an encrypted message keeps no body.
+        sqlx::query(
+            "INSERT INTO report_pm_snapshots (rid, fromid, subject, message, sent, smilieoff, encrypted)
+             SELECT $1, fromid, subject, CASE WHEN $3 THEN '' ELSE message END, dateline, smilieoff, $3
+             FROM privatemessages WHERE pmid = $2 AND uid = $4
+             ON CONFLICT (rid) DO NOTHING",
+        )
+        .bind(rid)
+        .bind(id)
+        .bind(encrypted)
+        .bind(me.uid)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     if joined.is_none() {
         return Ok(ctx.redirect("/", "You have already reported this content. Thank you."));
     }
