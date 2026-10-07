@@ -116,9 +116,15 @@ impl Uow {
         }
         self.tx.commit().await?;
         for (id, b) in ids.into_iter().zip(&self.broadcasts) {
-            app.cluster_cursor.lock().unwrap().mark(id);
-            if let Err(e) = app.apply_broadcast(b).await {
-                tracing::warn!(error = %e, "local cache invalidation failed");
+            match app.apply_broadcast(b).await {
+                Ok(()) => {
+                    app.cluster_cursor.lock().unwrap().mark(id);
+                }
+                Err(e) => {
+                    // The listener retries it like an event from another node.
+                    tracing::warn!(error = %e, event = id, "local cache invalidation failed");
+                    app.cluster_cursor.lock().unwrap().defer(id);
+                }
             }
         }
         for ev in self.live {

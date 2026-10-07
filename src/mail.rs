@@ -3,9 +3,11 @@
 //!
 //! 1. claim: one short statement leases a batch of due messages (`FOR UPDATE SKIP LOCKED`, so
 //!    several workers never take the same message) and commits — no lock is held while sending;
-//! 2. send: a few messages at a time, each with a hard timeout;
+//! 2. send: every claimed message at once (a batch is only as large as the worker sends in
+//!    parallel), each with a hard timeout, so none waits out its lease before being sent;
 //! 3. acknowledge: delete what was sent; reschedule failures with exponential backoff, or mark
-//!    them `dead` after too many attempts or a permanent error (bad address, SMTP 5xx).
+//!    them `dead` after too many attempts or a permanent error (bad address, SMTP 5xx). Both
+//!    check the lease token, so a worker that lost its lease leaves the message to its new owner.
 //!
 //! A worker that dies mid-batch leaves its lease to expire and the messages are claimed again.
 //! The "log" handler writes mail to the server log instead of sending (local development).
@@ -17,20 +19,36 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::time::Duration;
 
-const BATCH: i64 = 50;
-const CONCURRENCY: usize = 4;
+/// Messages claimed and sent at once.
+const BATCH: i64 = 8;
 const LEASE_SECS: f64 = 300.0;
+/// Each of connecting and sending is bounded by this, so a message finishes well inside its lease.
 const SEND_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ATTEMPTS: i32 = 8;
 
 pub async fn queue(app: &App, to: &str, subject: &str, body: &str) {
-    let r = match app.db.acquire().await {
-        Ok(mut c) => queue_in(&mut c, to, subject, body).await,
-        Err(e) => Err(e),
-    };
-    if let Err(e) = r {
+    if let Err(e) = deliver(app, None, to, subject, body).await {
         tracing::error!("failed to queue mail: {e}");
     }
+}
+
+/// Queue a message. With a delivery key, a message already queued under that key (even one
+/// sent and gone from the queue since) is not queued again.
+pub async fn deliver(
+    app: &App,
+    key: Option<&str>,
+    to: &str,
+    subject: &str,
+    body: &str,
+) -> sqlx::Result<()> {
+    let mut tx = app.db.begin().await?;
+    if let Some(key) = key
+        && !crate::infra::outbox::first_delivery(&mut tx, key).await?
+    {
+        return Ok(());
+    }
+    queue_in(&mut tx, to, subject, body).await?;
+    tx.commit().await
 }
 
 /// Queue a message on `conn`, normally the transaction of the change it reports, so it is sent
@@ -88,9 +106,9 @@ struct Claimed {
 }
 
 /// Lease a batch of due messages in one statement (its own short transaction).
-async fn claim(app: &App) -> sqlx::Result<Vec<Claimed>> {
+async fn claim(app: &App, lease: uuid::Uuid) -> sqlx::Result<Vec<Claimed>> {
     let rows: Vec<(i64, String, String, String, i32, String)> = sqlx::query_as(
-        "UPDATE mailqueue SET locked_until = now() + make_interval(secs => $2), attempts = attempts + 1
+        "UPDATE mailqueue SET locked_until = now() + make_interval(secs => $2), lease = $3, attempts = attempts + 1
          WHERE mid IN (
              SELECT mid FROM mailqueue
              WHERE status = 'pending' AND available_at <= now() AND (locked_until IS NULL OR locked_until < now())
@@ -99,6 +117,7 @@ async fn claim(app: &App) -> sqlx::Result<Vec<Claimed>> {
     )
     .bind(BATCH)
     .bind(LEASE_SECS)
+    .bind(lease)
     .fetch_all(&app.db)
     .await?;
     Ok(rows
@@ -173,12 +192,19 @@ async fn send(
     }
 }
 
-async fn acknowledge(app: &App, m: &Claimed, r: Result<(), SendError>) -> sqlx::Result<()> {
+/// Record the result of sending, if this worker still holds the message's lease.
+async fn acknowledge(
+    app: &App,
+    lease: uuid::Uuid,
+    m: &Claimed,
+    r: Result<(), SendError>,
+) -> sqlx::Result<()> {
     let (error, dead) = match r {
         Ok(()) => {
             crate::infra::metrics::counter_with("rbb_mail_total", &[("result", "sent")], 1);
-            sqlx::query("DELETE FROM mailqueue WHERE mid = $1")
+            sqlx::query("DELETE FROM mailqueue WHERE mid = $1 AND lease = $2")
                 .bind(m.mid)
+                .bind(lease)
                 .execute(&app.db)
                 .await?;
             return Ok(());
@@ -195,15 +221,16 @@ async fn acknowledge(app: &App, m: &Claimed, r: Result<(), SendError>) -> sqlx::
         "mail delivery failed: {error}"
     );
     sqlx::query(
-        "UPDATE mailqueue SET locked_until = NULL, lasterror = $2,
+        "UPDATE mailqueue SET locked_until = NULL, lease = NULL, lasterror = $2,
             available_at = now() + make_interval(secs => $3),
             status = CASE WHEN $4 THEN 'dead' ELSE 'pending' END
-         WHERE mid = $1",
+         WHERE mid = $1 AND lease = $5",
     )
     .bind(m.mid)
     .bind(error)
     .bind(crate::infra::outbox::backoff(m.attempts).as_secs_f64())
     .bind(dead)
+    .bind(lease)
     .execute(&app.db)
     .await?;
     Ok(())
@@ -212,7 +239,8 @@ async fn acknowledge(app: &App, m: &Claimed, r: Result<(), SendError>) -> sqlx::
 /// Claim, send and acknowledge one batch. Returns how many messages were claimed.
 pub async fn deliver_batch(app: &App) -> anyhow::Result<usize> {
     use futures::StreamExt;
-    let batch = claim(app).await?;
+    let lease = uuid::Uuid::new_v4();
+    let batch = claim(app, lease).await?;
     if batch.is_empty() {
         return Ok(0);
     }
@@ -228,11 +256,11 @@ pub async fn deliver_batch(app: &App) -> anyhow::Result<usize> {
     let transport = transport(&s)?;
     let n = batch.len();
     futures::stream::iter(batch)
-        .for_each_concurrent(CONCURRENCY, |m| {
+        .for_each_concurrent(None, |m| {
             let (transport, from, domain) = (transport.as_ref(), &from, &domain);
             async move {
                 let r = send(transport, from, domain, &m).await;
-                if let Err(e) = acknowledge(app, &m, r).await {
+                if let Err(e) = acknowledge(app, lease, &m, r).await {
                     // The lease expires and the message is retried.
                     tracing::warn!(mid = m.mid, "could not record mail result: {e}");
                 }

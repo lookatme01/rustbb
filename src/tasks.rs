@@ -199,6 +199,9 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
             sqlx::query("DELETE FROM outbox WHERE status = 'dead' AND created_at < now() - interval '30 days'")
                 .execute(db)
                 .await?;
+            sqlx::query("DELETE FROM deliveries WHERE created_at < now() - interval '30 days'")
+                .execute(db)
+                .await?;
             sqlx::query("DELETE FROM mailqueue WHERE status = 'dead' AND dateline < $1")
                 .bind(t - 7 * 86400)
                 .execute(db)

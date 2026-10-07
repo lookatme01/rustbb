@@ -567,7 +567,9 @@ pub async fn awaiting_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppRes
                 .bind(&uids)
                 .fetch_all(&ctx.app.db)
                 .await?;
-            crate::system::welcome(&ctx.app, &activated).await;
+            if let Err(e) = crate::system::welcome(&ctx.app, None, &activated).await {
+                tracing::warn!("{e:#}");
+            }
             sqlx::query(
                 "DELETE FROM awaitingactivation WHERE uid = ANY($1) AND type IN ('r', 'b')",
             )

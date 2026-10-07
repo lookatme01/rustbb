@@ -143,24 +143,31 @@ pub fn welcome_text(
 }
 
 /// Send System's welcome message to members whose accounts just became active (when enabled).
-pub async fn welcome(app: &App, members: &[(i32, String)]) {
+/// With delivery keys, members who already got it from an earlier attempt are skipped.
+pub async fn welcome(
+    app: &App,
+    d: Option<crate::infra::outbox::Delivery<'_>>,
+    members: &[(i32, String)],
+) -> anyhow::Result<()> {
     let s = app.cache().settings.clone();
     if !s.bool("system_welcome_pm") || !s.bool("enablepms") {
-        return;
+        return Ok(());
     }
     let (subject, message) = (
         s.get("system_welcome_subject"),
         s.get("system_welcome_message"),
     );
     if subject.trim().is_empty() || message.trim().is_empty() {
-        return;
+        return Ok(());
     }
     for (uid, name) in members {
         let (sub, msg) = welcome_text(subject, message, name, s.get("bbname"));
-        if let Err(e) = crate::routes::private::send_system_pm(app, *uid, &sub, &msg).await {
-            tracing::warn!("welcome message to uid {uid} failed: {e}");
-        }
+        let key = d.map(|d| d.key("welcome_pm", *uid));
+        crate::routes::private::deliver_system_pm(app, key.as_deref(), *uid, &sub, &msg)
+            .await
+            .map_err(|e| anyhow::anyhow!("welcome message to uid {uid} failed: {e}"))?;
     }
+    Ok(())
 }
 
 /// "System", or "System 2", "System 3"… if a member already has the name.

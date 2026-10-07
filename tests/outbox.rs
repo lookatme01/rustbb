@@ -100,3 +100,79 @@ async fn cache_invalidations_are_logged_for_other_nodes() {
     assert_eq!(kind, "cache");
     assert_eq!(payload["parts"], serde_json::json!(["forums"]));
 }
+
+#[tokio::test]
+async fn a_partly_failed_job_is_kept_and_its_retry_skips_what_was_delivered() {
+    let t = test_app!();
+    for (k, v) in [
+        ("enablepms", "1"),
+        ("system_welcome_pm", "1"),
+        ("system_welcome_subject", "Welcome"),
+        ("system_welcome_message", "Hello {username}"),
+    ] {
+        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+            .bind(k)
+            .bind(v)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let alice = t.create_user("alice", "password123").await;
+    // The second member does not exist yet, so their message cannot be created.
+    let job = Job::WelcomePm {
+        members: vec![(alice, "alice".into()), (alice + 1000, "bob".into())],
+    };
+    let mut tx = t.db.pool.begin().await.unwrap();
+    outbox::enqueue(&mut tx, &job, None).await.unwrap();
+    tx.commit().await.unwrap();
+    let welcomes = |uid: i32| {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM privatemessages WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+    };
+
+    assert_eq!(outbox::run_batch(&t.app).await.unwrap(), 1);
+    let (status, last_error): (String, Option<String>) =
+        sqlx::query_as("SELECT status, last_error FROM outbox")
+            .fetch_one(&t.db.pool)
+            .await
+            .expect("the failed job is kept");
+    assert_eq!(status, "pending");
+    assert!(last_error.unwrap().contains("uid"));
+    assert_eq!(welcomes(alice).await.unwrap(), 1);
+
+    // Bob registers; the retry welcomes him and not Alice again.
+    sqlx::query(
+        "INSERT INTO users (uid, username, password, email, usergroup, regdate, lastactive, lastvisit, pmfolders)
+         VALUES ($1, 'bob', '', 'bob@example.com', 2, 1, 1, 1, '[]')",
+    )
+    .bind(alice + 1000)
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE outbox SET available_at = now()")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(outbox::run_batch(&t.app).await.unwrap(), 1);
+    assert_eq!(welcomes(alice).await.unwrap(), 1, "not delivered twice");
+    assert_eq!(welcomes(alice + 1000).await.unwrap(), 1);
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM outbox")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0);
+}
+
+#[tokio::test]
+async fn live_leases_are_not_claimed_again() {
+    let t = test_app!();
+    sqlx::query(
+        "INSERT INTO outbox (kind, payload, locked_until, lease, attempts) VALUES ('hook', '{\"kind\":\"hook\",\"name\":\"x\",\"data\":{}}', now() + interval '1 minute', gen_random_uuid(), 1)",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    assert_eq!(outbox::run_batch(&t.app).await.unwrap(), 0);
+}

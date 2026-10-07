@@ -418,7 +418,9 @@ pub async fn mailerrors_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppR
     crate::admin::acp_guard!(ctx, "logs");
     match s(f.fields.get("action")).as_str() {
         "retry" => {
-            sqlx::query("UPDATE mailqueue SET attempts = 0, status = 'pending', available_at = now(), locked_until = NULL")
+            // Messages a worker is sending right now keep their lease.
+            sqlx::query("UPDATE mailqueue SET attempts = 0, status = 'pending', available_at = now(), locked_until = NULL, lease = NULL
+                         WHERE locked_until IS NULL OR locked_until < now()")
                 .execute(&ctx.app.db)
                 .await?;
         }

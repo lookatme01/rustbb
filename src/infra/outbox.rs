@@ -4,10 +4,17 @@
 //! A use case adds [`Job`]s to its unit of work; they are inserted into `outbox` inside the same
 //! transaction, so a job exists if and only if the change it belongs to committed. Workers claim
 //! due jobs in a short statement (`FOR UPDATE SKIP LOCKED`, setting a lease), run them outside
-//! any transaction with bounded concurrency and a timeout, then delete them or reschedule them
-//! with exponential backoff. A job whose worker died is reclaimed when its lease expires; one that
-//! keeps failing is marked `dead` and kept for inspection. Jobs may run more than once (a worker
-//! can die after the work but before the delete), so every job must be safe to repeat.
+//! any transaction with a timeout, then delete them or reschedule them with exponential backoff.
+//! A worker claims only as many jobs as it runs at once, so every job starts as soon as it is
+//! leased and finishes (or times out) well before the lease runs out. A job whose worker died is
+//! reclaimed when its lease expires; one that keeps failing is marked `dead` and kept for
+//! inspection. Finishing checks the lease token, so a worker that lost its lease never deletes
+//! or reschedules a job another worker has reclaimed.
+//!
+//! Jobs may run more than once (a worker can die after the work but before the delete, or fail
+//! halfway through notifying several members), so every job must be safe to repeat: alerts,
+//! private messages and emails are created under a delivery key ([`Delivery`]) recorded in
+//! `deliveries`, and a retry skips the ones already delivered.
 
 use crate::app::App;
 use serde::{Deserialize, Serialize};
@@ -15,10 +22,12 @@ use sqlx::PgConnection;
 use std::time::Duration;
 
 pub const CHANNEL: &str = "rbb_outbox";
-const BATCH: i64 = 32;
-const CONCURRENCY: usize = 8;
+/// Jobs claimed and run at once. Each claimed job starts immediately, so it finishes or times out
+/// after at most [`JOB_TIMEOUT`], well inside its lease.
+const BATCH: i64 = 8;
 const LEASE_SECS: i64 = 120;
 const JOB_TIMEOUT: Duration = Duration::from_secs(60);
+const _: () = assert!(JOB_TIMEOUT.as_secs() * 3 / 2 <= LEASE_SECS as u64);
 pub const MAX_ATTEMPTS: i32 = 8;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -91,6 +100,35 @@ pub async fn enqueue(conn: &mut PgConnection, job: &Job, key: Option<&str>) -> s
     Ok(())
 }
 
+/// Where a job delivers something (an alert, private message or email) to a member. A retry of
+/// the job uses the same keys, so it skips what the earlier attempt already delivered.
+#[derive(Clone, Copy)]
+pub struct Delivery<'a> {
+    job: &'a str,
+}
+
+impl<'a> Delivery<'a> {
+    pub fn new(job: &'a str) -> Self {
+        Delivery { job }
+    }
+
+    /// The key for one delivery of this job, e.g. `kind = "alert:quoted"`, `to = uid`.
+    pub fn key(&self, kind: &str, to: i32) -> String {
+        format!("{}:{kind}:{to}", self.job)
+    }
+}
+
+/// Record the delivery `key` as part of the caller's transaction. Returns false if it was
+/// already made (the caller then skips it). A concurrent attempt with the same key waits for
+/// this transaction and then sees it.
+pub async fn first_delivery(conn: &mut PgConnection, key: &str) -> sqlx::Result<bool> {
+    let r = sqlx::query("INSERT INTO deliveries (key) VALUES ($1) ON CONFLICT DO NOTHING")
+        .bind(key)
+        .execute(conn)
+        .await?;
+    Ok(r.rows_affected() == 1)
+}
+
 /// Delay before attempt `n + 1`: 5 s, 10 s, 20 s… capped at an hour, with jitter.
 pub fn backoff(attempts: i32) -> Duration {
     let base = 5u64
@@ -101,9 +139,9 @@ pub fn backoff(attempts: i32) -> Duration {
 }
 
 /// Lease up to a batch of due jobs (one short statement; nothing stays locked while they run).
-async fn claim(app: &App) -> sqlx::Result<Vec<(i64, serde_json::Value, i32)>> {
+async fn claim(app: &App, lease: uuid::Uuid) -> sqlx::Result<Vec<(i64, serde_json::Value, i32)>> {
     sqlx::query_as(
-        "UPDATE outbox SET locked_until = now() + make_interval(secs => $2), attempts = attempts + 1
+        "UPDATE outbox SET locked_until = now() + make_interval(secs => $2), lease = $3, attempts = attempts + 1
          WHERE id IN (
              SELECT id FROM outbox
              WHERE status = 'pending' AND available_at <= now() AND (locked_until IS NULL OR locked_until < now())
@@ -112,15 +150,18 @@ async fn claim(app: &App) -> sqlx::Result<Vec<(i64, serde_json::Value, i32)>> {
     )
     .bind(BATCH)
     .bind(LEASE_SECS as f64)
+    .bind(lease)
     .fetch_all(&app.db)
     .await
 }
 
-async fn finish(app: &App, id: i64, attempts: i32, result: anyhow::Result<()>) {
+/// Delete or reschedule a job, if this worker still holds its lease.
+async fn finish(app: &App, id: i64, lease: uuid::Uuid, attempts: i32, result: anyhow::Result<()>) {
     let r = match result {
         Ok(()) => {
-            sqlx::query("DELETE FROM outbox WHERE id = $1")
+            sqlx::query("DELETE FROM outbox WHERE id = $1 AND lease = $2")
                 .bind(id)
+                .bind(lease)
                 .execute(&app.db)
                 .await
         }
@@ -133,26 +174,34 @@ async fn finish(app: &App, id: i64, attempts: i32, result: anyhow::Result<()>) {
             }
             crate::infra::metrics::counter("rbb_outbox_failures_total", 1);
             sqlx::query(
-                "UPDATE outbox SET locked_until = NULL, last_error = $2,
+                "UPDATE outbox SET locked_until = NULL, lease = NULL, last_error = $2,
                     available_at = now() + make_interval(secs => $3),
                     status = CASE WHEN $4 THEN 'dead' ELSE 'pending' END
-                 WHERE id = $1",
+                 WHERE id = $1 AND lease = $5",
             )
             .bind(id)
             .bind(format!("{e:#}"))
             .bind(backoff(attempts).as_secs_f64())
             .bind(dead)
+            .bind(lease)
             .execute(&app.db)
             .await
         }
     };
-    if let Err(e) = r {
+    match r {
+        // The lease ran out and another worker reclaimed the job; its result is the one that counts.
+        Ok(r) if r.rows_affected() == 0 => {
+            tracing::warn!(job = id, "outbox job finished after losing its lease")
+        }
+        Ok(_) => {}
         // The lease runs out and the job is retried.
-        tracing::warn!(job = id, error = %e, "could not record outbox job result");
+        Err(e) => tracing::warn!(job = id, error = %e, "could not record outbox job result"),
     }
 }
 
-async fn run(app: &App, job: Job) -> anyhow::Result<()> {
+async fn run(app: &App, id: i64, job: Job) -> anyhow::Result<()> {
+    let job_key = format!("outbox:{id}");
+    let d = Delivery::new(&job_key);
     match job {
         Job::Hook { name, data } => app.plugins.run_hook_async(&name, data).await,
         Job::PostNotifications {
@@ -166,16 +215,16 @@ async fn run(app: &App, job: Job) -> anyhow::Result<()> {
             message,
         } => {
             if new_thread {
-                crate::notify::forum_subscribers(app, fid, tid, uid, &subject, &username).await;
+                crate::notify::forum_subscribers(app, d, fid, tid, uid, &subject, &username)
+                    .await?;
             } else {
                 crate::notify::thread_subscribers(
-                    app, tid, pid, uid, &subject, &username, &message,
+                    app, d, tid, pid, uid, &subject, &username, &message,
                 )
-                .await;
+                .await?;
             }
-            crate::notify::mentions_and_quotes(app, uid, &username, tid, pid, &subject, &message)
-                .await;
-            Ok(())
+            crate::notify::mentions_and_quotes(app, d, uid, &username, tid, pid, &subject, &message)
+                .await
         }
         Job::DeleteFiles { paths } => {
             for p in paths {
@@ -188,13 +237,12 @@ async fn run(app: &App, job: Job) -> anyhow::Result<()> {
             subject,
             message,
         } => {
-            crate::routes::private::send_system_pm(app, uid, &subject, &message).await?;
+            let key = d.key("pm", uid);
+            crate::routes::private::deliver_system_pm(app, Some(&key), uid, &subject, &message)
+                .await?;
             Ok(())
         }
-        Job::WelcomePm { members } => {
-            crate::system::welcome(app, &members).await;
-            Ok(())
-        }
+        Job::WelcomePm { members } => crate::system::welcome(app, Some(d), &members).await,
         Job::Alert {
             uid,
             from_uid,
@@ -202,8 +250,9 @@ async fn run(app: &App, job: Job) -> anyhow::Result<()> {
             object_id,
             extra,
         } => {
-            crate::notify::alert(app, uid, from_uid, &alert, object_id, extra).await;
-            Ok(())
+            let key = d.key("alert", uid);
+            crate::notify::deliver_alert(app, Some(&key), uid, from_uid, &alert, object_id, extra)
+                .await
         }
     }
 }
@@ -211,19 +260,21 @@ async fn run(app: &App, job: Job) -> anyhow::Result<()> {
 /// Claim and run one batch. Returns how many jobs were claimed.
 pub async fn run_batch(app: &App) -> anyhow::Result<usize> {
     use futures::StreamExt;
-    let jobs = claim(app).await?;
+    let lease = uuid::Uuid::new_v4();
+    let jobs = claim(app, lease).await?;
     let n = jobs.len();
+    // Every claimed job runs at once: none waits for a slot while its lease runs down.
     futures::stream::iter(jobs)
-        .for_each_concurrent(CONCURRENCY, |(id, payload, attempts)| async move {
+        .for_each_concurrent(None, |(id, payload, attempts)| async move {
             let result = match serde_json::from_value::<Job>(payload) {
-                Ok(job) => match tokio::time::timeout(JOB_TIMEOUT, run(app, job)).await {
+                Ok(job) => match tokio::time::timeout(JOB_TIMEOUT, run(app, id, job)).await {
                     Ok(r) => r,
                     Err(_) => Err(anyhow::anyhow!("timed out after {JOB_TIMEOUT:?}")),
                 },
                 // Unknown kind (written by a newer version?): let it retry, then go dead.
                 Err(e) => Err(anyhow::anyhow!("cannot decode job: {e}")),
             };
-            finish(app, id, attempts, result).await;
+            finish(app, id, lease, attempts, result).await;
         })
         .await;
     Ok(n)
@@ -268,6 +319,14 @@ mod tests {
         assert!(backoff(0) >= Duration::from_secs(5) && backoff(0) <= Duration::from_secs(7));
         assert!(backoff(3) >= Duration::from_secs(40));
         assert!(backoff(30) <= Duration::from_secs(3600 + 901));
+    }
+
+    #[test]
+    fn delivery_keys_are_stable_per_job_and_recipient() {
+        let d = Delivery::new("outbox:7");
+        assert_eq!(d.key("alert:quoted", 3), "outbox:7:alert:quoted:3");
+        assert_eq!(d.key("pm", 3), Delivery::new("outbox:7").key("pm", 3));
+        assert_ne!(d.key("pm", 3), Delivery::new("outbox:8").key("pm", 3));
     }
 
     #[test]

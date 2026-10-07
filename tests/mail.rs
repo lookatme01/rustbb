@@ -96,10 +96,16 @@ async fn concurrent_workers_never_claim_the_same_message() {
     for i in 0..120 {
         queue(&t, &format!("u{i}@example.org")).await;
     }
-    let (a, b, c) = tokio::join!(
-        rbb::mail::deliver_batch(&t.app),
-        rbb::mail::deliver_batch(&t.app),
-        rbb::mail::deliver_batch(&t.app)
-    );
-    assert_eq!(a.unwrap() + b.unwrap() + c.unwrap(), 120);
+    // Each worker drains the queue a batch at a time; together they claim every message once.
+    let drain = || async {
+        let mut n = 0;
+        loop {
+            match rbb::mail::deliver_batch(&t.app).await.unwrap() {
+                0 => return n,
+                k => n += k,
+            }
+        }
+    };
+    let (a, b, c) = tokio::join!(drain(), drain(), drain());
+    assert_eq!(a + b + c, 120);
 }

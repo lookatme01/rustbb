@@ -889,7 +889,24 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
 
 /// Send an automated private message from the System account. Members can't reply to it.
 pub async fn send_system_pm(app: &App, uid: i32, subject: &str, msg: &str) -> AppResult<()> {
+    deliver_system_pm(app, None, uid, subject, msg).await
+}
+
+/// Send a private message from the System account. With a delivery key, a message already sent
+/// under that key is not sent again.
+pub async fn deliver_system_pm(
+    app: &App,
+    key: Option<&str>,
+    uid: i32,
+    subject: &str,
+    msg: &str,
+) -> AppResult<()> {
     let mut tx = app.db.begin().await?;
+    if let Some(key) = key
+        && !crate::infra::outbox::first_delivery(&mut tx, key).await?
+    {
+        return Ok(());
+    }
     sqlx::query("SELECT uid FROM users WHERE uid = $1 FOR UPDATE")
         .bind(uid)
         .execute(&mut *tx)

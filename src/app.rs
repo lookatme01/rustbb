@@ -256,12 +256,22 @@ impl AppState {
         self.page_cache_dirty_tags.lock().unwrap().extend(tags);
     }
 
-    /// Reload cache parts here and on every other node (through the durable cluster log).
+    /// Reload cache parts here and on every other node (through the durable cluster log). If the
+    /// reload here fails, this node's listener retries it like an event from another node.
     pub async fn invalidate(&self, parts: &[&str]) -> anyhow::Result<()> {
         let b = Broadcast::Cache(parts.iter().map(|p| p.to_string()).collect());
-        self.apply_broadcast(&b).await?;
-        self.broadcast(&b).await?;
-        Ok(())
+        let mut c = self.db.acquire().await?;
+        let id = crate::infra::cluster::record(&mut c, &self.node_id, &b).await?;
+        drop(c);
+        let r = self.apply_broadcast(&b).await;
+        let mut cursor = self.cluster_cursor.lock().unwrap();
+        match r {
+            Ok(()) => {
+                cursor.mark(id);
+            }
+            Err(_) => cursor.defer(id),
+        }
+        r
     }
 
     /// Record an invalidation this node already applied, for the other nodes.
@@ -416,7 +426,7 @@ pub fn spawn_listener(app: App) {
         loop {
             match run_listener(&app).await {
                 Ok(()) => {}
-                Err(e) => tracing::warn!("LISTEN connection lost: {e:#}; reconnecting"),
+                Err(e) => tracing::warn!("cluster listener stopped: {e:#}; reconnecting"),
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
