@@ -139,6 +139,11 @@ pub struct TestApp {
 
 impl TestApp {
     pub async fn new() -> Option<Self> {
+        Self::with_config(|_| {}).await
+    }
+
+    /// Like `new`, with configuration changes (e.g. turning the guest page cache on).
+    pub async fn with_config(f: impl FnOnce(&mut Config)) -> Option<Self> {
         let db = TestDb::new().await?;
         rbb::install::install(
             &db.pool,
@@ -157,6 +162,7 @@ impl TestApp {
             .join(format!("rbb-test-uploads-{}", db.name))
             .to_string_lossy()
             .into_owned();
+        f(&mut cfg);
         tokio::fs::create_dir_all(format!("{}/attachments", cfg.upload_dir))
             .await
             .unwrap();

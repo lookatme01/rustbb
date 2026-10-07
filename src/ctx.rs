@@ -650,6 +650,9 @@ pub async fn context_middleware(
         .map(|c| c.0);
     let headers = req.headers().clone();
     let ip = client_ip(&headers, peer, &app.cfg.trusted_proxies);
+    // Before the snapshot that permissions and settings come from: a reload swaps the snapshot
+    // and then bumps the epoch, so a page built from an older snapshot can never be stored.
+    let cache_epoch = app.page_cache.epoch();
     let cache = app.cache();
     let path = req.uri().path().to_string();
     let query = req.uri().query().unwrap_or("").to_string();
@@ -867,7 +870,6 @@ pub async fn context_middleware(
         staff: std::sync::OnceLock::new(),
     }));
     req.extensions_mut().insert(ctx.clone());
-    let cache_epoch = app.page_cache.epoch();
     let profile = (ctx.perms.cancp
         && !is_api
         && method == "GET"

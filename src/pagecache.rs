@@ -16,8 +16,8 @@
 //!   while an invalidation happened are discarded (epoch/generation check).
 
 use bytes::Bytes;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 /// Stand-in for the CSRF token in cached HTML. Only letters and digits, so it survives escaping.
@@ -37,6 +37,9 @@ pub struct Entry {
 pub struct PageCache {
     entries: moka::sync::Cache<String, Arc<Entry>>,
     epoch: AtomicU64,
+    /// Held shared while storing and exclusively while invalidating, so a store that passed the
+    /// epoch check can't land after an invalidation has swept the entries.
+    gate: RwLock<()>,
     /// Current generation per tag (absent = 0). Bumping one invalidates every page tagged with it.
     generations: dashmap::DashMap<String, u64>,
     enabled: bool,
@@ -53,6 +56,7 @@ impl PageCache {
                 .max_capacity(max_mb.max(1) * 1024 * 1024)
                 .build(),
             epoch: AtomicU64::new(0),
+            gate: RwLock::new(()),
             generations: dashmap::DashMap::new(),
             enabled: max_mb > 0,
         }
@@ -90,6 +94,7 @@ impl PageCache {
     /// Invalidate every page tagged with any of `tags`.
     pub fn invalidate_tags<S: AsRef<str>>(&self, tags: &[S]) {
         // Renders in flight may have read the old data: don't let them store (see `put`).
+        let _gate = self.gate.write().unwrap();
         self.epoch.fetch_add(1, Ordering::AcqRel);
         for t in tags {
             *self.generations.entry(t.as_ref().to_string()).or_insert(0) += 1;
@@ -98,13 +103,18 @@ impl PageCache {
 
     /// Store a page rendered while the cache was at `epoch`; dropped if a write happened since.
     pub fn put(&self, key: String, entry: Entry, epoch: u64) {
-        if self.enabled && self.epoch() == epoch {
+        if !self.enabled {
+            return;
+        }
+        let _gate = self.gate.read().unwrap();
+        if self.epoch() == epoch {
             self.entries.insert(key, Arc::new(entry));
         }
     }
 
     /// Forget everything (content changed).
     pub fn clear(&self) {
+        let _gate = self.gate.write().unwrap();
         self.epoch.fetch_add(1, Ordering::AcqRel);
         self.entries.invalidate_all();
     }
