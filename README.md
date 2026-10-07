@@ -1,143 +1,152 @@
 # rustbb
 
-**rbb** is a fast bulletin board written in Rust, modeled on [MyBB](https://mybb.com). It keeps
-MyBB's forums, usergroup permissions, MyCode and User/Mod/Admin control panels, and rebuilds them
-for large communities: one binary, PostgreSQL as the only dependency, and app nodes that scale
-horizontally.
+It's a forum. The kind with categories, threads, signatures and a "Who's Online" box at the bottom.
+You probably posted on one in 2009.
 
-## Highlights
+rbb is [MyBB](https://mybb.com) rebuilt in Rust. If you've ever run a MyBB board, you already know
+your way around: same forums, same usergroups, same Admin CP with way too many settings. The
+difference is underneath. It's a single binary, Postgres is the only thing it needs, and when your
+board gets big you just run more copies of it.
 
-* **One binary.** Templates, CSS, JS, fonts and icons are embedded. The only service you need is PostgreSQL.
-* **Built for big boards.** Counters are denormalized, page views are buffered, parsed posts are
-  cached, and every busy page is served from an index.
-* **Scales out.** Nodes are stateless. They share caches, tasks and live events through Postgres,
-  so you don't need Redis or a message broker.
-* **Secure by default.** Argon2id, CSRF on every form, a strict CSP, TOTP and passkeys, rate limits.
-* **Familiar to MyBB admins.** It has the same settings and permissions, and a direct importer that keeps original IDs and old URLs.
+```
+cargo build --release && ./target/release/rbb serve
+```
 
-## Features
+## What you get
 
-* **Forums:** subforums, prefixes, polls, ratings, unread tracking, RSS/Atom, sitemap, archive mode.
-* **Posting:** a rich-text editor that writes MyCode, live preview, quick reply, multi-quote,
-  drafts, drag-and-drop attachments, edit history, `@mentions`, reactions.
-* **Private messages:** folders, BCC, read receipts with unsend, optional end-to-end OpenPGP
-  signing and encryption.
-* **Members:** profiles with custom fields, avatars, signatures, reputation, warnings, badges,
-  real-time alerts, dark mode, a phone-first layout, and a data export.
-* **Account security:** passkeys, two-factor authentication, and a per-account activity log of
-  sign-ins and changes.
-* **Privacy:** an image proxy, IP retention limits, anonymized deleted accounts, and erasure requests.
-* **Moderation:** report queue with claiming, inline moderation, soft delete, scheduled actions,
-  moderator notes, member history, ban appeals, rule-based spam quarantine.
-* **Admin CP:** about 150 settings, per-forum group permissions, themes and template editing,
-  mass mail, scheduled tasks, backups, logs, and a debug panel showing each page's queries.
-* **System account:** a built-in member that sends automated messages, runs board automation, and
-  lets staff post on behalf of the board.
+The stuff you'd expect from a forum:
 
-## Quick start
+- Threads, polls, prefixes, unread tracking, RSS feeds
+- A rich-text editor that writes MyCode under the hood (and never mangles your old posts)
+- Private messages with folders, BCC, read receipts and unsend
+- Profiles, avatars, signatures, reputation, warnings and badges
+- Alerts and new replies that show up live, no refresh needed
+- Dark mode and a layout that works on a phone
 
-You need **PostgreSQL 17** (12 at minimum). To build from source you also need **Rust**: rustup
-installs the version pinned in `rust-toolchain.toml`.
+And some stuff you might not expect:
+
+- **Encrypted DMs.** Members can sign and end-to-end encrypt private messages with OpenPGP keys
+  made in the browser. Not even the server can read them.
+- **Passkeys and 2FA.** Sign in with your fingerprint instead of a password.
+- **A System account.** A built-in member that sends the automated messages, quarantines spam and
+  closes dead threads, so your staff doesn't have to.
+- **Moderation that keeps receipts.** Reports you can claim, private notes on members, a full
+  history per member, and ban appeals.
+- **Privacy settings that actually work.** It can shorten old IP addresses, prune old logs, proxy
+  remote images and fully erase an account. Members can download all their data as a zip.
+- **A debug panel for admins.** It sits at the bottom of every page and shows every SQL query that
+  page ran, how long each one took, and which ones look like an N+1.
+
+## Try it
+
+You need PostgreSQL 17 and Rust. rustup will grab the right Rust version on its own.
 
 ```bash
-./scripts/dev-db.sh                 # local PostgreSQL on port 5433, or use your own
-cp .env.example .env                # set RBB_SECRET:  openssl rand -hex 32
+./scripts/dev-db.sh              # spins up Postgres on port 5433 (or point it at your own)
+cp .env.example .env             # put something random in RBB_SECRET: openssl rand -hex 32
 cargo build --release
-./target/release/rbb install --admin-user admin --admin-password 'choose-a-password' \
+./target/release/rbb install --admin-user admin --admin-password 'pick-something' \
     --admin-email you@example.com --board-name "My Board" --board-url http://localhost:8080
 ./target/release/rbb serve
 ```
 
-Open <http://localhost:8080>. The Admin CP is at `/admin`. If something isn't working, run `rbb doctor`. It
-checks the whole setup and explains how to fix each problem.
+Then open <http://localhost:8080>. The Admin CP lives at `/admin`.
 
-With Docker, run `docker compose up --build` after setting `RBB_SECRET`.
+If something's off, run `rbb doctor`. It checks your config, database and mail setup and tells
+you what to fix in plain English.
 
-### Release binaries
+Prefer Docker? Set `RBB_SECRET` and run `docker compose up --build`.
 
-[GitHub Releases](../../releases) has single-file Linux builds (x86_64 and ARM64, glibc 2.17+) and
-`SHA256SUMS`. Unpack a build, copy `.env.example` to `.env`, then run `./rbb doctor && ./rbb serve`.
+## Running it for real
 
-## Configuration
+Grab a binary from [Releases](../../releases). There are builds for x86_64 and ARM64 Linux, and
+they run on pretty much any distro from the last ten years. Unpack it, copy `.env.example` to
+`.env`, and run `./rbb doctor && ./rbb serve`.
 
-Process settings come from environment variables or `.env`. Everything else is configured in the
-Admin CP.
+`deploy/` has a locked-down systemd unit and an nginx config if you want them.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | – | PostgreSQL connection string. |
-| `RBB_SECRET` | – | Random secret, 32+ characters, identical on every node. |
-| `RBB_LISTEN` | `127.0.0.1:8080` | Listen address. |
-| `RBB_UPLOAD_DIR` | `uploads` | Attachments and avatars (shared between nodes with `local` storage). |
-| `RBB_STORAGE` | `local` | `local` or `s3` (`RBB_S3_BUCKET`, `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX`). |
-| `RBB_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` from `RBB_TRUSTED_PROXIES` (default: loopback). |
-| `RBB_SECURE_COOKIES` | `false` | `Secure` cookies and HSTS behind HTTPS. |
-| `RBB_ROLE` | `all` | Any of `web`, `worker`, `scheduler`, comma-separated. |
+Most settings live in the Admin CP. The few that don't are environment variables:
+
+| Variable | What it does |
+|---|---|
+| `DATABASE_URL` | Where Postgres is. |
+| `RBB_SECRET` | A long random string. Use the same one on every server. |
+| `RBB_LISTEN` | Address to listen on. Defaults to `127.0.0.1:8080`. |
+| `RBB_UPLOAD_DIR` | Where avatars and attachments go. Or set `RBB_STORAGE=s3` to use a bucket. |
+| `RBB_TRUST_PROXY` | Set to `true` when you're behind nginx or a load balancer. |
+| `RBB_SECURE_COOKIES` | Set to `true` when you're on HTTPS. |
 
 <details>
-<summary>More variables</summary>
+<summary>The rest of them</summary>
 
-| Variable | Default | Purpose |
+| Variable | Default | What it does |
 |---|---|---|
-| `RBB_DB_MAX_CONNECTIONS` | `32` | Database connections per node. |
-| `RBB_MAX_UPLOAD_MB` | `25` | Largest upload; other requests are limited to 2 MiB. |
-| `RBB_ADMIN_LISTEN` | – | Internal listener for `/metrics`, `/livez`, `/readyz`. |
-| `RBB_MIGRATE_ON_START` | `true` | Apply migrations at start (turn off with several nodes; run `rbb migrate`). |
-| `RBB_SHUTDOWN_DRAIN_SECS` | `0` | Keep serving this long after SIGTERM while reporting not ready. |
-| `RBB_PAGE_CACHE_MB` | `64` | Guest page cache; `0` turns it off. |
-| `RBB_QUERY_SAMPLE_RATE` | `0.01` | Fraction of requests whose queries are measured. |
+| `RBB_ROLE` | `all` | Any of `web`, `worker`, `scheduler`, comma-separated. |
+| `RBB_TRUSTED_PROXIES` | loopback | Which proxies to believe, e.g. `10.0.0.0/8`. |
+| `RBB_S3_BUCKET`, `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX` | – | S3 storage settings. |
+| `RBB_DB_MAX_CONNECTIONS` | `32` | Database connections per server. |
+| `RBB_MAX_UPLOAD_MB` | `25` | Biggest file someone can upload. |
+| `RBB_ADMIN_LISTEN` | – | A private port for `/metrics`, `/livez` and `/readyz`. |
+| `RBB_MIGRATE_ON_START` | `true` | Turn off if you run several servers, and use `rbb migrate` instead. |
+| `RBB_SHUTDOWN_DRAIN_SECS` | `0` | How long to keep serving after a shutdown signal. |
+| `RBB_PAGE_CACHE_MB` | `64` | Memory for caching guest pages. `0` turns it off. |
+| `RBB_QUERY_SAMPLE_RATE` | `0.01` | How many requests get their queries timed. |
 | `RBB_SLOW_QUERY_MS` | `250` | Log queries slower than this. |
-| `RBB_SSE_MAX`, `RBB_SSE_MAX_PER_IP`, `RBB_SSE_MAX_PER_USER` | `10000`, `20`, `8` | Live-update stream caps per node. |
-| `RBB_PLUGINS_DIR` | `plugins` | Directory of Rhai plugins. |
-| `RBB_PLUGINS_TRUSTED` | `false` | Don't sanitize HTML produced by plugins. |
-| `RBB_LOG_JSON` | `false` | JSON log lines. |
-| `RUST_LOG` | `rbb=info,tower_http=warn` | Log filter. |
-| `RBB_DEV_TEMPLATES` | – | Development: read templates from this directory on every request. |
+| `RBB_SSE_MAX`, `RBB_SSE_MAX_PER_IP`, `RBB_SSE_MAX_PER_USER` | `10000`, `20`, `8` | Caps on live-update connections. |
+| `RBB_PLUGINS_DIR` | `plugins` | Where plugins live. |
+| `RBB_PLUGINS_TRUSTED` | `false` | Skip sanitizing plugin HTML. |
+| `RBB_LOG_JSON` | `false` | Log as JSON. |
+| `RUST_LOG` | `rbb=info,tower_http=warn` | How chatty the logs are. |
+| `RBB_DEV_TEMPLATES` | – | Reload templates from this folder on every request. For development. |
 
 </details>
 
-## Commands
+### When one server isn't enough
 
-| Command | Purpose |
+Run more. Every server talks to the same Postgres and the same uploads (S3 or a shared folder), and
+they keep each other in sync through Postgres. You don't need Redis or a message queue. On a busy
+board you can split background work into its own processes with `rbb worker` and `rbb scheduler`.
+
+## Moving from MyBB
+
+```bash
+rbb import-mybb --mysql-url mysql://user:pass@host/mybb --yes
+```
+
+That brings over users, passwords, forums, permissions, threads, posts, PMs and attachments, all
+with their original IDs. Old `showthread.php?tid=123` links keep working, and passwords quietly
+upgrade to Argon2 the next time each person signs in.
+
+## Other commands
+
+| Command | What it does |
 |---|---|
-| `rbb serve` | Run the server (the default). |
-| `rbb install …` | Create the default groups, forums, settings and admin account. |
-| `rbb migrate [--check]` | Apply migrations, or rehearse them in a rolled-back transaction. |
-| `rbb doctor [--strict]` | Check configuration, database and plugins, and explain fixes. |
-| `rbb recount` / `rbb check` | Rebuild or verify denormalized counters. |
-| `rbb import-mybb --mysql-url … --yes` | Import a MyBB 1.8 board, keeping IDs, passwords and old links. |
-| `rbb seed --users N --threads N --posts N` | Generate a synthetic board for load testing. |
+| `rbb migrate --check` | Shows what an upgrade will do to your database without doing it. |
+| `rbb check` | Makes sure every post and thread count matches the real data. |
+| `rbb recount` | Fixes them if they don't. |
+| `rbb seed --users N --threads N --posts N` | Fills a board with fake data so you can load-test it. |
 
-## Deployment and scaling
+## Making it yours
 
-* `deploy/rbb.service` is a sandboxed systemd unit. `deploy/nginx.conf` terminates TLS and proxies
-  the SSE stream. Behind nginx, set `RBB_TRUST_PROXY` and `RBB_SECURE_COOKIES`.
-* Run any number of web nodes against one database and shared storage (S3 or a shared directory).
-  On busy boards, run `rbb worker` and `rbb scheduler` as separate processes.
-* Run `rbb doctor --strict` before starting each node. Back up the database (Admin CP → Tools)
-  and the upload directory.
+- **Themes:** override any template, or make a child theme that only changes what you need. The
+  default theme can be re-branded from a single colour in the Admin CP.
+- **Plugins:** drop a [Rhai](https://rhai.rs) script in `plugins/` and hook into events like
+  `post_created` or `user_registered`.
+- **API:** `/api/v1` gets you forums, threads, posts, users and search, with the same permissions
+  as the website. Start at `GET /api/v1` to see what's there.
+- **Translations:** add a `lang/<code>.json` file. `lang/de.json` shows the format.
 
-## Extending
-
-* **API:** `/api/v1` covers forums, threads, posts, users, search and alerts, with the web's
-  permissions applied. `GET /api/v1` lists the endpoints. Get a token from `POST /api/v1/auth/token`.
-* **Plugins:** put [Rhai](https://rhai.rs) scripts in `plugins/`. Hooks include `thread_created`,
-  `post_created`, `user_registered` and `parse_message`.
-* **Themes:** each theme can override any template, and child themes inherit from their parents.
-  The built-in Halo theme can be re-branded from one colour.
-* **Translations:** add `lang/<code>.json` (see `lang/de.json`).
-
-## Development
+## Hacking on it
 
 ```bash
 ./scripts/dev-db.sh
-RBB_DEV_TEMPLATES=templates cargo run -- serve    # templates reload from disk
-cargo test                                        # needs the dev database
+RBB_DEV_TEMPLATES=templates cargo run -- serve    # edit templates without rebuilding
+cargo test
 ```
 
-End-to-end suites in `tests/*.sh` run against a server (default `http://127.0.0.1:8088`). Load tests
-are `tests/load.sh` and `tests/simulate.mjs`.
+There are also end-to-end scripts in `tests/*.sh` that poke a running board at
+`http://127.0.0.1:8088`, plus a load test in `tests/load.sh`.
 
 ## License
 
-LGPL-3.0-or-later, like MyBB.
+LGPL-3.0-or-later, same as MyBB.
