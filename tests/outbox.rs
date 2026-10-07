@@ -176,3 +176,77 @@ async fn live_leases_are_not_claimed_again() {
     .unwrap();
     assert_eq!(outbox::run_batch(&t.app).await.unwrap(), 0);
 }
+
+#[tokio::test]
+async fn overlapping_cache_reloads_keep_each_others_changes() {
+    let t = test_app!();
+    for round in 0..30 {
+        let name = format!("Board {round}");
+        let custom = round % 2 == 0;
+        sqlx::query("UPDATE settings SET value = $1 WHERE name = 'bbname'")
+            .bind(&name)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        let sql = if custom {
+            "INSERT INTO forumpermissions (fid, gid, perms) VALUES (2, 1, '{}') ON CONFLICT DO NOTHING"
+        } else {
+            "DELETE FROM forumpermissions WHERE fid = 2 AND gid = 1"
+        };
+        sqlx::query(sql).execute(&t.db.pool).await.unwrap();
+        // Each starts from the current snapshot; neither may put back what the other replaced.
+        let (a, b) = tokio::join!(
+            t.app.invalidate(&["settings"]),
+            t.app.invalidate(&["forumperms"])
+        );
+        a.unwrap();
+        b.unwrap();
+        let c = t.app.cache();
+        assert_eq!(
+            c.settings.get("bbname"),
+            name,
+            "round {round}: settings reverted"
+        );
+        assert_eq!(
+            c.forum_perms.contains_key(&(2, 1)),
+            custom,
+            "round {round}: forum permissions reverted"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_failed_cache_reload_marks_the_cache_stale_until_a_retry_succeeds() {
+    let t = test_app!();
+    assert_eq!(t.app.cache_stale_for(), None);
+    sqlx::query("ALTER TABLE forumpermissions RENAME TO forumpermissions_away")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(t.app.invalidate(&["forumperms"]).await.is_err());
+    assert!(
+        t.app.cache_stale_for().is_some(),
+        "stale while the reload fails"
+    );
+    let mut conn = t.db.pool.acquire().await.unwrap();
+    rbb::infra::cluster::catch_up(&t.app, &mut conn)
+        .await
+        .unwrap();
+    assert!(
+        t.app.cache_stale_for().is_some(),
+        "still stale: the retry failed too"
+    );
+
+    sqlx::query("ALTER TABLE forumpermissions_away RENAME TO forumpermissions")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    rbb::infra::cluster::catch_up(&t.app, &mut conn)
+        .await
+        .unwrap();
+    assert_eq!(
+        t.app.cache_stale_for(),
+        None,
+        "current again once the retry applies"
+    );
+}

@@ -144,6 +144,12 @@ pub struct AppState {
     pub shutdown: tokio::sync::watch::Sender<bool>,
     /// Which cluster events this node has applied.
     pub cluster_cursor: std::sync::Mutex<crate::infra::cluster::Cursor>,
+    /// Held while the shared cache is reloaded and replaced, so two reloads never start from the
+    /// same snapshot and the second to finish never undoes the first.
+    cache_reload: tokio::sync::Mutex<()>,
+    /// Since when reloading the shared cache (settings, forums, groups, permissions…) has been
+    /// failing; `None` while it is current. Readiness fails once this lasts too long.
+    cache_stale_since: std::sync::Mutex<Option<std::time::Instant>>,
     /// Wakes the outbox worker (jobs committed here, or NOTIFY from another node).
     pub outbox_wake: tokio::sync::Notify,
     /// Wakes the mail worker.
@@ -228,6 +234,8 @@ impl AppState {
             parse_writeback: tokio::sync::Semaphore::new(4),
             shutdown: tokio::sync::watch::channel(false).0,
             cluster_cursor: std::sync::Mutex::new(Default::default()),
+            cache_reload: tokio::sync::Mutex::new(()),
+            cache_stale_since: std::sync::Mutex::new(None),
             outbox_wake: tokio::sync::Notify::new(),
             mail_wake: tokio::sync::Notify::new(),
             pending_activity: std::sync::Mutex::new(None),
@@ -264,14 +272,54 @@ impl AppState {
         let id = crate::infra::cluster::record(&mut c, &self.node_id, &b).await?;
         drop(c);
         let r = self.apply_broadcast(&b).await;
-        let mut cursor = self.cluster_cursor.lock().unwrap();
         match r {
             Ok(()) => {
-                cursor.mark(id);
+                self.cluster_cursor.lock().unwrap().mark(id);
             }
-            Err(_) => cursor.defer(id),
+            Err(_) => self.cache_refresh_failed(id),
         }
         r
+    }
+
+    /// Applying cluster event `id` failed: retry it, and count the cache as stale until then.
+    pub fn cache_refresh_failed(&self, id: i64) {
+        self.cluster_cursor.lock().unwrap().defer(id);
+        self.cache_stale_since
+            .lock()
+            .unwrap()
+            .get_or_insert_with(std::time::Instant::now);
+    }
+
+    /// How long the shared cache has been failing to refresh, if it is stale.
+    pub fn cache_stale_for(&self) -> Option<Duration> {
+        self.cache_stale_since.lock().unwrap().map(|t| t.elapsed())
+    }
+
+    /// Reload the whole shared cache (after (re)connecting to the cluster log).
+    async fn reload_all(&self) -> anyhow::Result<()> {
+        let _reload = self.cache_reload.lock().await;
+        let fresh = match Cache::load_all(&self.db).await {
+            Ok(c) => c,
+            Err(e) => {
+                self.cache_stale_since
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(std::time::Instant::now);
+                return Err(e);
+            }
+        };
+        self.cache.store(Arc::new(fresh));
+        self.tpl.reset();
+        self.page_cache.clear();
+        *self.cache_stale_since.lock().unwrap() = None;
+        Ok(())
+    }
+
+    /// Catching up left no event waiting for a retry: the cache is current again.
+    pub fn cache_refresh_caught_up(&self) {
+        if self.cluster_cursor.lock().unwrap().retries_pending() == 0 {
+            *self.cache_stale_since.lock().unwrap() = None;
+        }
     }
 
     /// Record an invalidation this node already applied, for the other nodes.
@@ -296,17 +344,18 @@ impl AppState {
     }
 
     async fn reload_parts(&self, parts: &[&str]) -> anyhow::Result<()> {
-        // Settings, forums, themes… all change what guests see.
-        self.page_cache.clear();
         let parts: Vec<&str> = parts
             .iter()
             .copied()
             .filter(|p| *p != "pagecache")
             .collect();
         if parts.is_empty() {
+            self.page_cache.clear();
             return Ok(());
         }
         let parts = &parts[..];
+        // Start from the current snapshot only once no other reload can replace it meanwhile.
+        let _reload = self.cache_reload.lock().await;
         let mut c = (*self.cache.load_full()).clone();
         for p in parts {
             c.reload(&self.db, p).await?;
@@ -315,6 +364,9 @@ impl AppState {
         if parts.iter().any(|p| matches!(*p, "templates" | "themes")) {
             self.tpl.reset();
         }
+        // Settings, forums, themes… all change what guests see. Cleared after the new snapshot
+        // is in place (not before), and not at all when the reload failed and nothing changed.
+        self.page_cache.clear();
         Ok(())
     }
 
@@ -445,10 +497,7 @@ async fn run_listener(app: &App) -> anyhow::Result<()> {
     let mut conn = app.db.acquire().await?;
     *app.cluster_cursor.lock().unwrap() = crate::infra::cluster::Cursor::start(&mut conn).await?;
     drop(conn);
-    let fresh = Cache::load_all(&app.db).await?;
-    app.cache.store(Arc::new(fresh));
-    app.tpl.reset();
-    app.page_cache.clear();
+    app.reload_all().await?;
     let mut poll = tokio::time::interval(crate::infra::cluster::POLL);
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {

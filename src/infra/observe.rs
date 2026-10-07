@@ -1,9 +1,11 @@
 //! Operational visibility: request metrics, health endpoints and a background sampler.
 //!
 //! * `/livez` — the process is up (no dependencies checked; restart only if this fails).
-//! * `/readyz` — this node should get traffic: the database answers within a short timeout and
-//!   the node is not shutting down. Load balancers stop routing to a node as soon as it starts
-//!   draining.
+//! * `/readyz` — this node should get traffic: the database answers within a short timeout, the
+//!   node is not shutting down, and its shared cache (settings, forums, groups, permissions) is
+//!   current: a node whose cache reloads have kept failing for [`CACHE_STALE_GRACE`] could be
+//!   enforcing permissions another node already changed. Load balancers stop routing to a node
+//!   as soon as it starts draining.
 //! * `/metrics` — Prometheus text format, served on the admin listener (`RBB_ADMIN_LISTEN`),
 //!   not on the public port.
 //!
@@ -19,6 +21,10 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use std::time::{Duration, Instant};
+
+/// How long cache reloads may keep failing (a few retries, one every
+/// [`crate::infra::cluster::POLL`]) before the node stops reporting ready.
+pub const CACHE_STALE_GRACE: Duration = Duration::from_secs(10);
 
 pub fn describe_all() {
     for (n, h) in [
@@ -40,6 +46,10 @@ pub fn describe_all() {
             "Statement latency (sampled requests).",
         ),
         ("rbb_db_pool_connections", "Open database connections."),
+        (
+            "rbb_cache_stale_seconds",
+            "How long this node's shared cache (settings, forums, permissions) has failed to reload; 0 when current.",
+        ),
         ("rbb_db_pool_idle", "Idle database connections."),
         (
             "rbb_db_pool_acquire_seconds",
@@ -156,6 +166,12 @@ pub async fn readyz(State(app): State<App>) -> Response {
     if *app.shutdown.borrow() {
         return (StatusCode::SERVICE_UNAVAILABLE, "shutting down").into_response();
     }
+    if app
+        .cache_stale_for()
+        .is_some_and(|d| d >= CACHE_STALE_GRACE)
+    {
+        return (StatusCode::SERVICE_UNAVAILABLE, "cache stale").into_response();
+    }
     let probe = tokio::time::timeout(
         Duration::from_secs(2),
         sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&app.db),
@@ -214,6 +230,10 @@ pub fn spawn_sampler(app: App) {
                 _ = stop.wait_for(|s| *s) => break,
             }
             metrics::gauge("rbb_db_pool_connections", app.db.size() as f64);
+            metrics::gauge(
+                "rbb_cache_stale_seconds",
+                app.cache_stale_for().map_or(0.0, |d| d.as_secs_f64()),
+            );
             metrics::gauge("rbb_db_pool_idle", app.db.num_idle() as f64);
             let t0 = Instant::now();
             if let Ok(Ok(c)) = tokio::time::timeout(Duration::from_secs(5), app.db.acquire()).await

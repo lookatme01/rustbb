@@ -123,7 +123,7 @@ impl Uow {
                 Err(e) => {
                     // The listener retries it like an event from another node.
                     tracing::warn!(error = %e, event = id, "local cache invalidation failed");
-                    app.cluster_cursor.lock().unwrap().defer(id);
+                    app.cache_refresh_failed(id);
                 }
             }
         }

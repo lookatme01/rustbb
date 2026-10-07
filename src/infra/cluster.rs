@@ -143,8 +143,20 @@ impl Cursor {
 
     /// Note that applying `id` failed: it is retried until [`Cursor::mark`]ed.
     pub fn defer(&mut self, id: i64) {
+        self.defer_at(id, Instant::now());
+    }
+
+    /// [`Cursor::defer`] at `now`. A repeated failure keeps the time of the first one, so
+    /// [`RETRY_TTL`] counts from when the event first failed, not from its latest retry.
+    fn defer_at(&mut self, id: i64, now: Instant) {
+        let since = self.retry.get(&id).copied().unwrap_or(now);
         self.mark(id);
-        self.retry.entry(id).or_insert_with(Instant::now);
+        self.retry.insert(id, since);
+    }
+
+    /// How many events are waiting for a retry.
+    pub fn retries_pending(&self) -> usize {
+        self.retry.len()
     }
 
     /// Whether `id` still has to be applied.
@@ -158,7 +170,13 @@ impl Cursor {
 
     /// The oldest retry has been failing for longer than `ttl`.
     fn retries_overdue(&self, ttl: Duration) -> bool {
-        self.retry.values().any(|t| t.elapsed() >= ttl)
+        self.retries_overdue_at(ttl, Instant::now())
+    }
+
+    fn retries_overdue_at(&self, ttl: Duration, now: Instant) -> bool {
+        self.retry
+            .values()
+            .any(|t| now.saturating_duration_since(*t) >= ttl)
     }
 }
 
@@ -204,10 +222,11 @@ pub async fn catch_up(app: &App, conn: &mut PgConnection) -> anyhow::Result<usiz
             }
             Err(e) => {
                 tracing::warn!(error = %format!("{e:#}"), event = id, "applying cluster event failed; will retry");
-                app.cluster_cursor.lock().unwrap().defer(id);
+                app.cache_refresh_failed(id);
             }
         }
     }
+    app.cache_refresh_caught_up();
     Ok(applied)
 }
 
@@ -243,6 +262,34 @@ mod tests {
         assert!(c.mark(3), "applied at last");
         assert!(!c.pending(3) && !c.mark(3));
         assert!(c.retry.is_empty());
+    }
+
+    #[test]
+    fn repeated_failures_keep_the_first_failure_time() {
+        let t0 = Instant::now();
+        let mut c = Cursor::default();
+        c.defer_at(1, t0);
+        // Retried every poll, failing each time, until well past the deadline.
+        let mut t = t0;
+        while t < t0 + RETRY_TTL - POLL {
+            t += POLL;
+            c.defer_at(1, t);
+            assert!(
+                !c.retries_overdue_at(RETRY_TTL, t),
+                "not overdue yet at {:?}",
+                t - t0
+            );
+        }
+        t += POLL;
+        c.defer_at(1, t);
+        assert!(
+            c.retries_overdue_at(RETRY_TTL, t),
+            "overdue {:?} after the first failure",
+            t - t0
+        );
+        assert!(c.mark(1), "applying it at last still clears it");
+        assert_eq!(c.retries_pending(), 0);
+        assert!(!c.retries_overdue_at(RETRY_TTL, t));
     }
 
     #[test]
