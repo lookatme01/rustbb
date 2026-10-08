@@ -67,15 +67,17 @@ async fn shorten_ips(db: &sqlx::PgPool, cut: i64) -> anyhow::Result<u64> {
 }
 
 /// Scheduled task: shorten IP addresses past the limit and prune logs past their retention.
-pub async fn run(app: &crate::app::App) -> anyhow::Result<String> {
+pub async fn run(app: &crate::app::App) -> anyhow::Result<crate::tasks::Ran> {
     let s = app.cache().settings.clone();
     let db = &app.db;
     let t = crate::util::now();
     let day = 86_400;
     let mut done = vec![];
+    let mut changed = false;
     let ip_days = s.int("privacy_ip_days");
     if ip_days > 0 {
         let n = shorten_ips(db, t - ip_days * day).await?;
+        changed |= n > 0;
         done.push(format!("shortened {n} IP addresses"));
     }
     for (setting, table) in [
@@ -90,14 +92,18 @@ pub async fn run(app: &crate::app::App) -> anyhow::Result<String> {
                 .execute(db)
                 .await?
                 .rows_affected();
+            changed |= n > 0;
             done.push(format!("removed {n} {table} rows"));
         }
     }
-    Ok(if done.is_empty() {
-        "nothing to do".into()
-    } else {
-        done.join(", ")
-    })
+    Ok(crate::tasks::Ran::new(
+        changed,
+        if done.is_empty() {
+            "nothing to do".into()
+        } else {
+            done.join(", ")
+        },
+    ))
 }
 
 /// Remove a member's name and IP addresses from what they leave behind. Runs inside the account

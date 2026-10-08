@@ -15,6 +15,23 @@ const PARALLEL: usize = 3;
 /// A task running longer than this may be started again elsewhere.
 const LEASE: Duration = Duration::from_secs(30 * 60);
 
+/// What one task run did.
+pub struct Ran {
+    pub msg: String,
+    /// The run found nothing to do. Scheduled idle runs are left out of the task log: on a
+    /// quiet board that is nearly every run of the tasks that run every minute or so.
+    pub idle: bool,
+}
+
+impl Ran {
+    pub fn new(did_work: bool, msg: impl Into<String>) -> Self {
+        Ran {
+            msg: msg.into(),
+            idle: !did_work,
+        }
+    }
+}
+
 pub fn spawn_scheduler(app: App) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(30));
@@ -99,10 +116,10 @@ async fn run(app: &App, tid: i32, key: &str, logging: bool, force: bool) -> anyh
         let (app, key) = (app.clone(), key.to_string());
         tokio::spawn(async move { execute(&app, &key).await }).await
     };
-    let msg = match result {
-        Ok(Ok(m)) => m,
-        Ok(Err(e)) => format!("error: {e:#}"),
-        Err(e) => format!("error: task panicked: {e}"),
+    let (msg, idle) = match result {
+        Ok(Ok(r)) => (r.msg, r.idle),
+        Ok(Err(e)) => (format!("error: {e:#}"), false),
+        Err(e) => (format!("error: task panicked: {e}"), false),
     };
     crate::infra::metrics::observe(
         "rbb_task_seconds",
@@ -116,7 +133,8 @@ async fn run(app: &App, tid: i32, key: &str, logging: bool, force: bool) -> anyh
     .bind(now())
     .execute(&app.db)
     .await?;
-    if logging {
+    // A run started from the ACP is logged even when idle.
+    if logging && (force || !idle) {
         sqlx::query("INSERT INTO tasklog (tid, dateline, data) VALUES ($1, $2, $3)")
             .bind(tid)
             .bind(now())
@@ -127,7 +145,7 @@ async fn run(app: &App, tid: i32, key: &str, logging: bool, force: bool) -> anyh
     Ok(msg)
 }
 
-async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
+async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
     let t = now();
     let db = &app.db;
     let cache = app.cache();
@@ -173,8 +191,11 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             let tmp = crate::infra::uploads::sweep_tmp(&app.cfg.upload_dir).await;
-            format!(
-                "removed {a} stale sessions, {orphans} orphaned attachments, {tmp} stale upload files"
+            Ran::new(
+                a > 0 || orphans > 0 || tmp > 0,
+                format!(
+                    "removed {a} stale sessions, {orphans} orphaned attachments, {tmp} stale upload files"
+                ),
             )
         }
         "dailycleanup" => {
@@ -206,7 +227,8 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .bind(t - 7 * 86400)
                 .execute(db)
                 .await?;
-            format!("pruned {a} read markers")
+            // Once a day, and it prunes more than it reports: always logged.
+            Ran::new(true, format!("pruned {a} read markers"))
         }
         "banlifter" => {
             let lifted: Vec<(i32, i32, Vec<i32>, i32)> = sqlx::query_as(
@@ -244,7 +266,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 let ended: Vec<(i32, String)> = sqlx::query_as(sql).bind(t).fetch_all(db).await?;
                 crate::system::log_expiries(app, action, &ended).await;
             }
-            format!("lifted {} bans", lifted.len())
+            Ran::new(!lifted.is_empty(), format!("lifted {} bans", lifted.len()))
         }
         "warnings" => {
             let rows: Vec<(i32, i32)> = sqlx::query_as(
@@ -259,11 +281,11 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 expired.extend(name.map(|n| (*uid, n)));
             }
             crate::system::log_expiries(app, "Warning expired", &expired).await;
-            format!("expired {} warnings", rows.len())
+            Ran::new(!rows.is_empty(), format!("expired {} warnings", rows.len()))
         }
         "threadviews" => {
             let n = sqlx::query("DELETE FROM threads WHERE redirect_expires > 0 AND redirect_expires <= $1 AND closed LIKE 'moved|%'").bind(t).execute(db).await?.rows_affected();
-            format!("removed {n} expired redirects")
+            Ran::new(n > 0, format!("removed {n} expired redirects"))
         }
         "dailystats" => {
             let day = t - t % 86400;
@@ -275,7 +297,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
             .bind(day)
             .execute(db)
             .await?;
-            "recorded".into()
+            Ran::new(true, "recorded")
         }
         "userpruning" => {
             let n = sqlx::query(
@@ -292,7 +314,7 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                 .execute(db)
                 .await?;
             }
-            format!("pruned {n} unactivated users")
+            Ran::new(n > 0, format!("pruned {n} unactivated users"))
         }
         "recyclebin" => {
             let tids: Vec<i32> = sqlx::query_scalar("SELECT tid FROM threads WHERE visible = -1 AND deletetime > 0 AND deletetime < $1 LIMIT 500")
@@ -304,7 +326,10 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
                     .await
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
             }
-            format!("purged {} old soft-deleted threads", tids.len())
+            Ran::new(
+                !tids.is_empty(),
+                format!("purged {} old soft-deleted threads", tids.len()),
+            )
         }
         "automoderation" => crate::automod::run(app).await?,
         "systemautoclose" => crate::system::autoclose(app).await?,
@@ -313,6 +338,6 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<String> {
         "promotions" => crate::admin::promotions::run_promotions(app).await?,
         "badges" => crate::badges::run(app).await?,
         "massmail" => crate::admin::massmail::run_batch(app).await?,
-        other => format!("unknown task {other}"),
+        other => Ran::new(true, format!("unknown task {other}")),
     })
 }

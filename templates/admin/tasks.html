@@ -8,5 +8,5 @@
 <td class="small">{{ t[6]|date }}</td><td class="small">{{ t[5]|date('datetime') }}</td>
 <td class="num" style="white-space:nowrap"><form method="post" action="/admin/tools/tasks" style="display:inline">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t[0] }}"><button class="btn secondary small" name="action" value="run">Run now</button> <button class="btn secondary small" name="action" value="toggle">{{ 'Disable' if t[7] else 'Enable' }}</button></form></td></tr>{% endfor %}
 </tbody></table></section>
-<section class="box"><div class="box-head"><h2>Task log</h2></div><table class="grid"><tbody>{% for l in logs %}<tr><td>{{ l[0] }}</td><td class="small muted">{{ l[1]|date }}</td><td class="small">{{ l[2] }}</td></tr>{% else %}<tr><td class="empty">No task runs logged yet.</td></tr>{% endfor %}</tbody></table></section>
+<section class="box"><div class="box-head"><h2>Task log</h2></div><div class="box-body"><p class="small muted">Scheduled runs that find nothing to do aren't logged. Runs started with Run now always are.</p></div><table class="grid"><tbody>{% for l in logs %}<tr><td>{{ l[0] }}</td><td class="small muted">{{ l[1]|date }}</td><td class="small">{{ l[2] }}</td></tr>{% else %}<tr><td class="empty">No task runs logged yet.</td></tr>{% endfor %}</tbody></table></section>
 {% endblock %}

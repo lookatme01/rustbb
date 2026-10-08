@@ -78,7 +78,7 @@ async fn the_task_awards_service_badges_once_to_members_who_qualify() {
         .await
         .unwrap();
 
-    let msg = rbb::badges::run(&t.app).await.unwrap();
+    let msg = rbb::badges::run(&t.app).await.unwrap().msg;
     assert!(msg.starts_with("awarded"), "{msg}");
     assert!(has(&t, old, year).await);
     assert!(!has(&t, old, two).await, "400 days is not two years");
@@ -109,7 +109,9 @@ async fn the_task_awards_service_badges_once_to_members_who_qualify() {
         .fetch_one(&t.db.pool)
         .await
         .unwrap();
-    assert_eq!(rbb::badges::run(&t.app).await.unwrap(), "awarded 0 badges");
+    let ran = rbb::badges::run(&t.app).await.unwrap();
+    assert_eq!(ran.msg, "awarded 0 badges");
+    assert!(ran.idle);
     let alerts_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM alerts")
         .fetch_one(&t.db.pool)
         .await

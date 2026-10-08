@@ -1066,7 +1066,7 @@ pub async fn cancel_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<CancelForm>) -> AppR
 /// Task: execute due delayed moderation actions. Each action is claimed (deleted, skipping
 /// rows another node is working on), performed and logged in one transaction, so a failure
 /// leaves it scheduled for the next run instead of losing it.
-pub async fn run_delayed(app: &App) -> anyhow::Result<String> {
+pub async fn run_delayed(app: &App) -> anyhow::Result<crate::tasks::Ran> {
     let mut n = 0;
     loop {
         let mut uow = Uow::begin(app).await?;
@@ -1144,5 +1144,8 @@ pub async fn run_delayed(app: &App) -> anyhow::Result<String> {
     if n > 0 {
         app.mod_counts.invalidate_all();
     }
-    Ok(format!("ran {n} delayed actions"))
+    Ok(crate::tasks::Ran::new(
+        n > 0,
+        format!("ran {n} delayed actions"),
+    ))
 }

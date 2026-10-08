@@ -215,7 +215,7 @@ pub async fn logs(ctx: Ctx) -> AppResult<Response> {
 }
 
 /// Task: apply all enabled promotions.
-pub async fn run_promotions(app: &App) -> anyhow::Result<String> {
+pub async fn run_promotions(app: &App) -> anyhow::Result<crate::tasks::Ran> {
     let promos: Vec<(i32, bool, serde_json::Value, Vec<i32>, i32, String)> =
         sqlx::query_as("SELECT pid, logging, requirements, originalusergroup, newusergroup, usergrouptype FROM promotions WHERE enabled").fetch_all(&app.db).await?;
     let mut total = 0;
@@ -281,5 +281,8 @@ pub async fn run_promotions(app: &App) -> anyhow::Result<String> {
             .execute(&app.db)
             .await?;
     }
-    Ok(format!("promoted {total} users"))
+    Ok(crate::tasks::Ran::new(
+        total > 0,
+        format!("promoted {total} users"),
+    ))
 }

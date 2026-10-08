@@ -250,7 +250,7 @@ async fn award_where(
 }
 
 /// Task: award every enabled automatic badge to the members who now qualify.
-pub async fn run(app: &App) -> anyhow::Result<String> {
+pub async fn run(app: &App) -> anyhow::Result<crate::tasks::Ran> {
     let badges = app.cache().badges.clone();
     let mut total = 0;
     for b in badges.iter().filter(|b| b.enabled) {
@@ -258,7 +258,10 @@ pub async fn run(app: &App) -> anyhow::Result<String> {
             total += award_where(app, b, &cond, None).await?.len();
         }
     }
-    Ok(format!("awarded {total} badges"))
+    Ok(crate::tasks::Ran::new(
+        total > 0,
+        format!("awarded {total} badges"),
+    ))
 }
 
 /// Award a badge by hand. False if the member already has it or can't hold badges.

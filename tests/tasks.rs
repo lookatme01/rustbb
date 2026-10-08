@@ -40,3 +40,39 @@ async fn a_task_runs_once_when_two_schedulers_race() {
         .unwrap();
     assert_eq!(held, 0);
 }
+
+#[tokio::test]
+async fn idle_scheduled_runs_are_not_logged_but_manual_runs_are() {
+    let t = test_app!();
+    let tid: i32 = sqlx::query_scalar("SELECT tid FROM tasks WHERE key = 'banlifter'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE tasks SET nextrun = CASE WHEN tid = $1 THEN 0 ELSE $2 END, logging = TRUE")
+        .bind(tid)
+        .bind(rbb::util::now() + 86400)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let logged = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasklog WHERE tid = $1")
+            .bind(tid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap()
+    };
+    // No bans to lift: the run happens but leaves no log row.
+    rbb::tasks::run_due(&t.app).await.unwrap();
+    let lastrun: i64 = sqlx::query_scalar("SELECT lastrun FROM tasks WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(lastrun > 0, "the task ran");
+    assert_eq!(logged().await, 0);
+    let msg = rbb::tasks::run_task(&t.app, tid, "banlifter", 300, true)
+        .await
+        .unwrap();
+    assert_eq!(msg, "lifted 0 bans");
+    assert_eq!(logged().await, 1);
+}

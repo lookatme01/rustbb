@@ -86,7 +86,7 @@ async fn log(
     Ok(())
 }
 
-pub async fn run(app: &App) -> anyhow::Result<String> {
+pub async fn run(app: &App) -> anyhow::Result<crate::tasks::Ran> {
     let pids: Vec<i32> =
         sqlx::query_scalar("SELECT pid FROM automod_queue ORDER BY queued_at, pid LIMIT 100")
             .fetch_all(&app.db)
@@ -102,8 +102,9 @@ pub async fn run(app: &App) -> anyhow::Result<String> {
             }
         }
     }
-    Ok(format!(
-        "System evaluated {processed} queued posts; {failed} retained for retry"
+    Ok(crate::tasks::Ran::new(
+        processed + failed > 0,
+        format!("System evaluated {processed} queued posts; {failed} retained for retry"),
     ))
 }
 

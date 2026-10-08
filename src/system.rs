@@ -9,6 +9,7 @@ use crate::app::App;
 use crate::cache::Cache;
 use crate::error::{AppError, AppResult};
 use crate::perms::GroupPerms;
+use crate::tasks::Ran;
 use crate::util::now;
 use sqlx::PgPool;
 
@@ -227,15 +228,19 @@ fn autoclose_forums(setting: &str) -> Option<Vec<i32>> {
 }
 
 /// Scheduled task: close threads with no new posts for `system_autoclose_days`, as System.
-pub async fn autoclose(app: &App) -> anyhow::Result<String> {
+pub async fn autoclose(app: &App) -> anyhow::Result<Ran> {
     let cache = app.cache();
     let days = cache.settings.int("system_autoclose_days");
     if days <= 0 || cache.system_uid == 0 {
-        return Ok("turned off".into());
+        return Ok(Ran::new(false, "turned off"));
     }
     let fids = match autoclose_forums(cache.settings.get("system_autoclose_forums")) {
         Some(f) if f.is_empty() => {
-            return Ok("no valid forum IDs configured; nothing closed".into());
+            // A misconfiguration: logged so the admin sees it.
+            return Ok(Ran::new(
+                true,
+                "no valid forum IDs configured; nothing closed",
+            ));
         }
         Some(f) => f,
         None => vec![],
@@ -268,7 +273,10 @@ pub async fn autoclose(app: &App) -> anyhow::Result<String> {
     if !closed.is_empty() {
         app.invalidate(&["pagecache"]).await?;
     }
-    Ok(format!("closed {} inactive threads", closed.len()))
+    Ok(Ran::new(
+        !closed.is_empty(),
+        format!("closed {} inactive threads", closed.len()),
+    ))
 }
 
 /// Record, as System, that something a moderator set up ran out on its own (ban, suspension,

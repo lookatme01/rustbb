@@ -3,6 +3,7 @@
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
+use crate::tasks::Ran;
 use crate::util::now;
 use axum::Router;
 use axum::response::Response;
@@ -129,11 +130,11 @@ pub async fn cancel(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Respo
 }
 
 /// Task: send the next batch of queued mass mailings.
-pub async fn run_batch(app: &App) -> anyhow::Result<String> {
+pub async fn run_batch(app: &App) -> anyhow::Result<Ran> {
     let job: Option<(i32, String, String, i16, serde_json::Value, i32)> =
         sqlx::query_as("SELECT mid, subject, message, type, conditions, lastuid FROM massemails WHERE status IN (1, 2) ORDER BY mid LIMIT 1").fetch_optional(&app.db).await?;
     let Some((mid, subject, message, kind, cond, lastuid)) = job else {
-        return Ok("nothing queued".into());
+        return Ok(Ran::new(false, "nothing queued"));
     };
     let groups: Vec<i32> = cond["groups"]
         .as_array()
@@ -158,7 +159,7 @@ pub async fn run_batch(app: &App) -> anyhow::Result<String> {
             .bind(mid)
             .execute(&app.db)
             .await?;
-        return Ok(format!("mass mail {mid} complete"));
+        return Ok(Ran::new(true, format!("mass mail {mid} complete")));
     }
     let s = app.cache().settings.clone();
     for (uid, name, email) in &users {
@@ -187,5 +188,8 @@ pub async fn run_batch(app: &App) -> anyhow::Result<String> {
     .bind(users.len() as i32)
     .execute(&app.db)
     .await?;
-    Ok(format!("sent {} messages for mass mail {mid}", users.len()))
+    Ok(Ran::new(
+        true,
+        format!("sent {} messages for mass mail {mid}", users.len()),
+    ))
 }
