@@ -182,35 +182,108 @@ async fn log_actor(app: &App, actor: &Actor, uid: i32, action: &str, details: Va
     }
 }
 
-/// A short, human browser/OS label from a user agent string.
-pub fn device_label(ua: &str) -> String {
-    let browser = if ua.contains("Edg/") {
+/// The browser/client name in a user agent, if we recognise it. Order matters: Edge, Opera and
+/// Chrome-on-iOS all also claim "Chrome" or "Safari".
+fn browser_name(ua: &str) -> Option<&'static str> {
+    Some(if ua.contains("Edg/") || ua.contains("EdgA/") || ua.contains("EdgiOS/") {
         "Edge"
-    } else if ua.contains("Firefox/") {
+    } else if ua.contains("OPR/") || ua.contains("Opera") {
+        "Opera"
+    } else if ua.contains("Firefox/") || ua.contains("FxiOS/") {
         "Firefox"
-    } else if ua.contains("Chrome/") {
+    } else if ua.contains("Chrome/") || ua.contains("CriOS/") {
         "Chrome"
     } else if ua.contains("Safari/") {
         "Safari"
     } else if ua.starts_with("curl/") {
         "curl"
-    } else if ua.is_empty() {
-        "Unknown client"
     } else {
-        "Other client"
-    };
-    let os = if ua.contains("iPhone") || ua.contains("iPad") {
-        " on iOS"
+        return None;
+    })
+}
+
+fn os_name(ua: &str) -> Option<&'static str> {
+    // iOS agents say "like Mac OS X", Android says "Linux", ChromeOS says "X11; CrOS"
+    Some(if ua.contains("iPhone") {
+        "iPhone"
+    } else if ua.contains("iPad") {
+        "iPad"
     } else if ua.contains("Android") {
-        " on Android"
+        "Android"
+    } else if ua.contains("CrOS") {
+        "ChromeOS"
     } else if ua.contains("Mac OS X") {
-        " on macOS"
+        "macOS"
     } else if ua.contains("Windows") {
-        " on Windows"
-    } else if ua.contains("Linux") {
-        " on Linux"
+        "Windows"
+    } else if ua.contains("Linux") || ua.contains("X11") {
+        "Linux"
     } else {
-        ""
+        return None;
+    })
+}
+
+/// A short, human browser/OS label from a user agent string.
+pub fn device_label(ua: &str) -> String {
+    let browser = match browser_name(ua) {
+        Some(b) => b,
+        None if ua.is_empty() => "Unknown client",
+        None => "Other client",
     };
-    format!("{browser}{os}")
+    match os_name(ua) {
+        Some(os) if browser != "curl" => format!("{browser} on {os}"),
+        _ => browser.to_string(),
+    }
+}
+
+/// Like `device_label`, but an agent we can't place is shown as its raw string (cut to `max`
+/// characters) rather than a vague "Other client".
+pub fn ua_summary(ua: &str, max: usize) -> String {
+    let ua = ua.trim();
+    if browser_name(ua).is_some() {
+        return device_label(ua);
+    }
+    if ua.chars().count() > max {
+        format!("{}…", ua.chars().take(max).collect::<String>())
+    } else if ua.is_empty() {
+        "Unknown device".to_string()
+    } else {
+        ua.to_string()
+    }
+}
+
+#[cfg(test)]
+mod ua_tests {
+    use super::*;
+
+    const CHROME_MAC: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+    #[test]
+    fn common_agents() {
+        let cases = [
+            (CHROME_MAC, "Chrome on macOS"),
+            ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", "Edge on Windows"),
+            ("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0", "Firefox on Windows"),
+            ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15", "Safari on macOS"),
+            ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1", "Safari on iPhone"),
+            ("Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1", "Chrome on iPad"),
+            ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36", "Chrome on Android"),
+            ("Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0", "Firefox on Linux"),
+            ("Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Chrome on ChromeOS"),
+            ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 OPR/106.0.0.0", "Opera on Windows"),
+            ("curl/8.4.0", "curl"),
+        ];
+        for (ua, want) in cases {
+            assert_eq!(ua_summary(ua, 40), want, "{ua}");
+            assert_eq!(device_label(ua), want, "{ua}");
+        }
+    }
+
+    #[test]
+    fn unknown_agents() {
+        assert_eq!(ua_summary("", 40), "Unknown device");
+        assert_eq!(ua_summary("MyBot", 40), "MyBot");
+        assert_eq!(ua_summary(&"x".repeat(50), 10), format!("{}…", "x".repeat(10)));
+        assert_eq!(device_label("MyBot"), "Other client");
+    }
 }

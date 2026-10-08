@@ -56,7 +56,7 @@
       <div class="reactions" data-pid="{{ p.pid }}">
         {% for r in p.reactions %}<button type="button" class="reaction{% if r[3] %} mine{% endif %} js-react" data-kind="{{ r[0] }}" {% if not p.can_react %}disabled{% endif %} title="{{ r[0] }}">{{ r[1] }} {{ r[2] }}</button>{% endfor %}
         {% if p.can_react %}
-        <span class="reaction-picker"><button type="button" class="btn secondary small js-react-toggle" aria-label="Add reaction">☺+</button>
+        <span class="reaction-picker"><button type="button" class="btn secondary small js-react-toggle" aria-label="Add reaction"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3.5"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
           <span class="menu">{% for rt in reaction_types %}<button type="button" class="js-react" data-kind="{{ rt[0] }}" title="{{ rt[0] }}">{{ rt[1] }}</button>{% endfor %}</span>
         </span>
         {% endif %}

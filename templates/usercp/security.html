@@ -48,7 +48,7 @@
 </section>
 <section class="box"><div class="box-head"><h2>Where you're logged in</h2></div>
 <table class="grid"><thead><tr><th>Device</th><th>IP</th><th>Signed in</th><th></th></tr></thead><tbody>
-{% for s in sessions %}<tr><td class="small">{{ s.useragent|truncate_chars(70) }}{% if s.current %} <span class="tag">this device</span>{% endif %}</td><td class="small">{{ s.ip }}</td><td class="small">{{ s.created|date }}</td><td class="num">{% if not s.current %}<form method="post" action="/usercp/security/revoke">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ s.id }}"><button class="btn secondary small" type="submit">Log out</button></form>{% endif %}</td></tr>{% endfor %}
+{% for s in sessions %}<tr><td class="small" title="{{ s.useragent }}">{{ s.useragent|ua_summary }}{% if s.current %} <span class="tag">this device</span>{% endif %}</td><td class="small">{{ s.ip }}</td><td class="small">{{ s.created|date }}</td><td class="num">{% if not s.current %}<form method="post" action="/usercp/security/revoke">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ s.id }}"><button class="btn secondary small" type="submit">Log out</button></form>{% endif %}</td></tr>{% endfor %}
 </tbody></table>
 <form method="post" action="/usercp/security/revoke" class="box-foot">{{ m.csrf_field() }}<input type="hidden" name="id" value="all"><button class="btn secondary small" type="submit">Log out all other devices (and revoke API tokens)</button></form>
 </section>

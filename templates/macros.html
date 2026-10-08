@@ -41,7 +41,7 @@
   </div>
   {% if f.linkto %}<div class="forum-stats"></div><div class="lastpost"><span class="none">Link to another site</span></div>
   {% else %}
-  <div class="forum-stats"><div><b>{{ f.threads|num }}</b>threads</div><div><b>{{ f.posts|num }}</b>posts</div></div>
+  <div class="forum-stats"><div><b>{{ f.threads|num }}</b>{{ f.threads|plural("thread","threads") }}</div><div><b>{{ f.posts|num }}</b>{{ f.posts|plural("post","posts") }}</div></div>
   <div class="lastpost">
     {% if f.lastpost %}
       {{ face(f.lastpost.avatar, f.lastpost.username, f.lastpost.uid, 34) }}
@@ -69,17 +69,17 @@
     <div class="thread-meta">
       <span>{% if t.dot %}<span class="dot" title="You posted here">●</span> {% endif %}{{ userlink(t.author_uid, t.author) }}</span>
       <span class="tm-start">{{ t.dateline|date }}</span>
-      <span class="tm-replies">{{ t.replies|num }} repl{{ 'y' if t.replies == 1 else 'ies' }}</span>
+      <span class="tm-replies">{{ t.replies|num }} {{ t.replies|plural("reply","replies") }}</span>
       {% if not t.moved %}<span class="tm-last"><a href="{{ t.url }}/lastpost" title="Last post by {{ t.lastposter }}">{{ t.lastpost|date }}</a></span>{% endif %}
-      {% if show_forum %}<span><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span>{% endif %}
-      {% if t.attachments %}<span>{{ t.attachments }} attachment{{ '' if t.attachments == 1 else 's' }}</span>{% endif %}
+      {% if show_forum %}<span class="tm-forum"><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span>{% endif %}
+      {% if t.attachments %}<span>{{ t.attachments }} {{ t.attachments|plural("attachment","attachments") }}</span>{% endif %}
       {% if t.numratings and bb.allowthreadratings == '1' %}<span>★ {{ "%.1f"|format(t.rating) }}</span>{% endif %}
       {% if t.pages %}<span class="pages">{% for p in t.pages %}<a href="{{ p[1] }}">{{ p[0] }}</a>{% endfor %}{% if t.lastpage %}<a href="{{ t.lastpage }}">Last</a>{% endif %}</span>{% endif %}
     </div>
   </div>
   <div class="thread-stats">
-    <div><a href="/thread/{{ t.tid }}/whoposted" title="Who posted?"><b>{{ t.replies|num }}</b></a>replies</div>
-    <div><b>{{ t.views|num }}</b>views</div>
+    <div><a href="/thread/{{ t.tid }}/whoposted" title="Who posted?"><b>{{ t.replies|num }}</b></a>{{ t.replies|plural("reply","replies") }}</div>
+    <div><b>{{ t.views|num }}</b>{{ t.views|plural("view","views") }}</div>
   </div>
   <div class="lastpost">
     {% if not t.moved %}{{ face(t.lastposter_avatar, t.lastposter, t.lastposteruid, 30) }}
@@ -94,7 +94,7 @@
 {% endmacro %}
 
 {# "15 minutes", "2 hours", "5 days" for a span given in minutes. #}
-{% macro span_mins(n) %}{% if n < 120 %}{{ n }} minute{{ '' if n == 1 else 's' }}{% elif n < 2880 %}{{ (n / 60)|round|int }} hours{% else %}{{ (n / 1440)|round|int }} days{% endif %}{% endmacro %}
+{% macro span_mins(n) %}{% if n < 120 %}{{ n }} {{ n|plural("minute","minutes") }}{% elif n < 2880 %}{{ (n / 60)|round|int }} hours{% else %}{{ (n / 1440)|round|int }} days{% endif %}{% endmacro %}
 
 {% macro csrf_field() %}<input type="hidden" name="my_post_key" value="{{ csrf }}">{% endmacro %}
 {# Badge icon (names in src/badges.rs ICONS). #}

@@ -14,7 +14,7 @@
 </div>
 {% else %}
 {% if listing %}
-<header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} thread{{ '' if total == 1 else 's' }}</p></header>
+<header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} {{ total|plural("thread","threads") }}</p></header>
 {% else %}
 <div class="search-refine">
   <form class="search-bar" action="/search/quick" method="get" role="search">
@@ -24,7 +24,7 @@
   </form>
   <a class="pill-link" href="/search">Filters</a>
 </div>
-<p class="search-count">{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
+<p class="search-count">{{ total|num }} {{ total|plural("result","results") }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
 {% endif %}
 {{ m.pagination(pagination) }}
 {% if kind == 'threads' %}

@@ -115,7 +115,7 @@
 {% if similar %}
 <section class="box">
   <div class="box-head"><h2>Related threads</h2></div>
-  <table class="grid"><thead><tr><th>Thread</th><th>Forum</th><th class="num">Replies</th><th>Last post</th></tr></thead><tbody>
+  <table class="grid related"><thead><tr><th>Thread</th><th>Forum</th><th class="num">Replies</th><th>Last post</th></tr></thead><tbody>
   {% for s in similar %}<tr><td><a href="{{ s.url }}">{{ s.subject }}</a></td><td><a href="{{ s.forum_url }}">{{ s.forum_name }}</a></td><td class="num">{{ s.replies }}</td><td class="small">{{ s.lastpost|date }} by {{ s.lastposter }}</td></tr>{% endfor %}
   </tbody></table>
 </section>

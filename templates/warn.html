@@ -5,7 +5,7 @@
   <div class="box-head"><h2>Warn {{ user.username }}</h2><span class="right">Current level {{ level }}%</span></div>
   {% if post %}<div class="box-body"><p class="small muted">For a post in “{{ post[1] }}”:</p><blockquote class="mycode_quote">{{ post[2]|truncate_chars(400) }}</blockquote></div>{% endif %}
   <div class="form-row"><span class="label"><strong>Warning type</strong></span><div class="checks">
-    {% for t in types %}<label><input type="radio" name="warningtype" value="{{ t[0] }}"{% if loop.first %} checked{% endif %}> {{ t[1] }} ({{ t[2] }} point{{ '' if t[2] == 1 else 's' }}{% if t[3] %}, expires after {{ t[3] // 86400 }} days{% endif %})</label>{% endfor %}
+    {% for t in types %}<label><input type="radio" name="warningtype" value="{{ t[0] }}"{% if loop.first %} checked{% endif %}> {{ t[1] }} ({{ t[2] }} {{ t[2]|plural("point","points") }}{% if t[3] %}, expires after {{ t[3] // 86400 }} {{ (t[3] // 86400)|plural("day","days") }}{% endif %})</label>{% endfor %}
     {% if custom %}<label><input type="radio" name="warningtype" value="0"> Custom: <input type="text" name="custom_reason" placeholder="Reason"> <input type="number" name="custom_points" min="1" value="1" style="width:70px"> points, expires in <input type="number" name="expires_days" min="0" value="7" style="width:70px"> days</label>{% endif %}
   </div></div>
   <div class="form-row"><label for="notes">Administrative notes</label><textarea id="notes" name="notes" rows="3"></textarea></div>

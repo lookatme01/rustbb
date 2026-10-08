@@ -441,6 +441,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
 .thread-row .thread-meta a, .thread-row .lastpost, .thread-row .thread-stats a, .thread-row .inline-check, .thread-row .newlink { position: relative; z-index: 1; }
 .thread-meta { font-size: .82rem; color: var(--ink-faint); margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
 .thread-meta > * + *::before { content: "·"; margin-right: 8px; color: var(--ink-faint); }
+.thread-meta > * { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } /* items wrap whole, long ones ellipsize */
 .thread-meta a { color: var(--ink-soft); }
 .thread-meta .tm-replies, .thread-meta .tm-last { display: none; } /* phones: stats and last post fold into this line */
 .thread-meta .pages { display: inline-flex; gap: 3px; }
@@ -482,6 +483,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
   .thread-row .face { --size: 36px; }
   .thread-row .lastpost, .thread-meta .tm-start { display: none; }
   .thread-meta .tm-last { display: inline; }
+  .thread-meta .tm-forum { flex-basis: 100%; } /* own line, so no dot starts a line */
+  .thread-meta .tm-forum::before { content: "in "; margin: 0; }
   .thread-row .inline-check { position: absolute; right: 14px; top: 14px; }
 }
 
@@ -1425,6 +1428,13 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .calendar tr:hover a.wk, .calendar tr:focus-within a.wk, .calendar a.wk:focus-visible { opacity: 1; }
 @media (max-width: 700px), (hover: none) { .calendar a.wk { display: none; } }
 
+/* Error pages */
+.error-code { margin: 0 0 6px; font-size: 3.2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--ink-faint); }
+.error-card > p.muted { margin-bottom: 18px; overflow-wrap: anywhere; }
+.error-search { width: 100%; margin: 0 0 18px; }
+.error-search input[type=search], .error-search input[type=search]:focus { width: 100%; height: 44px; }
+.error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 0 14px; }
+.error-card h1 + .error-actions { margin-top: 18px; }
 
 /* usercp: two-factor setup disclosure, avatar picker */
 .twofa-setup { border-top: 1px solid var(--rule); }
@@ -1443,10 +1453,10 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .file-pick .btn:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
 .file-pick .file-name { min-width: 0; overflow-wrap: anywhere; }
 
-/* Error pages */
-.error-code { margin: 0 0 6px; font-size: 3.2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--ink-faint); }
-.error-card > p.muted { margin-bottom: 18px; overflow-wrap: anywhere; }
-.error-search { width: 100%; margin: 0 0 18px; }
-.error-search input[type=search], .error-search input[type=search]:focus { width: 100%; height: 44px; }
-.error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 0 14px; }
-.error-card h1 + .error-actions { margin-top: 18px; }
+/* Related threads under a thread: titles in ink, forums quiet. */
+table.related td a { color: var(--ink); font-weight: 550; }
+table.related td:nth-child(2) a { color: var(--ink-soft); font-weight: 450; }
+table.related td a:hover { color: var(--signal); }
+table.related .num { color: var(--ink-soft); }
+@media (max-width: 700px) { table.related th:nth-child(n+2), table.related td:nth-child(n+2) { display: none; } }
+.js-react-toggle svg { display: block; }

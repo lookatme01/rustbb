@@ -3,7 +3,7 @@
 {% block content %}
 <form method="post" action="/moderation/split" class="box">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ thread.tid }}">
   {% for p in pids %}<input type="hidden" name="pids" value="{{ p }}">{% endfor %}
-  <div class="box-head"><h2>Split {{ pids|length }} post{{ '' if pids|length == 1 else 's' }} into a new thread</h2></div>
+  <div class="box-head"><h2>Split {{ pids|length }} {{ pids|length|plural("post","posts") }} into a new thread</h2></div>
   <div class="form-row"><label for="subject">New thread subject</label><input id="subject" type="text" name="subject" value="{{ thread.subject }} (split)" required></div>
   <div class="form-row"><label for="fid">Forum</label><select id="fid" name="fid">{% for f in forums %}<option value="{{ f[0] }}"{% if f[0] == thread.fid %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select></div>
   <div class="box-foot"><button class="btn" type="submit">Split thread</button> <a href="{{ thread_url }}">Cancel</a></div>
