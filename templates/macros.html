@@ -68,7 +68,9 @@
     </div>
     <div class="thread-meta">
       <span>{% if t.dot %}<span class="dot" title="You posted here">●</span> {% endif %}{{ userlink(t.author_uid, t.author) }}</span>
-      <span>{{ t.dateline|date }}</span>
+      <span class="tm-start">{{ t.dateline|date }}</span>
+      <span class="tm-replies">{{ t.replies|num }} repl{{ 'y' if t.replies == 1 else 'ies' }}</span>
+      {% if not t.moved %}<span class="tm-last"><a href="{{ t.url }}/lastpost" title="Last post by {{ t.lastposter }}">{{ t.lastpost|date }}</a></span>{% endif %}
       {% if show_forum %}<span><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span>{% endif %}
       {% if t.attachments %}<span>{{ t.attachments }} attachment{{ '' if t.attachments == 1 else 's' }}</span>{% endif %}
       {% if t.numratings and bb.allowthreadratings == '1' %}<span>★ {{ "%.1f"|format(t.rating) }}</span>{% endif %}

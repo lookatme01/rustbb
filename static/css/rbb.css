@@ -433,6 +433,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
 .thread-meta { font-size: .82rem; color: var(--ink-faint); margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
 .thread-meta > * + *::before { content: "·"; margin-right: 8px; color: var(--ink-faint); }
 .thread-meta a { color: var(--ink-soft); }
+.thread-meta .tm-replies, .thread-meta .tm-last { display: none; } /* phones: stats and last post fold into this line */
 .thread-meta .pages { display: inline-flex; gap: 3px; }
 .thread-meta .pages::before { content: none; }
 .thread-meta .pages a { padding: 0 7px; border-radius: 6px; background: var(--surface-3); font-size: .74rem; font-weight: 600; }
@@ -461,6 +462,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
   .thread-row { grid-template-columns: 40px minmax(0, 1fr) 170px; }
   .thread-row.with-check { grid-template-columns: 40px minmax(0, 1fr) 170px 22px; }
   .thread-row .thread-stats { display: none; }
+  .thread-meta .tm-replies { display: inline; }
 }
 @media (max-width: 700px) {
   .forum-row { grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 14px 16px; }
@@ -469,8 +471,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
   .forum-row .lastpost .face { display: none; }
   .thread-row, .thread-row.with-check { grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
   .thread-row .face { --size: 36px; }
-  .thread-row .lastpost { grid-column: 2; font-size: .8rem; }
-  .thread-row .lastpost .face { display: none; }
+  .thread-row .lastpost, .thread-meta .tm-start { display: none; }
+  .thread-meta .tm-last { display: inline; }
   .thread-row .inline-check { position: absolute; right: 14px; top: 14px; }
 }
 
