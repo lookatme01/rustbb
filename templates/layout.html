@@ -9,7 +9,8 @@
 <link rel="stylesheet" href="{{ asset('css/rbb.css') }}">
 {% if brand %}<style>:root{--brand:{{ brand }}}</style>{% endif %}
 {% if theme and theme_css %}<link rel="stylesheet" href="/css/theme/{{ theme.tid }}?v={{ stylesheet_version }}">{% endif %}
-<meta name="theme-color" content="{{ brand or '#5b5bf6' }}">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="{{ asset('images/favicon.svg') }}" type="image/svg+xml">
 {% if bb.enablesyndication == '1' %}<link rel="alternate" type="application/rss+xml" title="{{ bb.bbname }} — latest threads" href="/syndication">{% endif %}
 {% block head %}{% endblock %}
@@ -20,14 +21,13 @@
 {% macro tab(href, label, on) %}<a href="{{ href }}"{% if on %} aria-current="page"{% endif %}>{{ label }}</a>{% endmacro %}
 <header class="site-header">
   <div class="wrap bar">
-    <a class="logo" href="/"><img src="{{ theme.props.logo if theme and theme.props.logo else '/static/images/logo.svg' }}" alt="" width="30" height="30"><span>{{ bb.bbname }}</span></a>
+    <a class="logo" href="/">{% if theme and theme.props.logo and theme.props.logo != '/static/images/logo.svg' %}<img src="{{ theme.props.logo }}" alt="" width="30" height="30">{% else %}<span class="ao-mark" aria-hidden="true"></span>{% endif %}<span>{{ bb.bbname }}</span></a>
     <nav class="tabs" aria-label="Main">
       {{ tab('/', t("Forums"), path == '/' or path.startswith('/forum') or path.startswith('/thread')) }}
-      {% if perms.cansearch %}{{ tab('/search/new' if me else '/search/today', t("What's new"), path.startswith('/search/new') or path.startswith('/search/today')) }}{% endif %}
-      {% if bb.portal == '1' %}{{ tab('/portal', t("Portal"), path.startswith('/portal')) }}{% endif %}
-      {% if perms.canviewmemberlist and bb.enablememberlist == '1' %}{{ tab('/members', t("Members"), path.startswith('/members') or path.startswith('/user/') or path.startswith('/team')) }}{% endif %}
-      {% if perms.canviewcalendar and bb.enablecalendar == '1' %}{{ tab('/calendar', t("Calendar"), path.startswith('/calendar')) }}{% endif %}
-      {% if bb.enablehelp == '1' %}{{ tab('/help', t("Help"), path.startswith('/help')) }}{% endif %}
+      {% if perms.cansearch %}{{ tab('/search/new' if me else '/search/today', t("Latest"), path.startswith('/search/new') or path.startswith('/search/today')) }}{% endif %}
+      {% if me and perms.cansearch %}{{ tab('/search/unread', t("Unread"), path.startswith('/search/unread')) }}{% endif %}
+      {% if me %}{{ tab('/usercp/subscriptions', t("Following"), path.startswith('/usercp/subscriptions')) }}{% endif %}
+      {% if not me and perms.canviewmemberlist and bb.enablememberlist == '1' %}{{ tab('/members', t("Members"), path.startswith('/members') or path.startswith('/user/') or path.startswith('/team')) }}{% endif %}
     </nav>
     {% if perms.cansearch %}
     <form class="quicksearch" action="/search/quick" method="get" role="search">
@@ -71,8 +71,25 @@
   {% if me and me.usergroup == 5 %}<div class="notice warn">Your account is awaiting activation. <a href="/member/resendactivation">Resend the activation email</a></div>{% endif %}
   {% block content %}{% endblock %}
 </main>
+{% set on_thread = thread is defined and posts is defined %}
+{% if on_thread %}<div class="ao-progress" aria-hidden="true"></div>{% endif %}
+<nav class="ao-dock" aria-label="{{ t('Quick navigation') }}">
+  <a class="ao-home" href="/" aria-label="{{ bb.bbname }} home"><span class="ao-mark" aria-hidden="true"></span></a>
+  <span class="ao-sep" aria-hidden="true"></span>
+  <a href="/">{{ t("Forums") }}</a>
+  {% if perms.cansearch %}{% if me %}<a href="/search/unread">{{ t("Unread") }}</a>{% else %}<a href="/search/today">{{ t("Latest") }}</a>{% endif %}{% endif %}
+  {% if me and bb.enablepms == '1' and perms.canusepms %}<a class="ao-icon" href="/pm" title="{{ t('Messages') }}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm.5 2.1v7.4h13V6.6L10 11 3.5 6.6zM4.7 6 10 9.6 15.3 6z" fill="currentColor"/></svg><span class="sr-only">{{ t("Messages") }}</span>{% if me.unreadpms %}<span class="badge">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
+  {% if perms.cansearch %}<a class="ao-icon" href="/search" title="{{ t('Search') }}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg><span class="sr-only">{{ t("Search") }}</span></a>{% endif %}
+  {% if title and title != bb.bbname %}<span class="ao-sep" aria-hidden="true"></span><span class="ao-title">{{ title }}</span>{% endif %}
+  {% if on_thread and can_reply %}<a class="ao-cta" href="{{ '#quickreply' if quickreply else '/newreply/' ~ thread.tid }}">{{ t("Reply") }}</a>
+  {% elif not me and bb.disableregs != '1' %}<a class="ao-cta" href="/member/register">{{ t("Join") }}</a>{% endif %}
+</nav>
 <footer class="site-footer">
   <div class="wrap">
+    {% if perms.canviewmemberlist and bb.enablememberlist == '1' and me %}<a href="/members">{{ t("Members") }}</a>{% endif %}
+    {% if perms.canviewcalendar and bb.enablecalendar == '1' %}<a href="/calendar">{{ t("Calendar") }}</a>{% endif %}
+    {% if bb.portal == '1' %}<a href="/portal">{{ t("Portal") }}</a>{% endif %}
+    {% if bb.enablehelp == '1' %}<a href="/help">{{ t("Help") }}</a>{% endif %}
     {% if bb.contact == '1' %}<a href="/contact">{{ t("Contact Us") }}</a>{% endif %}
     <a href="/rules">{{ t("Rules") }}</a>
     <a href="/privacy">{{ t("Privacy") }}</a>

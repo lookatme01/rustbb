@@ -465,7 +465,7 @@ fn apply_branding(
     let brand = s(fl.get("brand")).trim().to_lowercase();
     let use_brand = s(fl.get("use_brand")) == "1";
     if use_brand && !valid_brand(&brand) {
-        return Err(AppError::user("The brand colour must look like #5b5bf6."));
+        return Err(AppError::user("The brand colour must look like #1f45e0."));
     }
     set("brand", if use_brand { brand } else { String::new() });
     let mode = s(fl.get("colormode"));

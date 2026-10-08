@@ -1,34 +1,44 @@
 {% extends "pm/base.html" %}
 {% import "macros.html" as m %}
+{% block pmsearch %}
+{% if messages or search %}<form method="get" action="/pm" class="ao-mail-search" role="search"><input type="hidden" name="folder" value="{{ folder }}">
+  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
+  <input type="search" name="q" value="{{ search }}" placeholder="Search {{ folder_name|lower }}" aria-label="Search messages">
+</form>{% endif %}
+{% endblock %}
 {% block pm %}
-<form method="get" action="/pm" class="pm-toolbar" role="search"><input type="hidden" name="folder" value="{{ folder }}">
-  {% if messages or search %}<input type="search" name="q" value="{{ search }}" placeholder="Search {{ folder_name|lower }}" aria-label="Search messages"><button class="btn secondary small">Search</button>{% endif %}
-  {% if quota %}<span class="pm-quota" title="{{ used }} of {{ quota }} messages used"><span class="small muted">{{ used }} / {{ quota }}</span><span class="meter"><span style="width:{{ [used * 100 // quota, 100]|min }}%"></span></span></span>{% endif %}
-</form>
-<form method="post" action="/pm/action" class="box pm-box{% if folder == 4 %} pm-trash{% endif %}" id="pmlist">{{ m.csrf_field() }}<input type="hidden" name="folder" value="{{ folder }}">
-  <div class="box-head"><h2>{{ folder_name }}</h2></div>
-  {% set sent = folder in [2, 3] %}
-  <ul class="pm-list">
+<form method="post" action="/pm/action" id="pmlist" class="ao-mail-list">{{ m.csrf_field() }}<input type="hidden" name="folder" value="{{ folder }}">
+  <ul class="ao-convos">
   {% for p in messages %}
-    {% set unread = p.status == 0 and not sent %}
-    <li class="pm-row{% if unread %} unread{% endif %}">
+    {% set unread = p.status == 0 and folder not in [2, 3] %}
+    <li class="ao-convo{% if unread %} unread{% endif %}">
+      <span class="ao-unread-dot" aria-hidden="true"></span>
+      <span class="face av-{{ p.other_uid % 6 }}" style="--size:40px" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0z"/></svg></span>
+      <div>
+        <span class="ao-who">{% if folder in [2, 3] %}<span class="faint">To </span>{% endif %}{% if p.other_uid %}<a href="{{ url_user(p.other_uid) }}">{{ p.other|safe }}</a>{% else %}{{ p.other|safe }}{% endif %}{% if p.pgp == 2 %}<span class="pgp-flag is-encrypted" title="End-to-end encrypted"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 118 0v3"/></svg><span class="sr-only">Encrypted</span></span>{% elif p.pgp == 1 %}<span class="pgp-flag is-signed" title="Signed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z"/></svg><span class="sr-only">Signed</span></span>{% endif %}{% if p.multi %} <span class="ao-state">· group</span>{% endif %}</span>
+        <span class="ao-subject">{% if unread %}<span class="sr-only">Unread: </span>{% endif %}<a href="/pm/read/{{ p.pmid }}">{{ p.subject }}</a>{% if p.status == 3 %} <span class="ao-state">· replied</span>{% elif p.status == 4 %} <span class="ao-state">· forwarded</span>{% endif %}</span>
+      </div>
+      <span class="ao-when">{{ p.dateline|date }}</span>
       <input type="checkbox" name="pmids" value="{{ p.pmid }}" aria-label="Select “{{ p.subject }}”">
-      <a class="pm-link" href="/pm/read/{{ p.pmid }}">
-        <span class="pm-who">{% if sent %}<span class="faint">To </span>{% endif %}{{ p.other|safe }}{% if p.multi %} <span class="faint small">+ group</span>{% endif %}</span>
-        <span class="pm-subject">{% if unread %}<span class="pm-dot" aria-hidden="true"></span><span class="sr-only">Unread: </span>{% elif p.status == 3 %}<span class="faint" title="Replied" aria-label="Replied">↩ </span>{% elif p.status == 4 %}<span class="faint" title="Forwarded" aria-label="Forwarded">↪ </span>{% endif %}{% if p.pgp == 2 %}<span class="pgp-flag is-encrypted" title="End-to-end encrypted"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 118 0v3"/></svg><span class="sr-only">Encrypted: </span></span>{% elif p.pgp == 1 %}<span class="pgp-flag is-signed" title="Signed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z"/></svg><span class="sr-only">Signed: </span></span>{% endif %}{{ p.subject }}</span>
-        <span class="pm-date">{{ p.dateline|date }}</span>
-      </a>
     </li>
-  {% else %}<li class="empty">{% if search %}No messages match “{{ search }}”.{% elif folder == 1 %}<strong>Your inbox is empty</strong><br><span class="small">New private messages will show up here.</span><br><a class="btn small" style="margin-top:12px" href="/pm/send">Compose message</a>{% else %}There are no messages in this folder.{% endif %}</li>{% endfor %}
+  {% else %}
+    <li class="empty">{% if search %}No messages match “{{ search }}”.{% elif folder == 1 %}<strong>Your inbox is empty</strong><br><span class="small">New private messages will show up here.</span><br><a class="btn small" style="margin-top:12px" href="/pm/send">Compose message</a>{% else %}There are no messages in this folder.{% endif %}</li>
+  {% endfor %}
   </ul>
   {% if messages or folder == 4 %}
-  <div class="box-foot pm-bulk">
-    <span class="small muted pm-bulk-hint">With selected:</span>
+  <div class="ao-bulk">
+    <span class="ao-bulk-label">Selected:</span>
     <select name="action" aria-label="Action"><option value="read">Mark as read</option><option value="unread">Mark as unread</option><option value="delete">Delete</option><option value="move">Move to…</option>{% if folder == 4 %}<option value="emptytrash">Empty trash can</option>{% endif %}</select>
     <select name="target" aria-label="Target folder">{% for f in folders %}{% if f[0] != 3 %}<option value="{{ f[0] }}">{{ f[1] }}</option>{% endif %}{% endfor %}</select>
-    <button class="btn secondary small" type="submit">Apply</button>
+    <button class="btn small" type="submit">Apply</button>
   </div>
   {% endif %}
 </form>
-{{ m.pagination(pagination) }}
+{% if quota or pagination.pages > 1 %}
+<footer class="ao-mail-foot">
+  {% if pagination.pages > 1 %}{{ m.pagination(pagination) }}{% endif %}
+  <span class="spacer"></span>
+  {% if quota %}<span class="ao-quota">{{ used }} of {{ quota }} messages<span class="meter" style="width:80px"><span style="width:{{ [used * 100 // quota, 100]|min }}%"></span></span></span>{% endif %}
+</footer>
+{% endif %}
 {% endblock %}

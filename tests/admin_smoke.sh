@@ -13,7 +13,7 @@ T=$(csrf /)
 check "verify" 303 --data-urlencode "my_post_key=$T" --data-urlencode "password=$PW" --data-urlencode "return_to=/admin" "$BASE/admin/verify"
 for p in /admin /admin/settings /admin/settings/general /admin/settings/posting "/admin/settings?q=flood" /admin/forums /admin/forums/edit "/admin/forums/edit?fid=3" /admin/forums/3/permissions /admin/forums/3/permissions/2 /admin/forums/3/moderators \
   /admin/users /admin/users/new /admin/users/1 /admin/users/awaiting /admin/users/merge /admin/adminperms /admin/groups /admin/groups/edit "/admin/groups/edit?gid=2" /admin/groups/2/leaders \
-  /admin/themes "/admin/themes/edit?tid=2" /admin/themes/1/templates "/admin/themes/2/template?name=index.html" /admin/themes/1/export \
+  /admin/themes "/admin/themes/edit?tid=1" /admin/themes/1/templates "/admin/themes/1/template?name=index.html" /admin/themes/1/export \
   /admin/tools /admin/tools/tasks /admin/tools/recount /admin/tools/cache /admin/tools/adminlog /admin/tools/maillogs /admin/tools/mailerrors /admin/tools/spamlog /admin/tools/stats /admin/tools/backup /admin/tools/plugins /admin/tools/attachments \
   /admin/massmail /admin/massmail/new /admin/promotions /admin/promotions/edit /admin/promotions/logs; do
   check "GET $p" 200 "$BASE$p"

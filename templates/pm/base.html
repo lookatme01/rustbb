@@ -1,17 +1,26 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
+{% block bodyclass %}ao-pm{% endblock %}
 {% block content %}
-<div class="with-sidebar">
-  <nav class="sidenav" aria-label="Messages">
-    <h3>Messages</h3>
-    <a href="/pm/send"><strong>Compose message</strong></a>
-    {% for f in folders %}<a href="/pm?folder={{ f[0] }}"{% if folder is defined and folder == f[0] %} class="active"{% endif %}>{{ f[1] }}{% if f[0] == 1 and me.unreadpms %}<span class="count">{{ me.unreadpms }}</span>{% endif %}</a>{% endfor %}
-    <h3>Tools</h3>
-    <a href="/pm/folders">Manage folders</a>
-    <a href="/usercp/pgp">Encryption &amp; identity</a>
-    {% if perms.cantrackpms %}<a href="/pm/tracking">Message tracking</a>{% endif %}
-    <a href="/usercp">User CP</a>
-  </nav>
-  <div>{% block pm %}{% endblock %}</div>
+<div class="ao-panel ao-mail">
+  <header class="ao-mail-bar">
+    <h1>{{ t("Messages") }}</h1>
+    {% if folders is defined %}
+    <nav class="ao-folders" aria-label="Folders">{% for f in folders %}<a href="/pm?folder={{ f[0] }}"{% if (folder is defined and folder == f[0]) or (pm is defined and pm.folder == f[0]) %} class="active" aria-current="page"{% endif %}>{{ f[1] }}{% if f[0] == 1 and me.unreadpms %}<span class="badge">{{ me.unreadpms }}</span>{% endif %}</a>{% endfor %}</nav>
+    {% endif %}
+    <span class="spacer"></span>
+    {% block pmsearch %}{% endblock %}
+    <details class="ao-more">
+      <summary aria-label="Message tools"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg></summary>
+      <div class="menu" role="menu">
+        <a href="/pm/folders">Manage folders</a>
+        <a href="/usercp/pgp">Encryption &amp; identity</a>
+        {% if perms.cantrackpms %}<a href="/pm/tracking">Message tracking</a>{% endif %}
+        <a href="/usercp">User CP</a>
+      </div>
+    </details>
+    <a class="btn" href="/pm/send">{{ t("New message") }}</a>
+  </header>
+  <div class="ao-mail-main">{% block pm %}{% endblock %}</div>
 </div>
 {% endblock %}
