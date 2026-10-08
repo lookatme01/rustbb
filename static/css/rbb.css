@@ -1361,3 +1361,12 @@ body:has(#quickreply) .js-multiquote { display: none; }
   .editor-toolbar select[data-tag] { width: 62px; padding-right: 18px; background-position: right 3px center; }
   .editor-toolbar .sep { margin: 0 2px; }
 }
+/* Thread rating: five stars, filled up to the one under the pointer (row-reverse so ~ selects lower ratings). */
+.rate-thread { display: flex; align-items: center; gap: 10px; margin: 6px 0 14px; }
+.stars-input { display: inline-flex; flex-direction: row-reverse; }
+.stars-input button { width: 28px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; font-size: 1.2rem; line-height: 1; color: var(--ink-faint); border-radius: 6px; }
+.stars-input button:hover, .stars-input button:hover ~ button, .stars-input button:focus-visible, .stars-input button:focus-visible ~ button { color: #e0a100; }
+.stars-input button:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+/* Inline moderation appears once a post is selected. */
+#inlinemod-posts { display: none; }
+body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { display: flex; }

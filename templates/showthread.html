@@ -52,9 +52,9 @@
 </div>
 
 {% if can_rate %}
-<form method="post" action="/thread/{{ thread.tid }}/rate" class="actions small">{{ m.csrf_field() }}
-  <span>Rate this thread:</span>
-  {% for r in range(1, 6) %}<button class="btn secondary small" name="rating" value="{{ r }}" type="submit" title="{{ r }} star{{ '' if r == 1 else 's' }}">{{ "★" * r }}</button>{% endfor %}
+<form method="post" action="/thread/{{ thread.tid }}/rate" class="rate-thread">{{ m.csrf_field() }}
+  <span class="small muted" id="rate-label">Rate this thread</span>
+  <span class="stars-input" role="group" aria-labelledby="rate-label">{% for r in range(5, 0, -1) %}<button name="rating" value="{{ r }}" type="submit" title="{{ r }} star{{ '' if r == 1 else 's' }}" aria-label="{{ r }} star{{ '' if r == 1 else 's' }}">★</button>{% endfor %}</span>
 </form>
 {% endif %}
 
