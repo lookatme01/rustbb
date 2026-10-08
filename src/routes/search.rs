@@ -27,12 +27,45 @@ pub async fn search_form(ctx: Ctx) -> AppResult<Response> {
     if !ctx.perms.cansearch {
         return Err(AppError::no_perm());
     }
-    let jump = crate::routes::forumdisplay::forum_jump(&ctx);
+    let p = SearchParams {
+        matchusername: true,
+        ..Default::default()
+    };
+    form_page(&ctx, &p, None).await
+}
+
+const NO_RESULTS: &str = "Sorry, but no results were returned using the query information you provided. Please redefine your search terms and try again.";
+
+/// The search form, filled in with `p`. A failed search comes back here instead of an error page,
+/// so the visitor can adjust the query without retyping it.
+async fn form_page(ctx: &Ctx, p: &SearchParams, error: Option<String>) -> AppResult<Response> {
+    let jump = crate::routes::forumdisplay::forum_jump(ctx);
+    let empty = error.as_deref() == Some(NO_RESULTS);
+    let errors: Vec<String> = error.into_iter().filter(|_| !empty).collect();
+    let filtered = !p.author.trim().is_empty()
+        || p.forums.iter().any(|f| *f > 0)
+        || p.postdate > 0
+        || p.numreplies > 0
+        || p.postthread == "2"
+        || p.showresults == "posts"
+        || !matches!(p.sortby.as_str(), "" | "lastpost")
+        || p.sortordr == "asc";
     ctx.render(
         "search.html",
-        minijinja::context! { title => "Search", forums => jump, errors => Vec::<String>::new() },
+        minijinja::context! {
+            title => "Search", forums => jump, errors => errors, form => p, empty => empty,
+            filtered => filtered,
+        },
     )
     .await
+}
+
+/// Runs a search; validation failures and empty results re-render the form.
+async fn search_or_form(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
+    match run_search(ctx, p).await {
+        Err(AppError::User(msg)) => form_page(ctx, p, Some(msg)).await,
+        r => r,
+    }
 }
 
 #[derive(Deserialize, Default, Clone, serde::Serialize)]
@@ -80,7 +113,7 @@ async fn flood_check(ctx: &Ctx) -> AppResult<()> {
     };
     if !ctx.app.rate_check(&key, 1, secs) {
         return Err(AppError::user(format!(
-            "Sorry, but you can only perform one search every {secs} seconds."
+            "You're searching a little fast. Please wait {secs} seconds between searches."
         )));
     }
     Ok(())
@@ -155,8 +188,13 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         ctx.groups,
         serde_json::to_string(p).unwrap_or_default()
     );
-    if let Some(serde_json::Value::String(sid)) = ctx.app.short_cache.get(&cache_key) {
-        return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
+    match ctx.app.short_cache.get(&cache_key) {
+        Some(serde_json::Value::String(sid)) => {
+            return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
+        }
+        // A search that just found nothing; repeating it shouldn't count against the flood limit.
+        Some(serde_json::Value::Null) => return Err(AppError::user(NO_RESULTS)),
+        _ => {}
     }
     flood_check(ctx).await?;
     let (mut fids, mut own_only) = searchable_forums(ctx);
@@ -184,9 +222,10 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .await?
     };
     if !author.is_empty() && author_uids.is_empty() {
-        return Err(AppError::user(
-            "Sorry, but no results were returned using the query information you provided.",
-        ));
+        ctx.app
+            .short_cache
+            .insert(cache_key, serde_json::Value::Null);
+        return Err(AppError::user(NO_RESULTS));
     }
     let limit = s.int("searchhardlimit").max(50);
     let date_cond = if p.postdate > 0 {
@@ -353,9 +392,10 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         }
     };
     if ids.is_empty() {
-        return Err(AppError::user(
-            "Sorry, but no results were returned using the query information you provided. Please redefine your search terms and try again.",
-        ));
+        ctx.app
+            .short_cache
+            .insert(cache_key, serde_json::Value::Null);
+        return Err(AppError::user(NO_RESULTS));
     }
     let sid = store(
         ctx,
@@ -379,7 +419,7 @@ pub async fn do_search(ctx: Ctx, CsrfForm(p): CsrfForm<SearchParams>) -> AppResu
     if !ctx.perms.cansearch {
         return Err(AppError::no_perm());
     }
-    run_search(&ctx, &p).await
+    search_or_form(&ctx, &p).await
 }
 
 #[derive(Deserialize, Default)]
@@ -402,7 +442,7 @@ pub async fn quick(ctx: Ctx, Query(q): Query<QuickQuery>) -> AppResult<Response>
         subforums: true,
         ..Default::default()
     };
-    run_search(&ctx, &p).await
+    search_or_form(&ctx, &p).await
 }
 
 #[derive(Deserialize, Default)]

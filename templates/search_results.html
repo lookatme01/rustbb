@@ -1,7 +1,15 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<div class="actions"><span>{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</span><span class="spacer"></span><a class="btn secondary small" href="/search">New search</a></div>
+<div class="search-refine">
+  <form class="search-bar" action="/search/quick" method="get" role="search">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
+    <input type="search" name="q" value="{{ keywords }}" placeholder="Search threads and posts" aria-label="Search terms">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <a class="pill-link" href="/search">Filters</a>
+</div>
+<p class="search-count">{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
 {{ m.pagination(pagination) }}
 {% if kind == 'threads' %}
 <section class="box"><div class="box-head"><h2>Threads</h2></div>

@@ -1,24 +1,68 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-{{ m.errors_box(errors) }}
-<form method="post" action="/search" class="box">{{ m.csrf_field() }}
-  <div class="box-head"><h2>Search the forums</h2></div>
-  <div class="form-row"><label for="keywords">Keywords</label><div><input id="keywords" type="search" name="keywords" style="width:100%;max-width:none" autofocus><span class="help">Use quotes for exact phrases ("like this"), <code>or</code> for alternatives and a leading minus to exclude words (-word).</span>
-    <div class="checks" style="margin-top:6px;flex-direction:row;gap:16px"><label><input type="radio" name="postthread" value="1" checked> Titles and posts</label><label><input type="radio" name="postthread" value="2"> Titles only</label></div></div></div>
-  <div class="form-row"><label for="author">Author</label><div><input id="author" type="text" name="author"><label class="check" style="margin-top:4px"><input type="checkbox" name="matchusername" value="1" checked> Exact username</label></div></div>
-  <div class="form-row"><label for="forums">In forums</label><div><select id="forums" name="forums" multiple size="8" style="width:100%;max-width:480px"><option value="0" selected>All forums</option>{% for f in forums %}<option value="{{ f[0] }}">{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select><span class="help">Subforums are always included.</span></div></div>
-  <div class="form-row"><span class="label"><strong>Date</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap">
-    <select name="pddir" aria-label="Direction"><option value="1">Newer than</option><option value="0">Older than</option></select>
-    <select name="postdate" aria-label="Age">{% for d in [(0,'Any date'),(1,'Yesterday'),(7,'A week ago'),(14,'2 weeks ago'),(30,'A month ago'),(90,'3 months ago'),(180,'6 months ago'),(365,'A year ago')] %}<option value="{{ d[0] }}">{{ d[1] }}</option>{% endfor %}</select>
-  </div></div>
-  <div class="form-row"><label for="numreplies">Minimum replies</label><input id="numreplies" type="number" name="numreplies" value="0" min="0" style="width:100px"></div>
-  <div class="form-row"><span class="label"><strong>Sort by</strong></span><div style="display:flex;gap:6px;flex-wrap:wrap">
-    <select name="sortby" aria-label="Sort by">{% for o in [('lastpost','Last post date'),('relevance','Relevance (posts)'),('subject','Subject'),('replies','Replies'),('views','Views'),('starter','Author'),('forum','Forum')] %}<option value="{{ o[0] }}">{{ o[1] }}</option>{% endfor %}</select>
-    <select name="sortordr" aria-label="Order"><option value="desc">Descending</option><option value="asc">Ascending</option></select>
-  </div></div>
-  <div class="form-row"><span class="label"><strong>Show results as</strong></span><div class="checks" style="flex-direction:row;gap:16px"><label><input type="radio" name="showresults" value="threads" checked> Threads</label><label><input type="radio" name="showresults" value="posts"> Posts</label></div></div>
-  <div class="box-foot"><button class="btn" type="submit">Search</button></div>
-</form>
-<div class="actions"><a class="btn secondary small" href="/search/new">New posts</a><a class="btn secondary small" href="/search/today">Today's posts</a><a class="btn secondary small" href="/search/unanswered">Unanswered threads</a>{% if me %}<a class="btn secondary small" href="/search/unread">Unread threads</a>{% endif %}</div>
+<div class="search-page">
+  <h1>Search {{ bb.bbname }}</h1>
+  {{ m.errors_box(errors) }}
+  {% if empty %}
+  <div class="search-empty" role="status">
+    <strong>No results{% if form.keywords %} for “{{ form.keywords }}”{% endif %}{% if form.author %} by {{ form.author }}{% endif %}</strong>
+    <p>Try fewer or different words{% if filtered %}, or loosen the filters below{% endif %}.</p>
+  </div>
+  {% endif %}
+  <form method="post" action="/search" class="search-form" role="search">{{ m.csrf_field() }}
+    <input type="hidden" name="subforums" value="1">
+    <div class="search-bar">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
+      <input id="keywords" type="search" name="keywords" value="{{ form.keywords }}" placeholder="Search threads and posts" aria-label="Search terms" aria-describedby="search-tips" autofocus>
+      <button class="btn" type="submit">Search</button>
+    </div>
+    <p class="search-tips" id="search-tips">Use <kbd>"quotes"</kbd> for a phrase, <kbd>or</kbd> for alternatives, <kbd>-word</kbd> to exclude.</p>
+    <details class="search-adv"{% if filtered %} open{% endif %}>
+      <summary>Filters{% if filtered %} <span class="search-adv-on">on</span>{% endif %}</summary>
+      <div class="search-adv-grid">
+        <fieldset class="search-field">
+          <legend>Search in</legend>
+          <div class="seg"><label><input type="radio" name="postthread" value="1"{% if form.postthread != '2' %} checked{% endif %}><span>Titles and posts</span></label><label><input type="radio" name="postthread" value="2"{% if form.postthread == '2' %} checked{% endif %}><span>Titles only</span></label></div>
+        </fieldset>
+        <fieldset class="search-field">
+          <legend>Show results as</legend>
+          <div class="seg"><label><input type="radio" name="showresults" value="threads"{% if form.showresults != 'posts' %} checked{% endif %}><span>Threads</span></label><label><input type="radio" name="showresults" value="posts"{% if form.showresults == 'posts' %} checked{% endif %}><span>Posts</span></label></div>
+        </fieldset>
+        <div class="search-field">
+          <label for="author">Author</label>
+          <input id="author" type="text" name="author" value="{{ form.author }}" autocomplete="off">
+          <label class="check"><input type="checkbox" name="matchusername" value="1"{% if form.matchusername %} checked{% endif %}> Exact username</label>
+        </div>
+        <div class="search-field">
+          <label for="forums">Forum</label>
+          <select id="forums" name="forums"><option value="0">All forums</option>{% for f in forums %}<option value="{{ f[0] }}"{% if f[0] in form.forums %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select>
+          <span class="help">Includes its subforums.</span>
+        </div>
+        <div class="search-field">
+          <label for="postdate">Posted</label>
+          <select id="postdate" name="postdate">{% for d in [(0,'Any time'),(1,'In the last day'),(7,'In the last week'),(14,'In the last 2 weeks'),(30,'In the last month'),(90,'In the last 3 months'),(180,'In the last 6 months'),(365,'In the last year')] %}<option value="{{ d[0] }}"{% if form.postdate == d[0] %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}</select>
+        </div>
+        <div class="search-field">
+          <label for="numreplies">At least this many replies</label>
+          <input id="numreplies" type="number" name="numreplies" value="{{ form.numreplies or 0 }}" min="0" inputmode="numeric">
+        </div>
+        <div class="search-field search-sort">
+          <label for="sortby">Sort by</label>
+          <div class="search-sort-row">
+            <select id="sortby" name="sortby">{% for o in [('lastpost','Latest activity'),('relevance','Relevance'),('subject','Subject'),('replies','Replies'),('views','Views'),('starter','Author'),('forum','Forum')] %}<option value="{{ o[0] }}"{% if form.sortby == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+            <select name="sortordr" aria-label="Order"><option value="desc">Descending</option><option value="asc"{% if form.sortordr == 'asc' %} selected{% endif %}>Ascending</option></select>
+          </div>
+        </div>
+      </div>
+    </details>
+  </form>
+  <nav class="search-shortcuts" aria-label="Browse">
+    <span class="muted">Or browse:</span>
+    {% if me %}<a class="pill-link" href="/search/unread">Unread threads</a>{% endif %}
+    <a class="pill-link" href="/search/new">New posts</a>
+    <a class="pill-link" href="/search/today">Today's posts</a>
+    <a class="pill-link" href="/search/unanswered">Unanswered threads</a>
+  </nav>
+</div>
 {% endblock %}
