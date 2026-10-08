@@ -92,6 +92,19 @@
       });
     });
 
+    // Import a file by reading it into a form's textarea and submitting (theme import).
+    $$(".js-import-file").forEach((input) => {
+      const form = $(input.dataset.form);
+      if (!form) return;
+      input.closest(".js-import-pick").hidden = false;
+      input.addEventListener("change", async () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        $("textarea", form).value = await f.text();
+        form.requestSubmit();
+      });
+    });
+
     // Tables that scroll sideways on phones must be reachable by keyboard.
     const focusScrollers = () => $$("table.grid").forEach((t) => {
       if (t.scrollWidth > t.clientWidth + 1) t.tabIndex = 0; else t.removeAttribute("tabindex");
