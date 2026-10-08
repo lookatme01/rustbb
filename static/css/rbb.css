@@ -510,11 +510,11 @@ a.chip:hover { text-decoration: none; background: color-mix(in oklab, var(--line
 .post-author .stars img { width: 12px; height: 12px; }
 .post-author .groupimage { max-height: 22px; width: auto; margin-top: 4px; }
 .post-author .title, .post-author .usertitle { font-size: .8rem; color: var(--ink-soft); }
-.author-stats { width: 100%; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--rule); display: grid; gap: 3px; font-size: .78rem; text-align: left; }
+.author-stats { width: 100%; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--rule); display: grid; gap: 5px; font-size: .78rem; text-align: left; }
 .author-stats div { display: flex; justify-content: space-between; gap: 8px; }
 .author-stats dt { color: var(--ink-faint); }
 .author-stats dd { margin: 0; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-.author-stats a { color: inherit; }
+.author-stats a { color: inherit; display: inline-block; min-width: 24px; padding: 4px 0; margin: -4px 0; text-align: right; }
 .post-main { display: flex; flex-direction: column; min-width: 0; }
 .post-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 22px 0; font-size: .82rem; color: var(--ink-faint); }
 .post-head .who { display: none; } /* shown on small screens, where the author column collapses */
