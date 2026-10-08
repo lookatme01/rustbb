@@ -1,18 +1,26 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
+{% import "member_file.html" as mf %}
 {% block acp %}
-<form method="get" action="/admin/users" class="admin-filter">
-  <input type="search" name="username" value="{{ q.username }}" placeholder="Username" aria-label="Username">
-  <input type="search" name="email" value="{{ q.email }}" placeholder="Email" aria-label="Email">
-  <input type="search" name="ip" value="{{ q.ip }}" placeholder="IP address" aria-label="IP">
+<section class="box">
+<div class="box-head"><h2>Users <span class="muted small">{{ total|num }}</span></h2><span class="right box-head-actions"><a class="btn secondary small" href="/admin/users/merge">Merge users</a><a class="btn small" href="/admin/users/new">Add user</a></span></div>
+<form method="get" action="/admin/users" class="admin-filter acp-list-search">
+  <input type="hidden" name="flag" value="{{ q.flag }}">
+  <input type="search" name="q" value="{{ q.q }}" placeholder="Search name, email or IP address" aria-label="Search by username, email or IP address">
   <select name="gid" aria-label="Group"><option value="0">Any group</option>{% for g in groups %}<option value="{{ g[0] }}"{% if q.gid == g[0] %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
   <select name="sort" aria-label="Sort">{% for s in [('regdate','Newest'),('username','Username'),('postnum','Posts'),('lastactive','Last active'),('reputation','Reputation')] %}<option value="{{ s[0] }}"{% if q.sort == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}</select>
   <button class="btn secondary">Search</button>
 </form>
-<section class="box"><div class="box-head"><h2>Users <span class="muted small">{{ total|num }}</span></h2><span class="right box-head-actions"><a class="btn secondary small" href="/admin/users/merge">Merge users</a><a class="btn small" href="/admin/users/new">Add user</a></span></div>
-<table class="grid"><thead><tr><th>User</th><th>Email</th><th>Group</th><th>Registered</th><th>Last active</th><th class="num">Posts</th><th>Last IP</th></tr></thead><tbody>
-{% for u in users %}<tr><td><a href="/admin/users/{{ u.uid }}">{{ u.formatted|safe }}</a></td><td class="small">{{ u.email }}</td><td class="small">{{ u.group }}</td><td class="small">{{ u.regdate|date('date') }}</td><td class="small">{{ u.lastactive|date }}</td><td class="num">{{ u.postnum }}</td><td class="small">{{ u.lastip }}</td></tr>
-{% else %}<tr><td colspan="7" class="empty">No users found.</td></tr>{% endfor %}
-</tbody></table></section>
+<nav class="mf-filters" aria-label="Quick filters">{% for p in pills %}<a href="/admin/users?{{ qs }}&amp;flag={{ p.key }}"{% if p.key == q.flag %} aria-current="page"{% endif %}>{{ p.label }}<span class="n">{{ p.n|num }}</span></a>{% endfor %}</nav>
+<div class="acp-table-wrap">
+<table class="grid acp-users"><thead><tr><th>Member</th><th>Flags</th><th>Group</th><th>Joined</th><th>Last active</th><th class="num">Posts</th></tr></thead><tbody>
+{% for u in users %}<tr>
+<td><div class="acp-member">{{ m.face(u.avatar, u.username, u.uid, 32) }}<div class="acp-member-text"><a href="/admin/users/{{ u.uid }}">{{ u.formatted|safe }}</a><span class="small muted">{{ u.email }}</span></div></div></td>
+<td>{{ mf.flags(u.flags, true) }}</td>
+<td class="small">{{ u.group }}</td><td class="small">{{ u.regdate|date('date') }}</td><td class="small">{{ u.lastactive|date }}</td><td class="num">{{ u.postnum|num }}</td></tr>
+{% else %}<tr><td colspan="6" class="empty">{% if q.flag or q.q or q.username or q.email or q.ip or q.gid %}No members match this filter.{% else %}No users found.{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+</div>
+</section>
 {{ m.pagination(pagination) }}
 {% endblock %}

@@ -32,6 +32,11 @@ pub fn router() -> Router<crate::app::App> {
 #[derive(Deserialize, Default)]
 pub struct ListQ {
     #[serde(default)]
+    pub q: String,
+    #[serde(default)]
+    pub flag: String,
+    // Old links used one box per field; they keep working.
+    #[serde(default)]
     pub username: String,
     #[serde(default)]
     pub email: String,
@@ -44,6 +49,16 @@ pub struct ListQ {
     pub page: Option<i64>,
 }
 
+/// Quick filters: (query value, label, WHERE clause). `$7` is "a week ago".
+const FLAG_SQL: &[(&str, &str, &str)] = &[
+    ("banned", "Banned", "EXISTS (SELECT 1 FROM banned b WHERE b.uid = users.uid)"),
+    ("restricted", "Restricted", "(moderateposts OR suspendposting OR suspendsignature)"),
+    ("unconfirmed", "Unconfirmed", "EXISTS (SELECT 1 FROM awaitingactivation a WHERE a.uid = users.uid AND a.type IN ('r','b'))"),
+    ("mail", "Mail failing", "EXISTS (SELECT 1 FROM mailqueue m WHERE lower(m.mailto) = lower(users.email) AND m.attempts > 0)"),
+    ("ip", "Shares an IP", "(lastip IS NOT NULL AND EXISTS (SELECT 1 FROM users o WHERE o.uid <> users.uid AND (o.lastip = users.lastip OR o.regip = users.lastip)))"),
+    ("new", "New this week", "regdate > $7"),
+];
+
 pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let col = match q.sort.as_str() {
@@ -53,48 +68,79 @@ pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
         "reputation" => "reputation DESC",
         _ => "regdate DESC",
     };
-    let where_sql = "($1 = '' OR username ILIKE '%' || $1 || '%') AND ($2 = '' OR email ILIKE '%' || $2 || '%')
-        AND ($3 = '' OR host(regip) LIKE $3 || '%' OR host(lastip) LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))";
-    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
+    let found = FLAG_SQL.iter().find(|f| f.0 == q.flag);
+    let flag = found.map(|f| f.0).unwrap_or("");
+    let flag_sql = found.map(|f| f.2).unwrap_or("TRUE");
+    let week_ago = crate::util::now() - 7 * 86_400;
+    let where_sql = format!("($1 = '' OR username ILIKE '%' || $1 || '%') AND ($2 = '' OR email ILIKE '%' || $2 || '%')
+        AND ($3 = '' OR host(regip) LIKE $3 || '%' OR host(lastip) LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))
+        AND ($5 = '' OR username ILIKE '%' || $5 || '%' OR email ILIKE '%' || $5 || '%' OR host(regip) LIKE $5 || '%' OR host(lastip) LIKE $5 || '%')
+        AND $7::bigint IS NOT NULL AND {flag_sql}");
+    // $6 (offset) is unused by the count; bind a dummy so $7 lines up.
+    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql} AND $6::bigint IS NOT NULL"))
         .bind(q.username.trim())
         .bind(q.email.trim())
         .bind(q.ip.trim())
         .bind(q.gid)
+        .bind(q.q.trim())
+        .bind(0i64)
+        .bind(week_ago)
         .fetch_one(&ctx.app.db)
         .await?;
     let enc = |s: &str| {
         percent_encoding::utf8_percent_encode(s.trim(), percent_encoding::NON_ALPHANUMERIC)
             .to_string()
     };
+    let mut qs = format!("q={}&gid={}&sort={}", enc(&q.q), q.gid, enc(&q.sort));
+    for (k, v) in [("username", &q.username), ("email", &q.email), ("ip", &q.ip)] {
+        if !v.trim().is_empty() {
+            qs.push_str(&format!("&{k}={}", enc(v)));
+        }
+    }
     let pg = util::paginate(
         total,
         50,
         util::clamp_page(q.page),
-        &format!(
-            "/admin/users?username={}&email={}&ip={}&gid={}&sort={}&page={{page}}",
-            enc(&q.username),
-            enc(&q.email),
-            enc(&q.ip),
-            q.gid,
-            q.sort
-        ),
+        &format!("/admin/users?{qs}&flag={flag}&page={{page}}"),
     );
-    let rows: Vec<(i32, String, String, i32, i32, i64, i64, i32, String)> = sqlx::query_as(&format!(
-        "SELECT uid, username, email, usergroup, displaygroup, regdate, lastactive, postnum, COALESCE(host(lastip), '') FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $5"
+    let rows: Vec<(i32, String, String, String, i32, i32, i64, i64, i32)> = sqlx::query_as(&format!(
+        "SELECT uid, username, email, avatar, usergroup, displaygroup, regdate, lastactive, postnum FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $6"
     ))
     .bind(q.username.trim())
     .bind(q.email.trim())
     .bind(q.ip.trim())
     .bind(q.gid)
+    .bind(q.q.trim())
     .bind((pg.page - 1) * 50)
+    .bind(week_ago)
     .fetch_all(&ctx.app.db)
     .await?;
+    let uids: Vec<i32> = rows.iter().map(|r| r.0).collect();
+    let mut flags = crate::member_file::flags_for(&ctx, &uids, crate::member_file::View::of(&ctx)).await?;
     let users: Vec<_> = rows
         .into_iter()
-        .map(|(uid, n, e, g, d, reg, last, posts, ip)| minijinja::context! { uid => uid, username => &n, formatted => ctx.cache.format_name(&n, g, d), email => e, group => ctx.cache.group(g).map(|x| x.title.clone()), regdate => reg, lastactive => last, postnum => posts, lastip => ip })
+        .map(|(uid, n, e, av, g, d, reg, last, posts)| minijinja::context! { uid => uid, username => &n, avatar => av, formatted => ctx.cache.format_name(&n, g, d), email => e, group => ctx.cache.group(g).map(|x| x.title.clone()), regdate => reg, lastactive => last, postnum => posts, flags => flags.remove(&uid).unwrap_or_default() })
         .collect();
     let groups: Vec<(i32, String)> = sorted_groups(&ctx);
-    crate::admin::page(&ctx, "admin/users.html", "users", "Users", minijinja::context! { users => users, pagination => pg, q => minijinja::context!{ username => q.username, email => q.email, ip => q.ip, gid => q.gid, sort => q.sort }, groups => groups, total => total }).await
+    // Pill counts are board-wide: they ignore the search box and group filter.
+    let counts = flag_counts(&ctx, week_ago).await?;
+    let pills: Vec<_> = std::iter::once(("", "All", counts[0]))
+        .chain(FLAG_SQL.iter().enumerate().map(|(i, f)| (f.0, f.1, counts[i + 1])))
+        .map(|(k, label, n)| minijinja::context! { key => k, label => label, n => n })
+        .collect();
+    crate::admin::page(&ctx, "admin/users.html", "users", "Users", minijinja::context! { users => users, pagination => pg, q => minijinja::context!{ q => q.q, username => q.username, email => q.email, ip => q.ip, gid => q.gid, sort => q.sort, flag => flag }, qs => qs, pills => pills, groups => groups, total => total }).await
+}
+
+/// Board-wide counts for the filter pills: all, then one per `FLAG_SQL` entry.
+async fn flag_counts(ctx: &Ctx, week_ago: i64) -> AppResult<Vec<i64>> {
+    use sqlx::Row;
+    let mut sql = String::from("SELECT COUNT(*)");
+    for f in FLAG_SQL {
+        sql.push_str(&format!(", COUNT(*) FILTER (WHERE {})", f.2.replace("$7", "$1")));
+    }
+    sql.push_str(" FROM users");
+    let row = sqlx::query(&sql).bind(week_ago).fetch_one(&ctx.app.db).await?;
+    Ok((0..=FLAG_SQL.len()).map(|i| row.get::<i64, _>(i)).collect())
 }
 
 pub fn sorted_groups(ctx: &Ctx) -> Vec<(i32, String)> {
