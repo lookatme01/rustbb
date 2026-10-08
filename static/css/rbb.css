@@ -1892,3 +1892,6 @@ input[type=date], input[type=datetime-local], input[type=time], select, textarea
   .ao-convo-head .pgp-details dl { left: 0; right: auto; }
   .ao-reply-bar { padding: 12px; }
 }
+
+/* The admin and moderator panels are dense tool screens: give them more room. */
+body.acp, body.modcp { --page: 1320px; }
