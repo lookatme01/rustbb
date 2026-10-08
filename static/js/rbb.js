@@ -35,6 +35,7 @@
     $$(".js-forumjump").forEach((f) => f.addEventListener("submit", (e) => { e.preventDefault(); location.href = "/forum/" + f.fid.value; }));
     $$(".js-calselect").forEach((s) => s.addEventListener("change", () => { location.href = "/calendar/" + s.value; }));
     $$(".js-forumjump select").forEach((s) => s.addEventListener("change", () => { location.href = "/forum/" + s.value; }));
+    $$(".js-jump-go").forEach((b) => { b.hidden = true; });
 
     // Keep the current tab in view when the main nav scrolls sideways (phones).
     const tabs = $(".tabs"), cur = $(".tabs a[aria-current]");
@@ -464,4 +465,30 @@
   pick.addEventListener("input", () => { if (use) use.checked = true; apply(); });
   if (use) use.addEventListener("change", apply);
   apply();
+})();
+
+// Avatars that fail to load (dead remote URL, missing upload) fall back to the initial-letter markup.
+(function () {
+  function fallback(img) {
+    if (!img.matches("img[data-initial]") || !img.parentNode) return;
+    const letter = img.dataset.initial || "?";
+    if (img.parentElement.classList.contains("face")) {
+      img.replaceWith(document.createTextNode(letter));
+    } else if (img.dataset.fallback === "member") {
+      const s = document.createElement("span");
+      s.className = "avatar-fallback";
+      s.style.cssText = "width:32px;height:32px;font-size:.9rem;margin:0";
+      s.textContent = letter;
+      img.replaceWith(s);
+    } else {
+      const d = document.createElement("div");
+      d.className = "avatar-fallback";
+      d.setAttribute("aria-hidden", "true");
+      d.textContent = letter;
+      img.replaceWith(d);
+    }
+  }
+  document.addEventListener("error", (e) => { if (e.target instanceof HTMLImageElement) fallback(e.target); }, true);
+  const sweep = () => document.querySelectorAll("img[data-initial]").forEach((i) => { if (i.complete && i.naturalWidth === 0) fallback(i); });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", sweep); else sweep();
 })();
