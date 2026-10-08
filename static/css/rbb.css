@@ -1353,3 +1353,11 @@ body:has(#quickreply) .js-multiquote { display: none; }
 .popmenu .menu .menu-form .btn { justify-content: center; width: 100%; background: var(--signal); color: var(--signal-ink); font-weight: 650; }
 .popmenu .menu .menu-form .btn:hover { background: var(--signal-strong); }
 .popmenu .menu a.menu-reset { justify-content: center; font-size: .84rem; color: var(--ink-soft); }
+/* In narrower editors (PM compose beside its sidebar) tighten the toolbar so it stays on one row. */
+.editor { container-type: inline-size; }
+@container (max-width: 1000px) {
+  .editor-toolbar { gap: 0; }
+  .editor-toolbar button, .editor-toolbar select { padding-left: 6px; padding-right: 6px; }
+  .editor-toolbar select[data-tag] { width: 62px; padding-right: 18px; background-position: right 3px center; }
+  .editor-toolbar .sep { margin: 0 2px; }
+}
