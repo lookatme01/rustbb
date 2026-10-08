@@ -16,7 +16,7 @@
         {% if e.details.reason %}<div class="small">Reason: {{ e.details.reason }}</div>{% endif %}
         {% if e.details.points %}<div class="small">{{ e.details.points }} warning point{{ '' if e.details.points == 1 else 's' }}</div>{% endif %}
       </div>
-      <div class="tl-meta small muted"><time datetime="{{ e.dateline }}">{{ e.dateline|date }}</time>{% if e.device %}<span title="{{ e.useragent }}">{{ e.device }}</span>{% endif %}{% if e.ip %}<span>{{ e.ip }}</span>{% endif %}</div>
+      <div class="tl-meta small muted">{{ e.dateline|date }}{% if e.device %}<span title="{{ e.useragent }}">{{ e.device }}</span>{% endif %}{% if e.ip %}<span>{{ e.ip }}</span>{% endif %}</div>
     </li>
   {% else %}
     <li class="empty">No account activity recorded yet.</li>

@@ -258,7 +258,7 @@ pub static DEFS: &[SettingDef] = &[
         "Date Format",
         "chrono strftime format for dates.",
         "text",
-        "%m-%d-%Y"
+        "%b %-d, %Y"
     ),
     s!(
         "datetime",
@@ -266,7 +266,7 @@ pub static DEFS: &[SettingDef] = &[
         "Time Format",
         "chrono strftime format for times.",
         "text",
-        "%I:%M %p"
+        "%-I:%M %p"
     ),
     s!(
         "datetime",

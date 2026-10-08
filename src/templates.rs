@@ -110,11 +110,11 @@ pub fn build_env(cache: Arc<ArcSwap<Cache>>, dev_dir: Option<String>) -> Environ
             let df = state
                 .lookup("_df")
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| "%m-%d-%Y".into());
+                .unwrap_or_else(|| "%b %-d, %Y".into());
             let tf = state
                 .lookup("_tf")
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| "%I:%M %p".into());
+                .unwrap_or_else(|| "%-I:%M %p".into());
             let style = style.unwrap_or_else(|| "relative".into());
             let text = util::format_date(ts, tz, &df, &tf, &style);
             if style == "relative" && ts > 0 {

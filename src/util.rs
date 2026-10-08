@@ -96,7 +96,8 @@ pub fn to_local(ts: i64, tz: Tz) -> DateTime<Tz> {
     )
 }
 
-/// Format a timestamp. `style`: "relative" (Today/Yesterday/x minutes ago), "date", "time", "datetime".
+/// Format a timestamp. `style`: "relative" (short: "just now", "5m ago", "2h ago", "Sep 26"),
+/// "date", "time", "datetime", "iso".
 pub fn format_date(ts: i64, tz: Tz, datefmt: &str, timefmt: &str, style: &str) -> String {
     if ts <= 0 {
         return "Never".into();
@@ -107,40 +108,26 @@ pub fn format_date(ts: i64, tz: Tz, datefmt: &str, timefmt: &str, style: &str) -
         "time" => dt.format(timefmt).to_string(),
         "datetime" => format!("{}, {}", dt.format(datefmt), dt.format(timefmt)),
         "iso" => dt.to_rfc3339(),
+        _ => relative_date(ts, now(), tz),
+    }
+}
+
+/// The short relative form: minutes or hours within a day either way, otherwise the month and
+/// day (and the year when it isn't this year). Every listing uses it, so rows stay one line.
+pub fn relative_date(ts: i64, now: i64, tz: Tz) -> String {
+    let diff = now - ts;
+    match diff {
+        -59..60 => "just now".into(),
+        60..3600 => format!("{}m ago", diff / 60),
+        3600..86400 => format!("{}h ago", diff / 3600),
+        -3599..-59 => format!("in {}m", -diff / 60),
+        -86399..-3599 => format!("in {}h", -diff / 3600),
         _ => {
-            let n = now();
-            let diff = n - ts;
-            if (0..60).contains(&diff) {
-                return if diff <= 1 {
-                    "1 second ago".into()
-                } else {
-                    format!("{diff} seconds ago")
-                };
-            }
-            if (60..3600).contains(&diff) {
-                let m = diff / 60;
-                return if m == 1 {
-                    "1 minute ago".into()
-                } else {
-                    format!("{m} minutes ago")
-                };
-            }
-            let today = to_local(n, tz).date_naive();
-            let d = dt.date_naive();
-            if d == today {
-                if (0..3 * 3600).contains(&diff) {
-                    let h = diff / 3600;
-                    return if h == 1 {
-                        "1 hour ago".into()
-                    } else {
-                        format!("{h} hours ago")
-                    };
-                }
-                format!("Today, {}", dt.format(timefmt))
-            } else if today.pred_opt() == Some(d) {
-                format!("Yesterday, {}", dt.format(timefmt))
+            let dt = to_local(ts, tz);
+            if dt.year() == to_local(now, tz).year() {
+                dt.format("%b %-d").to_string()
             } else {
-                format!("{}, {}", dt.format(datefmt), dt.format(timefmt))
+                dt.format("%b %-d, %Y").to_string()
             }
         }
     }
@@ -300,6 +287,20 @@ pub fn valid_email(e: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn relative_dates_are_short() {
+        let tz = chrono_tz::UTC;
+        let now = 1_790_000_000; // 2026-09-21 14:13 UTC
+        assert_eq!(relative_date(now - 5, now, tz), "just now");
+        assert_eq!(relative_date(now - 125, now, tz), "2m ago");
+        assert_eq!(relative_date(now - 2 * 3600 - 10, now, tz), "2h ago");
+        assert_eq!(relative_date(now - 23 * 3600, now, tz), "23h ago");
+        assert_eq!(relative_date(now - 5 * 86400, now, tz), "Sep 16");
+        assert_eq!(relative_date(now - 400 * 86400, now, tz), "Aug 17, 2025");
+        assert_eq!(relative_date(now + 90 * 60, now, tz), "in 1h");
+        assert_eq!(relative_date(now + 3 * 86400, now, tz), "Sep 24");
+        assert_eq!(format_date(0, tz, "%Y", "%H", "relative"), "Never");
+    }
     #[test]
     fn slug() {
         assert_eq!(slugify("Hello, World!"), "hello-world");
