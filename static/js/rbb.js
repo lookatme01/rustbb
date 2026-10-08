@@ -43,6 +43,14 @@
       if (right > tabs.clientWidth) tabs.scrollLeft = right - tabs.clientWidth;
     }
 
+    // Dropdown menus built on <details> close on an outside click or Escape.
+    const menus = () => $$("details.popmenu[open], details.usermenu[open]");
+    document.addEventListener("click", (e) => menus().forEach((d) => { if (!d.contains(e.target)) d.open = false; }));
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      menus().forEach((d) => { d.open = false; if (d.contains(document.activeElement)) $("summary", d).focus(); });
+    });
+
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
       const key = "rbb.collapse." + box.dataset.collapse;

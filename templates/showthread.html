@@ -27,23 +27,28 @@
 </div>
 <div class="live-banner" id="live-banner" hidden><button class="btn js-load-new" type="button">New replies — show them</button></div>
 
-<div class="actions">
+<div class="actions thread-foot">
   {{ m.pagination(pagination) }}
   <span class="spacer"></span>
-  <a class="btn secondary small" href="/thread/{{ thread.tid }}/print">Print view</a>
-  <a class="btn secondary small" href="/thread/{{ thread.tid }}/whoposted">Who posted?</a>
-  {% if me and me.uid > 0 and perms.cansendemail %}<a class="btn secondary small" href="/thread/{{ thread.tid }}/send">Send to a friend</a>{% endif %}
   {% if me %}
-  <form method="post" action="/thread/{{ thread.tid }}/subscribe" style="display:flex;gap:6px;align-items:center">{{ m.csrf_field() }}
-    {% if subscription is none %}
-      <select name="notification" aria-label="Notification type"><option value="0">No notification</option><option value="1">Instant email</option><option value="2">Private message</option></select>
-      <button class="btn secondary small" type="submit">Subscribe</button>
-    {% else %}
-      <input type="hidden" name="unsubscribe" value="1"><button class="btn secondary small" type="submit">Unsubscribe</button>
-    {% endif %}
+  <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}
+    {% if subscription is none %}<input type="hidden" name="notification" value="0"><button class="btn secondary small" type="submit">Subscribe</button>
+    {% else %}<input type="hidden" name="unsubscribe" value="1"><button class="btn secondary small" type="submit" aria-pressed="true" title="You get alerts about new replies">Unsubscribe</button>{% endif %}
   </form>
   {% endif %}
-  {% if can_reply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ t("New Reply") }}</a>{% endif %}
+  <details class="popmenu">
+    <summary class="btn secondary small" aria-label="More thread actions">More</summary>
+    <div class="menu">
+      {% if me and subscription is none %}
+      <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}<input type="hidden" name="notification" value="1"><button type="submit">Subscribe with email notifications</button></form>
+      <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}<input type="hidden" name="notification" value="2"><button type="submit">Subscribe with PM notifications</button></form>
+      {% endif %}
+      <a href="/thread/{{ thread.tid }}/whoposted">Who posted?</a>
+      <a href="/thread/{{ thread.tid }}/print">Print view</a>
+      {% if me and me.uid > 0 and perms.cansendemail %}<a href="/thread/{{ thread.tid }}/send">Send to a friend</a>{% endif %}
+    </div>
+  </details>
+  {% if can_reply and not quickreply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ t("New Reply") }}</a>{% endif %}
 </div>
 
 {% if can_rate %}
