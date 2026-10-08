@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block head %}{% if passkeys %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endif %}{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="auth-card auth-card-wide welcome">
+    <img class="auth-logo" src="{{ theme.props.logo if theme and theme.props.logo else asset('images/logo.svg') }}" alt="" width="48" height="48">
+    <h1>Welcome, {{ me.username }}</h1>
+    <p class="muted">You're in. A couple of optional extras before you start:</p>
+    <div class="welcome-steps">
+      {% if passkeys %}
+      <section class="welcome-step">
+        <h2>{{ m.icon('lock') }} Sign in faster next time</h2>
+        <p>Add a passkey and sign in with your fingerprint, face or screen lock instead of typing a password.</p>
+        <form class="js-passkey-add welcome-passkey" method="post" action="/usercp/passkeys/begin">{{ m.csrf_field() }}
+          <input type="hidden" name="return_to" value="/">
+          <input type="hidden" name="name" value="">
+          <label class="auth-field"><span>Confirm your password</span><input type="password" name="password" autocomplete="current-password" required></label>
+          <p class="notice bad small js-passkey-error" role="alert" hidden></p>
+          <noscript><p class="notice warn small">Adding a passkey needs JavaScript.</p></noscript>
+          <button class="btn secondary block" type="submit">Add a passkey</button>
+        </form>
+      </section>
+      {% endif %}
+      {% if not has_avatar %}
+      <section class="welcome-step">
+        <h2>{{ m.face('', me.username, me.uid, 24) }} Put a face to your name</h2>
+        <p>So people recognise you in threads.</p>
+        <a class="btn secondary block" href="/usercp/avatar">Add a photo</a>
+      </section>
+      {% endif %}
+    </div>
+    <a class="btn block" href="/">Start reading</a>
+    <p class="auth-alt"><a href="/search/new">See what's new</a></p>
+  </div>
+</div>
+{% endblock %}

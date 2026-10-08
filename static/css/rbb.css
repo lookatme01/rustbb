@@ -1370,3 +1370,9 @@ body:has(#quickreply) .js-multiquote { display: none; }
 /* Inline moderation appears once a post is selected. */
 #inlinemod-posts { display: none; }
 body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { display: flex; }
+.welcome .welcome-steps { display: grid; gap: 12px; margin: 0 0 18px; text-align: left; }
+.welcome-step { padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--rule); }
+.welcome-step h2 { display: flex; align-items: center; gap: 8px; font-size: .98rem; margin: 0 0 4px; }
+.welcome-step h2 svg { width: 16px; height: 16px; }
+.welcome-step p { margin: 0 0 10px; font-size: .86rem; color: var(--ink-soft); }
+.welcome-passkey { display: grid; gap: 10px; }

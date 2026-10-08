@@ -729,7 +729,6 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
             .await;
         }
     };
-    let bbname = s.get("bbname").to_string();
     match activation {
         Activation::Email { .. } => {
             auth::create_login(&ctx, uid, false).await?;
@@ -742,14 +741,28 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
         )),
         Activation::Instant => {
             auth::create_login(&ctx, uid, true).await?;
-            Ok(ctx.redirect(
-                "/",
-                &format!(
-                    "Thank you for registering on {bbname}, {username}. You are now logged in."
-                ),
-            ))
+            Ok(Redirect::to("/member/welcome").into_response())
         }
     }
+}
+
+/// First stop after registering: optional next steps (a passkey, a photo), then the forums.
+pub async fn welcome(ctx: Ctx) -> AppResult<Response> {
+    let me = ctx.require_login()?;
+    let passkeys = crate::passkeys::available(&ctx.app).is_ok();
+    let has_passkey: bool = if passkeys {
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM passkeys WHERE uid = $1)")
+            .bind(me.uid)
+            .fetch_one(&ctx.app.db)
+            .await?
+    } else {
+        false
+    };
+    ctx.render(
+        "welcome.html",
+        minijinja::context! { title => "Welcome", passkeys => passkeys && !has_passkey, has_avatar => !me.avatar.is_empty() },
+    )
+    .await
 }
 
 #[derive(Deserialize, Default)]

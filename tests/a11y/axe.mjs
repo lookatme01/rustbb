@@ -23,7 +23,7 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const GUEST = ["/", "/forum/3", "/thread/1", "/member/login", "/member/register", "/member/lostpw", "/search", "/members", "/team", "/online",
   "/calendar", "/stats", "/help", "/mycode", "/badges", "/rules", "/privacy", "/portal", "/archive", "/user/1", "/thread/1/print", "/thread/999999"];
 const EXPECTED_ERRORS = ["/thread/999999"];
-const MEMBER = ["/", "/thread/1", "/newthread/3", "/newreply/1", "/usercp", "/usercp/profile", "/usercp/options", "/usercp/password", "/usercp/avatar",
+const MEMBER = ["/", "/member/welcome", "/thread/1", "/newthread/3", "/newreply/1", "/usercp", "/usercp/profile", "/usercp/options", "/usercp/password", "/usercp/avatar",
   "/usercp/signature", "/usercp/subscriptions", "/usercp/security", "/pm", "/pm/send", "/search/new", "/usercp/alerts"];
 const ADMIN = ["/admin", "/admin/settings", "/admin/settings/images", "/admin/forums", "/admin/users", "/admin/groups", "/admin/themes", "/modcp",
   "/modcp/reports", "/modcp/modqueue"];

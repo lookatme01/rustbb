@@ -126,6 +126,7 @@ pub fn router() -> Router<App> {
             get(member::login_form).post(member::login_submit),
         )
         .route("/member/login/2fa", post(member::login_2fa))
+        .route("/member/welcome", get(member::welcome))
         .route("/member/logout", post(member::logout))
         .route(
             "/member/register",

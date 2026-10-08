@@ -89,6 +89,9 @@ pub struct FinishAddForm {
     pub credential: String,
     #[serde(default, deserialize_with = "de::string")]
     pub name: String,
+    /// Where to go afterwards (the welcome page sends people on to the forums).
+    #[serde(default, deserialize_with = "de::string")]
+    pub return_to: String,
 }
 
 pub async fn add_finish(ctx: Ctx, CsrfForm(f): CsrfForm<FinishAddForm>) -> Response {
@@ -107,7 +110,12 @@ pub async fn add_finish(ctx: Ctx, CsrfForm(f): CsrfForm<FinishAddForm>) -> Respo
                 &ctx,
                 "Your passkey has been added. You can now sign in with it.",
             );
-            Ok(serde_json::json!({"redirect": "/usercp/security"}))
+            let to = if f.return_to.is_empty() {
+                "/usercp/security"
+            } else {
+                crate::ctx::safe_redirect(&f.return_to)
+            };
+            Ok(serde_json::json!({ "redirect": to }))
         }
         .await,
     )

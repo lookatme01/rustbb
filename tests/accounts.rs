@@ -291,3 +291,32 @@ async fn control_panel_shows_the_members_own_email() {
     assert_eq!(r.status, 200);
     assert!(r.body.contains("mailcheck@example.com"), "{}", r.body);
 }
+
+#[tokio::test]
+async fn instant_registration_lands_on_the_welcome_page() {
+    let t = test_app!();
+    open_registration(&t, "instant").await;
+    let c = t.client();
+    let key = common::form_key(&c.get("/member/register").await.body);
+    let token = formtoken(&t);
+    let r = c
+        .post_form(
+            "/member/register",
+            &[
+                ("my_post_key", key.as_str()),
+                ("username", "greeted"),
+                ("password", "Corr3ct-Horse-Battery"),
+                ("email", "greeted@example.org"),
+                ("agree", "1"),
+                ("formtoken", token.as_str()),
+            ],
+        )
+        .await;
+    assert_eq!(r.location(), "/member/welcome", "status {}", r.status);
+    let w = c.get("/member/welcome").await;
+    assert_eq!(w.status, 200);
+    assert!(w.body.contains("Welcome, greeted"), "{}", w.body);
+    assert!(w.body.contains("Start reading"));
+    // Guests are sent to log in.
+    assert_ne!(t.client().get("/member/welcome").await.status, 200);
+}
