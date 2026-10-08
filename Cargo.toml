@@ -1,6 +1,6 @@
 [package]
 name = "rbb"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 description = "A fast, scalable, production-ready forum engine inspired by MyBB"
 license = "LGPL-3.0-or-later"
