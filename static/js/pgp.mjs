@@ -552,8 +552,11 @@ async function composePage(form) {
   let mine = null, local = null, recips = [], missing = [], mode = initialMode, userChose = !!initialMode, bypass = false;
 
   const panel = h("div.pgp-compose", { "aria-live": "polite" });
-  const anchor = ta.closest(".form-row");
-  anchor.parentNode.insertBefore(h("div.form-row.pgp-compose-row", h("span.label", h("strong", "Protection")), panel), anchor.nextSibling);
+  // Older themes wrap the editor in a .form-row; the compose card lays fields out on their own.
+  const row = ta.closest(".form-row");
+  const anchor = row || ta.closest(".editor");
+  const label = row ? h("span.label", h("strong", "Protection")) : h("span.compose-label", "Protection");
+  anchor.parentNode.insertBefore(h(row ? "div.form-row.pgp-compose-row" : "div.compose-field.pgp-compose-row", label, panel), anchor.nextSibling);
 
   const options = [
     ["", "Off", "shield"],
@@ -593,7 +596,7 @@ async function composePage(form) {
     if (m === "encrypt") { try { localStorage.removeItem("rbb.draft." + location.pathname); } catch (e) { /* ignore */ } }
     if (bccInput) {
       bccInput.disabled = !!m;
-      bccInput.closest(".form-row").classList.toggle("pgp-dim", !!m);
+      (bccInput.closest(".form-row, .compose-field") || bccInput).classList.toggle("pgp-dim", !!m);
       bccInput.title = m ? "BCC isn't available for signed or encrypted messages." : "";
     }
     explain.replaceChildren(...explainFor(m, av));

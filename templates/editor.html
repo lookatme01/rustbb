@@ -6,82 +6,80 @@
 {% if preview %}
 <section class="box preview-box"><div class="box-head"><h2>Preview</h2></div><div class="post-body">{{ preview|safe }}</div></section>
 {% endif %}
-<form method="post" class="box js-editor-form" data-fid="{{ forum.fid }}" data-tid="{{ tid }}" action="{% if mode == 'newthread' %}/newthread/{{ forum.fid }}{% elif mode == 'newreply' %}/newreply/{{ tid }}{% else %}/editpost/{{ pid }}{% endif %}">
+{% set show_subject = mode == 'newthread' or is_first %}
+<form method="post" class="compose js-editor-form" data-fid="{{ forum.fid }}" data-tid="{{ tid }}" action="{% if mode == 'newthread' %}/newthread/{{ forum.fid }}{% elif mode == 'newreply' %}/newreply/{{ tid }}{% else %}/editpost/{{ pid }}{% endif %}">
   {{ m.csrf_field() }}
   <input type="hidden" name="posthash" value="{{ form.posthash }}" class="js-posthash">
   <input type="hidden" name="did" value="{{ form.did }}" class="js-did">
   <input type="hidden" name="replyto" value="{{ form.replyto }}">
-  <div class="box-head"><h2>{{ title }}</h2></div>
   {% if not me %}
-  <div class="form-row"><label for="username">Your name</label><div><input id="username" type="text" name="username" value="{{ form.username }}" maxlength="30"><span class="help">You are posting as a guest. <a href="/member/login">Log in</a> or <a href="/member/register">register</a> to post under your own name.</span></div></div>
+  <div class="compose-field"><label for="username">Your name</label><input id="username" type="text" name="username" value="{{ form.username }}" maxlength="30"><span class="help">You're posting as a guest. <a href="/member/login">Log in</a> or <a href="/member/register">register</a> to post under your own name.</span></div>
   {% endif %}
-  {% if mode != 'newreply' or true %}
-  <div class="form-row"><label for="subject">Subject</label>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      {% if prefixes and (mode == 'newthread' or is_first) %}
-      <select name="prefix" aria-label="Thread prefix"><option value="0">No prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if form.prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>
-      {% endif %}
-      <input id="subject" type="text" name="subject" value="{{ form.subject }}" maxlength="{{ bb.subjectlength }}" style="flex:1;min-width:220px;max-width:none" {% if mode == 'newthread' or is_first %}required{% endif %}>
-    </div>
+  {% if show_subject %}
+  <div class="compose-subject">
+    {% if prefixes %}<select name="prefix" aria-label="Thread prefix"><option value="0">No prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if form.prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
+    <input id="subject" type="text" name="subject" value="{{ form.subject }}" maxlength="{{ bb.subjectlength }}" placeholder="{{ 'Thread title' if mode == 'newthread' else 'Subject' }}" aria-label="Subject" required{% if mode == 'newthread' and not form.subject %} autofocus{% endif %}>
   </div>
   {% endif %}
-  {% if icons %}
-  <div class="form-row"><span class="label"><strong>Post icon</strong></span>
-    <div class="icon-choices"><label><input type="radio" name="icon" value="0"{% if not form.icon %} checked{% endif %}> None</label>{% for i in icons %}<label><input type="radio" name="icon" value="{{ i.iid }}"{% if form.icon == i.iid %} checked{% endif %}><img src="{{ i.path }}" alt="{{ i.name }}" title="{{ i.name }}"></label>{% endfor %}</div>
-  </div>
-  {% endif %}
-  <div class="form-row"><label for="message">Message</label><div>{% include "editor_widget.html" %}</div></div>
+  {% include "editor_widget.html" %}
   {% if can_attach %}
-  <div class="form-row"><span class="label"><strong>Attachments</strong><span class="help">Up to {{ max_attachments }} files. Insert into your post with the Insert button.</span></span>
-    <div class="js-attachments" data-pid="{{ pid }}">
-      <div class="dropzone js-dropzone">Drop files here or <label style="display:inline;font-weight:400"><span class="linklike" style="color:var(--link);cursor:pointer;text-decoration:underline">choose files</span><input type="file" multiple class="js-file sr-only"></label></div>
-      <ul class="attach-list js-attach-list">{% for at in attachments %}<li data-aid="{{ at.aid }}"><span>{{ at.filename }}</span><span class="faint small">{{ at.size }}</span><button type="button" class="btn secondary small js-attach-insert">Insert</button><button type="button" class="btn secondary small js-attach-remove">Remove</button></li>{% endfor %}</ul>
-    </div>
+  <div class="js-attachments compose-attach" data-pid="{{ pid }}">
+    <div class="dropzone js-dropzone">Drop files here or <label class="linklike-label"><span class="linklike">choose files</span><input type="file" multiple class="js-file sr-only"></label><span class="faint"> · up to {{ max_attachments }}, insert them into your post with Insert</span></div>
+    <ul class="attach-list js-attach-list">{% for at in attachments %}<li data-aid="{{ at.aid }}"><span>{{ at.filename }}</span><span class="faint small">{{ at.size }}</span><button type="button" class="btn secondary small js-attach-insert">Insert</button><button type="button" class="btn secondary small js-attach-remove">Remove</button></li>{% endfor %}</ul>
   </div>
   {% endif %}
   {% if can_poll %}
-  <div class="form-row"><span class="label"><strong>Poll</strong></span>
-    <div>
-      <label class="check"><input type="checkbox" name="postpoll" value="1" class="js-toggle" data-target="#poll-fields"{% if form.postpoll %} checked{% endif %}> Add a poll to this thread</label>
-      <div id="poll-fields"{% if not form.postpoll %} hidden{% endif %} style="margin-top:8px;display:grid;gap:8px">
-        <input type="text" name="poll_question" aria-label="Poll question" value="{{ form.poll_question }}" placeholder="Poll question" maxlength="250">
-        <textarea name="poll_options" rows="5" aria-label="Poll options, one per line" placeholder="One option per line (max {{ max_poll_options }})" style="min-height:100px">{{ form.poll_options }}</textarea>
-        <div class="checks">
-          <label><input type="checkbox" name="poll_multiple" value="1"{% if form.poll_multiple %} checked{% endif %}> Allow multiple choice</label>
-          <label><input type="checkbox" name="poll_public" value="1"{% if form.poll_public %} checked{% endif %}> Public poll (show who voted for what)</label>
-          <label>Close after <input type="number" name="poll_timeout" value="{{ form.poll_timeout }}" min="0" max="3650" style="width:80px"> days (0 = never)</label>
-        </div>
+  <div class="compose-poll">
+    <label class="check"><input type="checkbox" name="postpoll" value="1" class="js-toggle" data-target="#poll-fields"{% if form.postpoll %} checked{% endif %}> Add a poll</label>
+    <div id="poll-fields" class="compose-poll-body"{% if not form.postpoll %} hidden{% endif %}>
+      <input type="text" name="poll_question" aria-label="Poll question" value="{{ form.poll_question }}" placeholder="Poll question" maxlength="250">
+      <textarea name="poll_options" rows="5" aria-label="Poll options, one per line" placeholder="One option per line (max {{ max_poll_options }})">{{ form.poll_options }}</textarea>
+      <div class="checks">
+        <label><input type="checkbox" name="poll_multiple" value="1"{% if form.poll_multiple %} checked{% endif %}> Allow multiple choice</label>
+        <label><input type="checkbox" name="poll_public" value="1"{% if form.poll_public %} checked{% endif %}> Public poll (show who voted for what)</label>
+        <label>Close after <input type="number" name="poll_timeout" value="{{ form.poll_timeout }}" min="0" max="3650" class="num-sm"> days (0 = never)</label>
       </div>
     </div>
   </div>
   {% endif %}
-  <div class="form-row"><span class="label"><strong>Options</strong></span>
-    <div class="checks">
-      {% if me %}<label><input type="checkbox" name="includesig" value="1"{% if form.includesig %} checked{% endif %}> Show my signature</label>{% endif %}
-      <label><input type="checkbox" name="smilieoff" value="1"{% if form.smilieoff %} checked{% endif %}> Disable smilies in this post</label>
+  {% if mode == 'editpost' %}
+  <div class="compose-field"><label for="editreason">Edit reason <span class="faint">(optional)</span></label><input id="editreason" type="text" name="editreason" value="{{ form.editreason }}" maxlength="150"></div>
+  {% endif %}
+  {% if captcha %}<div class="compose-field">{% include "captcha_field.html" %}</div>{% endif %}
+  <details class="compose-more">
+    <summary>Options</summary>
+    <div class="compose-more-body">
+      {% if not show_subject %}
+      <div class="compose-field"><label for="subject">Subject</label><input id="subject" type="text" name="subject" value="{{ form.subject }}" maxlength="{{ bb.subjectlength }}"></div>
+      {% endif %}
+      {% if icons %}
+      <fieldset class="compose-field"><legend>Post icon</legend>
+        <div class="icon-choices"><label><input type="radio" name="icon" value="0"{% if not form.icon %} checked{% endif %}> None</label>{% for i in icons %}<label><input type="radio" name="icon" value="{{ i.iid }}"{% if form.icon == i.iid %} checked{% endif %}><img src="{{ i.path }}" alt="{{ i.name }}" title="{{ i.name }}"></label>{% endfor %}</div>
+      </fieldset>
+      {% endif %}
+      <div class="checks">
+        {% if me %}<label><input type="checkbox" name="includesig" value="1"{% if form.includesig %} checked{% endif %}> Show my signature</label>{% endif %}
+        <label><input type="checkbox" name="smilieoff" value="1"{% if form.smilieoff %} checked{% endif %}> Disable smilies in this post</label>
+        {% if is_mod and mode != 'editpost' %}
+        <label><input type="checkbox" name="mod_close" value="1"{% if form.mod_close or (thread and thread.closed == '1') %} checked{% endif %}> Close thread</label>
+        <label><input type="checkbox" name="mod_sticky" value="1"{% if form.mod_sticky or (thread and thread.sticky) %} checked{% endif %}> Stick thread</label>
+        {% endif %}
+        {% if can_post_as_system %}
+        <label><input type="checkbox" name="as_system" value="1"{% if form.as_system %} checked{% endif %}> Post as the System account <span class="small muted">(administrators can see that you wrote it)</span></label>
+        {% endif %}
+        {% if mode == 'editpost' and is_mod %}<label><input type="checkbox" name="silent" value="1"> Silent edit (don't show "edited by")</label>{% endif %}
+      </div>
       {% if me and mode != 'editpost' %}
-      <label>Subscription:
-        <select name="subscribe">{% for o in [(0,"Don't subscribe"),(1,'Subscribe without notification'),(2,'Instant email notification'),(3,'Private message notification')] %}<option value="{{ o[0] }}"{% if form.subscribe == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
-      </label>
-      {% endif %}
-      {% if is_mod and mode != 'editpost' %}
-      <label><input type="checkbox" name="mod_close" value="1"{% if form.mod_close or (thread and thread.closed == '1') %} checked{% endif %}> Close thread</label>
-      <label><input type="checkbox" name="mod_sticky" value="1"{% if form.mod_sticky or (thread and thread.sticky) %} checked{% endif %}> Stick thread</label>
-      {% endif %}
-      {% if can_post_as_system %}
-      <label><input type="checkbox" name="as_system" value="1"{% if form.as_system %} checked{% endif %}> Post as the System account <span class="small muted">(administrators can see that you wrote it)</span></label>
-      {% endif %}
-      {% if mode == 'editpost' %}
-      <label>Edit reason <input type="text" name="editreason" value="{{ form.editreason }}" maxlength="150"></label>
-      {% if is_mod %}<label><input type="checkbox" name="silent" value="1"> Silent edit (don't show "edited by")</label>{% endif %}
+      <div class="compose-field"><label for="subscribe">Notify me about replies</label>
+        <select id="subscribe" name="subscribe">{% for o in [(0,"Don't subscribe"),(1,'Subscribe without notification'),(2,'Instant email notification'),(3,'Private message notification')] %}<option value="{{ o[0] }}"{% if form.subscribe == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+      </div>
       {% endif %}
     </div>
-  </div>
-  {% if captcha %}<div class="form-row"><span class="label"><strong>Verification</strong></span><div>{% include "captcha_field.html" %}</div></div>{% endif %}
-  <div class="box-foot actions" style="margin:0">
-    <button class="btn" type="submit">{% if mode == 'newthread' %}{{ t("Post Thread") }}{% elif mode == 'newreply' %}{{ t("Post Reply") }}{% else %}Update Post{% endif %}</button>
+  </details>
+  <div class="compose-foot">
+    <button class="btn" type="submit">{% if mode == 'newthread' %}{{ t("Post Thread") }}{% elif mode == 'newreply' %}{{ t("Post Reply") }}{% else %}Save changes{% endif %}</button>
     <button class="btn secondary" type="submit" name="preview" value="1">{{ t("Preview") }}</button>
-    {% if can_draft and mode != 'editpost' %}<button class="btn secondary" type="submit" name="savedraft" value="1" formnovalidate>Save as draft</button>{% endif %}
+    {% if can_draft and mode != 'editpost' %}<button class="btn ghost" type="submit" name="savedraft" value="1" formnovalidate>Save draft</button>{% endif %}
   </div>
 </form>
 

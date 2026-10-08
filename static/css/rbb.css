@@ -595,7 +595,7 @@ a.chip:hover { text-decoration: none; background: color-mix(in oklab, var(--line
 .post-body img:not(.smilie) { border-radius: 10px; }
 .mycode_indent { margin-left: 2em; }
 .mycode_me { color: var(--bad); font-style: italic; }
-.mycode_mention { font-weight: 650; background: var(--signal-wash); color: var(--signal-strong); padding: 0 5px; border-radius: 6px; }
+.mycode_mention { font-weight: 650; background: var(--signal-wash); color: var(--signal-strong); padding: 0 2px; border-radius: 4px; }
 .mycode_hr { clear: both; }
 img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 
@@ -625,6 +625,7 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .editor-toolbar .wy-switch button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 .editor.rich textarea { display: none; }
 .wy-surface { min-height: 260px; padding: 14px 16px; outline: none; white-space: pre-wrap; cursor: text; }
+.wy-surface:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--signal) 35%, transparent); }
 .wy-surface[hidden], .editor.previewing .wy-surface { display: none; }
 /* The line break MyCode keeps after a block isn't shown once the post is rendered either. */
 .wy-surface :is(blockquote, pre, ul, ol, hr, .wy-spoiler, div[data-my]) + br { display: none; }
@@ -990,7 +991,8 @@ article.pgp-tampered { box-shadow: inset 3px 0 0 var(--bad); }
 .pgp-chip-link, .pgp-chip-link:hover { text-decoration: none; color: inherit; }
 .pgp-compose-warn .notice { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pgp-source { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
-.form-row.pgp-dim { opacity: .5; }
+.form-row.pgp-dim, .compose-field.pgp-dim { opacity: .5; }
+.compose-label { font-size: .86rem; font-weight: 600; }
 
 /* dialogs */
 .pgp-dialog { width: min(460px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--rule); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: 0 30px 80px -20px rgba(10, 15, 29, .45); animation: pgp-rise .22s cubic-bezier(.2, .9, .3, 1); }
@@ -1223,3 +1225,47 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
   .search-bar .btn { padding: 0 14px; }
 }
 .search-bar input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+/* ================================================================== composer */
+.compose { display: grid; gap: 14px; padding: 18px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
+.compose-subject { display: flex; gap: 8px; }
+.compose-subject select { width: auto; flex: none; height: 48px; }
+.compose-subject input { flex: 1; min-width: 0; height: 48px; font-size: 1.12rem; font-weight: 600; }
+.compose-subject input::placeholder { font-weight: 500; }
+.compose .editor textarea { min-height: 240px; }
+.compose-field { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.compose-field > label, .compose-field > legend { font-size: .86rem; font-weight: 600; padding: 0; margin-bottom: 4px; }
+.compose-field > label { margin-bottom: 0; }
+.compose-field input[type=text], .compose-field select { width: 100%; max-width: 480px; }
+.compose-field .help { font-size: .8rem; color: var(--ink-soft); }
+.compose-attach .dropzone { padding: 12px 14px; font-size: .86rem; border-width: 1.5px; }
+.compose-attach .linklike { color: var(--link); cursor: pointer; text-decoration: underline; }
+.linklike-label { display: inline; font-weight: 500; }
+.compose-poll-body { display: grid; gap: 8px; margin-top: 10px; padding: 14px; border-radius: var(--radius); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--rule); }
+.compose-poll-body textarea { min-height: 100px; }
+.num-sm { width: 80px; }
+.compose-more > summary { cursor: pointer; width: fit-content; font-size: .9rem; font-weight: 600; color: var(--ink-soft); padding: 2px; border-radius: 6px; }
+.compose-more > summary:hover { color: var(--ink); }
+.compose-more > summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.compose-more-body { display: grid; gap: 14px; margin-top: 10px; padding: 14px; border-radius: var(--radius); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--rule); }
+.compose-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 4px; }
+.btn.ghost { background: transparent; color: var(--ink-soft); box-shadow: none; }
+.btn.ghost:hover { background: var(--surface-3); color: var(--ink); }
+@media (max-width: 600px) {
+  .compose { padding: 12px; border-radius: var(--radius-lg); }
+  .compose-subject { flex-wrap: wrap; }
+  .compose-subject select { width: 100%; }
+}
+.editor-toolbar select[data-tag] { width: 78px; }
+@media (max-width: 600px) {
+  .editor-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .editor-toolbar::-webkit-scrollbar { display: none; }
+  .editor-toolbar > * { flex: none; }
+}
+.compose-heading { font-size: 1.05rem; margin: 0; }
+.compose-to { display: grid; gap: 8px; }
+.compose-bcc > summary { cursor: pointer; width: fit-content; font-size: .84rem; font-weight: 600; color: var(--ink-soft); border-radius: 6px; }
+.compose-bcc > summary:hover { color: var(--ink); }
+.compose-bcc > summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.compose-bcc[open] > summary { margin-bottom: 8px; }
+.compose .pgp-compose-row { padding: 0; }
