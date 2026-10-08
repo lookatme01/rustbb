@@ -68,6 +68,29 @@
       if (best) { best.classList.add("active"); best.setAttribute("aria-current", "page"); }
     });
 
+    // Long side navigations (the ACP) fold into sections; the current one stays open.
+    if (window.matchMedia("(min-width: 901px)").matches) $$(".js-nav-groups").forEach((nav) => {
+      const kids = Array.from(nav.children);
+      let group = null;
+      kids.forEach((el, i) => {
+        if (el.tagName === "H3" && i > 0) {
+          group = document.createElement("details");
+          group.className = "sidenav-group";
+          const sum = document.createElement("summary");
+          sum.textContent = el.textContent;
+          group.appendChild(sum);
+          el.replaceWith(group);
+        } else if (group) {
+          group.appendChild(el);
+        }
+      });
+      $$("details.sidenav-group", nav).forEach((d) => {
+        const key = "rbb.nav." + $("summary", d).textContent;
+        d.open = !!$("a.active", d) || store.get(key) === "1";
+        d.addEventListener("toggle", () => (d.open ? store.set(key, "1") : store.del(key)));
+      });
+    });
+
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
       const key = "rbb.collapse." + box.dataset.collapse;

@@ -1381,3 +1381,10 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .box-head-actions { display: inline-flex; gap: 6px; }
 @media (max-width: 900px) { .admin-filter { grid-template-columns: 1fr 1fr; } .admin-filter .btn { grid-column: 1 / -1; } }
 .box-head-actions .btn:not(.secondary) { color: var(--signal-ink); }
+.sidenav-group > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin: 4px 0 0; padding: 8px 11px; border-radius: 10px;
+  font: 650 .72rem/1.2 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.sidenav-group > summary::-webkit-details-marker { display: none; }
+.sidenav-group > summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform .15s; }
+.sidenav-group[open] > summary::after { transform: rotate(45deg); }
+.sidenav-group > summary:hover { background: var(--surface-3); color: var(--ink); }
+.sidenav-group > summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }

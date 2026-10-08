@@ -3,7 +3,7 @@
 {% block bodyclass %}acp{% endblock %}
 {% block content %}
 <div class="with-sidebar">
-  <nav class="sidenav" aria-label="Admin CP">
+  <nav class="sidenav js-nav-groups" aria-label="Admin CP">
     <h3>Admin CP</h3>
     <a href="/admin"{% if acp_section == 'home' %} class="active"{% endif %}>Dashboard</a>
     <a href="/admin/settings"{% if acp_section == 'settings' %} class="active"{% endif %}>Board settings</a>
