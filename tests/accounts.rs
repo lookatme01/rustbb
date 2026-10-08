@@ -123,6 +123,38 @@ async fn registration_writes_audit_row_in_the_same_transaction() {
 }
 
 #[tokio::test]
+async fn registration_confirm_fields_are_optional_but_checked_when_sent() {
+    let t = test_app!();
+    open_registration(&t, "instant").await;
+    let post = |name: &'static str, extra: Vec<(&'static str, String)>| {
+        let t = &t;
+        async move {
+            let c = t.client();
+            let key = common::form_key(&c.get("/member/register").await.body);
+            let mut f = vec![
+                ("my_post_key", key),
+                ("username", name.to_string()),
+                ("password", "Corr3ct-Horse-Battery".to_string()),
+                ("email", format!("{name}@example.org")),
+                ("agree", "1".to_string()),
+                ("formtoken", formtoken(t)),
+            ];
+            f.extend(extra);
+            let f: Vec<(&str, &str)> = f.iter().map(|(a, b)| (*a, b.as_str())).collect();
+            c.post_form("/member/register", &f).await
+        }
+    };
+    // The current form sends neither confirm field.
+    let r = post("noconfirm", vec![]).await;
+    assert!(r.status.is_redirection(), "status {}", r.status);
+    // Older themes still send them, and a mismatch is still an error.
+    let r = post("badconfirm", vec![("password2", "something-else".into())]).await;
+    assert!(r.body.contains("passwords you entered do not match"));
+    let r = post("bademail", vec![("email2", "other@example.org".into())]).await;
+    assert!(r.body.contains("email addresses you entered do not match"));
+}
+
+#[tokio::test]
 async fn activation_code_can_be_used_once() {
     let t = test_app!();
     open_registration(&t, "verify").await;

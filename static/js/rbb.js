@@ -106,11 +106,26 @@
           if (!r.ok) return;
           const j = await r.json();
           const s = $(".js-name-status");
+          if (nameInput.value.trim() !== v) return;
           s.textContent = j.available ? "That username is available." : (j.valid ? "That username is already taken." : "That username contains invalid characters.");
-          s.style.color = j.available ? "var(--ok)" : "var(--bad)";
+          s.classList.toggle("ok", !!j.available);
+          s.classList.toggle("bad", !j.available);
         }, 400);
       });
     }
+    // Show/hide password buttons.
+    $$(".js-reveal").forEach((b) => {
+      const input = document.getElementById(b.getAttribute("aria-controls"));
+      if (!input) return;
+      b.hidden = false;
+      b.addEventListener("click", () => {
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        b.textContent = show ? "Hide" : "Show";
+        b.setAttribute("aria-pressed", String(show));
+        input.focus();
+      });
+    });
 
     initEditors();
     initMultiquote();

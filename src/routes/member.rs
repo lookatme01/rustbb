@@ -587,7 +587,8 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
     }
     if !util::valid_email(&email) {
         errors.push("The email address you entered is invalid.".into());
-    } else if email != f.email2.trim() {
+    } else if !f.email2.trim().is_empty() && email != f.email2.trim() {
+        // The confirm fields are optional: older themes still send them.
         errors.push("The email addresses you entered do not match.".into());
     } else {
         if auth::is_filtered(&ctx.app, 3, &email).await? {
@@ -615,7 +616,7 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
     if !randompass {
         if let Some(e) = auth::password_strength_error(&ctx, &password, &username) {
             errors.push(e);
-        } else if password != f.password2 {
+        } else if !f.password2.is_empty() && password != f.password2 {
             errors.push("The passwords you entered do not match.".into());
         }
     }
