@@ -1,22 +1,28 @@
 {% extends "usercp/base.html" %}
 {% import "macros.html" as m %}
+{% import "member_file.html" as mf %}
 {% block ucp %}
-<section class="box"><div class="box-head"><h2>Your account</h2></div>
-<div class="kv">
-  <div>Username</div><div><a href="{{ url_user(user.uid, user.username) }}">{{ me.formatted|safe }}</a></div>
-  <div>Email</div><div>{{ email }} <a class="small" href="/usercp/email">Change</a></div>
-  <div>Registered</div><div>{{ user.regdate|date('date') }}</div>
-  <div>Posts</div><div>{{ user.postnum|num }} · <a href="/user/{{ user.uid }}/posts">find your posts</a></div>
-  <div>Threads</div><div>{{ user.threadnum|num }} · <a href="/user/{{ user.uid }}/threads">find your threads</a></div>
-  {% if bb.enablereputation == '1' %}<div>Reputation</div><div><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a></div>{% endif %}
-  {% if bb.enablewarningsystem == '1' and warnlevel %}<div>Warning level</div><div>{{ warnlevel }}%</div>{% endif %}
-</div></section>
-{% if warnings %}
-<section class="box"><div class="box-head"><h2>Active warnings</h2></div>
-<table class="grid"><thead><tr><th>Warning</th><th class="num">Points</th><th>Issued</th><th>Expires</th></tr></thead><tbody>
-{% for w in warnings %}<tr><td>{{ w[0] }}</td><td class="num">{{ w[1] }}</td><td>{{ w[2]|date('date') }}</td><td>{% if w[3] %}{{ w[3]|date('date') }}{% else %}Never{% endif %}</td></tr>{% endfor %}
-</tbody></table></section>
+<section class="box ucp-head">
+  {{ m.face(user.avatar, user.username, user.uid, 64) }}
+  <div class="ucp-who">
+    <h1>{{ me.formatted|safe }}</h1>
+    <div class="ucp-since">Member since {{ user.regdate|date('date') }} · <a href="{{ url_user(user.uid, user.username) }}">View your profile</a></div>
+  </div>
+  <div class="ucp-stats">
+    <a class="mf-stat" href="/user/{{ user.uid }}/posts"><b>{{ user.postnum|num }}</b><span>Posts</span></a>
+    <a class="mf-stat" href="/user/{{ user.uid }}/threads"><b>{{ user.threadnum|num }}</b><span>Threads</span></a>
+    {% if bb.enablereputation == '1' %}<a class="mf-stat" href="/reputation/{{ user.uid }}"><b>{{ user.reputation }}</b><span>Reputation</span></a>{% endif %}
+  </div>
+</section>
+{% if restricted %}
+<div class="ucp-restrict" role="status">
+  <ul>{% for r in restricted %}<li>{{ r }}</li>{% endfor %}</ul>
+  <a class="btn" href="/contact">Ask about this</a>
+</div>
 {% endif %}
+<section class="box"><div class="box-head"><h2>Account check</h2><span class="right ucp-summary">{% if attention %}{{ attention }} {{ 'thing' if attention == 1 else 'things' }} to look at{% else %}All good{% endif %}</span></div>
+{{ mf.checks(checks) }}
+</section>
 <section class="box"><div class="box-head"><h2>Latest activity in your subscriptions</h2><a class="right" href="/usercp/subscriptions">All subscriptions</a></div>
 {% for t in subscribed %}{{ m.thread_row(t, true) }}{% else %}<div class="empty">You aren't subscribed to any threads. Use “Subscribe” on a thread to follow it.</div>{% endfor %}
 </section>
