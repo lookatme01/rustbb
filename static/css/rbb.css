@@ -2000,3 +2000,21 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 /* "Banned nightowl · Undo" after a staff action. */
 .notice.ok.has-undo { align-items: center; }
 .notice.ok.has-undo form { margin: 0 0 0 auto; }
+
+/* ===== User CP overview */
+.ucp-tabs { margin: 0 0 14px; padding-bottom: 2px; }
+.ucp-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 20px; }
+.ucp-head .face { flex: none; }
+.ucp-who { flex: 1 1 200px; min-width: 0; }
+.ucp-who h1 { margin: 0; font-size: 1.4rem; overflow-wrap: anywhere; }
+.ucp-since { margin-top: 3px; font-size: .86rem; color: var(--ink-soft); }
+.ucp-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.ucp-summary { color: var(--ink-soft); }
+.ucp-restrict { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; margin: 14px 0; border-radius: var(--radius); background: var(--bad-bg); border: 1px solid color-mix(in oklab, var(--bad) 25%, transparent); color: var(--ink); }
+.ucp-restrict ul { flex: 1 1 260px; margin: 0; padding: 0; list-style: none; font-weight: 600; }
+.ucp-restrict li + li { margin-top: 4px; }
+.ucp-restrict .btn { flex: none; }
+@media (max-width: 760px) {
+  .ucp-head { padding: 16px; gap: 14px; }
+  .ucp-stats { gap: 22px; width: 100%; }
+}

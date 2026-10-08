@@ -115,22 +115,104 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     .fetch_all(&ctx.app.db)
     .await?;
     let latest = crate::routes::forumdisplay::thread_rows(&ctx, latest).await?;
-    let warnings: Vec<(String, i32, i64, i64)> = if ctx.settings().bool("canviewownwarning") {
-        sqlx::query_as("SELECT title, points, dateline, expires FROM warnings WHERE uid = $1 AND expired = FALSE AND daterevoked = 0 ORDER BY dateline DESC LIMIT 5")
-            .bind(me.uid)
-            .fetch_all(&ctx.app.db)
-            .await?
-    } else {
-        vec![]
-    };
+    let (checks, attention) = account_checks(&ctx, &me).await?;
+    let restricted: Vec<String> = crate::member_file::restrictions(&me)
+        .into_iter()
+        .map(|r| {
+            let until = if r.until > 0 {
+                format!("until {}", ctx.fmt_date(r.until, "date"))
+            } else {
+                "until a moderator lifts it".to_string()
+            };
+            match r.kind {
+                "moderate" => format!("A moderator checks your posts before they appear, {until}."),
+                "posting" => format!("You can't post {until}."),
+                _ => format!("Your signature is hidden {until}."),
+            }
+        })
+        .collect();
     page(
         &ctx,
         "usercp/home.html",
         "home",
         "User Control Panel",
-        minijinja::context! { user => &me, email => &me.email, subscribed => rows, latest => latest, warnings => warnings, warnlevel => me.warningpoints as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1) },
+        minijinja::context! { user => &me, subscribed => rows, latest => latest, checks => checks, attention => attention, restricted => restricted },
     )
     .await
+}
+
+/// The "Account check" rows on the overview, and how many of them want attention.
+async fn account_checks(
+    ctx: &Ctx,
+    me: &User,
+) -> AppResult<(Vec<crate::member_file::Signal>, usize)> {
+    use crate::member_file::{Level, Signal};
+    let db = &ctx.app.db;
+    let mut v = vec![];
+    let unconfirmed: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM awaitingactivation WHERE uid = $1 AND type = 'r')",
+    )
+    .bind(me.uid)
+    .fetch_one(db)
+    .await?;
+    v.push(if unconfirmed {
+        Signal { group: "self", level: Level::Orange, text: "Confirm your email address".into(), detail: format!("We sent a link to {}.", me.email), link: Some("/usercp/email".into()) }
+    } else {
+        Signal { group: "self", level: Level::Green, text: "Email confirmed".into(), detail: me.email.clone(), link: Some("/usercp/email".into()) }
+    });
+    let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
+        .bind(me.uid)
+        .fetch_one(db)
+        .await?;
+    let has_totp = !me.totp_secret.is_empty();
+    v.push(if has_totp || passkeys > 0 {
+        let text = match (has_totp, passkeys) {
+            (true, 0) => "Two-factor on".to_string(),
+            (true, n) => format!("Two-factor on, {n} {}", if n == 1 { "passkey" } else { "passkeys" }),
+            (false, n) => format!("{n} {}", if n == 1 { "passkey" } else { "passkeys" }),
+        };
+        Signal { group: "self", level: Level::Green, text, detail: String::new(), link: Some("/usercp/security".into()) }
+    } else {
+        Signal { group: "self", level: Level::Orange, text: "No passkey or two-factor yet".into(), detail: "A passkey lets you sign in with your fingerprint or face, and stops a stolen password from working.".into(), link: Some("/usercp/security".into()) }
+    });
+    if ctx.settings().bool("enablewarningsystem") && me.warningpoints > 0 {
+        let pct = crate::member_file::warn_pct(me.warningpoints, ctx.settings().int("maxwarningpoints"));
+        let next: Option<(String, i64)> = sqlx::query_as(
+            "SELECT title, expires FROM warnings WHERE uid = $1 AND expired = FALSE AND daterevoked = 0 AND expires > 0 ORDER BY expires LIMIT 1",
+        )
+        .bind(me.uid)
+        .fetch_optional(db)
+        .await?;
+        let detail = next
+            .map(|(t, e)| format!("\u{201c}{t}\u{201d} expires {}", ctx.fmt_date(e, "date")))
+            .unwrap_or_default();
+        v.push(Signal { group: "self", level: Level::Orange, text: format!("Warning level {pct}%"), detail, link: Some(format!("/warnings/{}", me.uid)) });
+    }
+    let uas: Vec<String> = sqlx::query_scalar(
+        "SELECT useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC",
+    )
+    .bind(me.uid)
+    .bind(crate::util::now())
+    .fetch_all(db)
+    .await?;
+    if !uas.is_empty() {
+        let mut labels: Vec<String> = vec![];
+        for ua in &uas {
+            let l = crate::audit::device_label(ua);
+            if !labels.contains(&l) {
+                labels.push(l);
+            }
+        }
+        v.push(Signal {
+            group: "self",
+            level: Level::Grey,
+            text: format!("Signed in on {} {}", uas.len(), if uas.len() == 1 { "device" } else { "devices" }),
+            detail: labels.join(" \u{b7} "),
+            link: Some("/usercp/security".into()),
+        });
+    }
+    let attention = v.iter().filter(|s| matches!(s.level, Level::Orange | Level::Red)).count();
+    Ok((v, attention))
 }
 
 // ---------------------------------------------------------------- profile

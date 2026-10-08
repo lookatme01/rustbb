@@ -1,35 +1,43 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
+{# Each hub is one sidebar link; its pages show as a tab strip above the content. #}
+{% set pgp_on = bb.enablepms == '1' and perms.canusepms %}
+{% set hub_of = {'profile': 'profile', 'avatar': 'profile', 'signature': 'profile', 'badges': 'profile',
+  'email': 'security', 'password': 'security', 'username': 'security', 'security': 'security', 'pgp': 'security', 'activity': 'security',
+  'subscriptions': 'subs', 'forumsubscriptions': 'subs'} %}
+{% set hub = hub_of[ucp_active] or ucp_active %}
+{% set sec_tabs = [['security', '/usercp/security', 'Security & sessions', true], ['email', '/usercp/email', 'Email address', true], ['password', '/usercp/password', 'Password', true],
+     ['username', '/usercp/username', 'Username', perms.canchangename], ['pgp', '/usercp/pgp', 'Encryption & identity', pgp_on], ['activity', '/usercp/activity', 'Account activity', true]] %}
+{% set tabs = {
+  'profile': [['profile', '/usercp/profile', 'Edit profile'], ['avatar', '/usercp/avatar', 'Avatar'], ['signature', '/usercp/signature', 'Signature'], ['badges', '/usercp/badges', 'Badges']],
+  'security': sec_tabs,
+  'subs': [['subscriptions', '/usercp/subscriptions', 'Threads'], ['forumsubscriptions', '/usercp/forumsubscriptions', 'Forums']]
+} %}
+{% set hub_labels = {'profile': 'Profile', 'security': 'Sign-in and security', 'subs': 'Subscriptions'} %}
 <div class="with-sidebar">
   <nav class="sidenav" aria-label="User CP">
     <h3>Your account</h3>
-    <a href="/usercp"{% if ucp_active == 'home' %} class="active"{% endif %}>Overview</a>
-    <a href="/usercp/profile"{% if ucp_active == 'profile' %} class="active"{% endif %}>Edit profile</a>
-    <a href="/usercp/avatar"{% if ucp_active == 'avatar' %} class="active"{% endif %}>Avatar</a>
-    <a href="/usercp/signature"{% if ucp_active == 'signature' %} class="active"{% endif %}>Signature</a>
-    <a href="/usercp/badges"{% if ucp_active == 'badges' %} class="active"{% endif %}>Badges</a>
-    <a href="/usercp/options"{% if ucp_active == 'options' %} class="active"{% endif %}>Options</a>
-    <a href="/usercp/email"{% if ucp_active == 'email' %} class="active"{% endif %}>Email address</a>
-    <a href="/usercp/password"{% if ucp_active == 'password' %} class="active"{% endif %}>Password</a>
-    {% if perms.canchangename %}<a href="/usercp/username"{% if ucp_active == 'username' %} class="active"{% endif %}>Username</a>{% endif %}
-    <a href="/usercp/security"{% if ucp_active == 'security' %} class="active"{% endif %}>Security &amp; sessions</a>
-    {% if bb.enablepms == '1' and perms.canusepms %}<a href="/usercp/pgp"{% if ucp_active == 'pgp' %} class="active"{% endif %}>Encryption &amp; identity</a>{% endif %}
-    <a href="/usercp/activity"{% if ucp_active == 'activity' %} class="active"{% endif %}>Account activity</a>
+    <a href="/usercp"{% if hub == 'home' %} class="active" aria-current="page"{% endif %}>Overview</a>
+    <a href="/usercp/profile"{% if hub == 'profile' %} class="active" aria-current="page"{% endif %}>Profile</a>
+    <a href="/usercp/security"{% if hub == 'security' %} class="active" aria-current="page"{% endif %}>Sign-in &amp; security</a>
+    <a href="/usercp/options"{% if hub == 'options' %} class="active" aria-current="page"{% endif %}>Preferences</a>
     <h3>Activity</h3>
-    {% if bb.enablepms == '1' and perms.canusepms %}<a href="/pm">Private messages{% if me.unreadpms %}<span class="count">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
-    {% if bb.enablealerts == '1' %}<a href="/usercp/alerts"{% if ucp_active == 'alerts' %} class="active"{% endif %}>Alerts{% if me.unreadalerts %}<span class="count">{{ me.unreadalerts }}</span>{% endif %}</a>{% endif %}
-    <a href="/usercp/subscriptions"{% if ucp_active == 'subscriptions' %} class="active"{% endif %}>Thread subscriptions</a>
-    <a href="/usercp/forumsubscriptions"{% if ucp_active == 'forumsubscriptions' %} class="active"{% endif %}>Forum subscriptions</a>
-    <a href="/usercp/drafts"{% if ucp_active == 'drafts' %} class="active"{% endif %}>Saved drafts</a>
-    <a href="/usercp/attachments"{% if ucp_active == 'attachments' %} class="active"{% endif %}>Attachments</a>
+    {% if bb.enablepms == '1' and perms.canusepms %}<a href="/pm">Messages{% if me.unreadpms %}<span class="count">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
+    {% if bb.enablealerts == '1' %}<a href="/usercp/alerts"{% if hub == 'alerts' %} class="active" aria-current="page"{% endif %}>Alerts{% if me.unreadalerts %}<span class="count">{{ me.unreadalerts }}</span>{% endif %}</a>{% endif %}
+    <a href="/usercp/subscriptions"{% if hub == 'subs' %} class="active" aria-current="page"{% endif %}>Subscriptions</a>
+    <a href="/usercp/drafts"{% if hub == 'drafts' %} class="active" aria-current="page"{% endif %}>Drafts</a>
+    <a href="/usercp/attachments"{% if hub == 'attachments' %} class="active" aria-current="page"{% endif %}>Attachments</a>
     <h3>Community</h3>
-    <a href="/usercp/lists"{% if ucp_active == 'lists' %} class="active"{% endif %}>Friends &amp; ignore list</a>
-    <a href="/usercp/usergroups"{% if ucp_active == 'usergroups' %} class="active"{% endif %}>Group memberships</a>
-    <a href="/usercp/notepad"{% if ucp_active == 'notepad' %} class="active"{% endif %}>Notepad</a>
+    <a href="/usercp/lists"{% if hub == 'lists' %} class="active" aria-current="page"{% endif %}>Friends &amp; ignored</a>
+    <a href="/usercp/usergroups"{% if hub == 'usergroups' %} class="active" aria-current="page"{% endif %}>Groups</a>
+    <a href="/usercp/notepad"{% if hub == 'notepad' %} class="active" aria-current="page"{% endif %}>Notepad</a>
     <a href="/usercp/export">Download my data</a>
-    {% if bb.allowaccountdeletion == '1' %}<a href="/usercp/delete"{% if ucp_active == 'delete' %} class="active"{% endif %}>Delete account</a>{% endif %}
+    {% if bb.allowaccountdeletion == '1' %}<a href="/usercp/delete"{% if hub == 'delete' %} class="active" aria-current="page"{% endif %}>Delete account</a>{% endif %}
   </nav>
-  <div>{% block ucp %}{% endblock %}</div>
+  <div>
+    {% if tabs[hub] %}<nav class="tabs ucp-tabs" aria-label="{{ hub_labels[hub] }}">{% for t in tabs[hub] %}{% if t[3] is not defined or t[3] %}<a href="{{ t[1] }}"{% if t[0] == ucp_active %} aria-current="page"{% endif %}>{{ t[2] }}</a>{% endif %}{% endfor %}</nav>{% endif %}
+    {% block ucp %}{% endblock %}
+  </div>
 </div>
 {% endblock %}
