@@ -68,34 +68,238 @@ async fn page(
         .await
 }
 
+/// A short plain-text excerpt of a post body: tags in square brackets dropped, whitespace folded.
+fn plain_excerpt(src: &str, max: usize) -> String {
+    let mut out = String::new();
+    let mut chars = src.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '[' {
+            let rest: String = chars.clone().take(60).collect();
+            if let Some(end) = rest.find(']') {
+                let inner = &rest[..end];
+                if !inner.is_empty() && !inner.contains('\n') && !inner.contains('[') {
+                    for _ in 0..=inner.chars().count() {
+                        chars.next();
+                    }
+                    continue;
+                }
+            }
+        }
+        out.push(c);
+    }
+    let folded = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    if folded.chars().count() > max {
+        let cut: String = folded.chars().take(max).collect();
+        format!("{}…", cut.trim_end())
+    } else {
+        folded
+    }
+}
+
+type ReportRow = (i32, String, i32, i32, i32, String, i32, i64, i32, Option<String>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>);
+
 pub async fn home(ctx: Ctx) -> AppResult<Response> {
     require_modcp(&ctx)?;
-    let (all, f) = queue_scope(&ctx);
-    let (uthreads, uposts): (i64, i64) = sqlx::query_as(
-        "SELECT COALESCE(SUM(unapprovedthreads), 0)::bigint, COALESCE(SUM(unapprovedposts), 0)::bigint FROM forums WHERE $1 OR fid = ANY($2)",
+    let db = &ctx.app.db;
+    let t = now();
+    let me = ctx.uid();
+    let mut items: Vec<(i64, minijinja::Value)> = vec![];
+    let mut uids: Vec<i32> = vec![];
+
+    // Reports in the viewer's scope.
+    let can_reports = ctx.staff().report_scope().any();
+    let (mut rep_n, mut rep_mine, mut rep_oldest) = (0i64, 0i64, 0i64);
+    if can_reports {
+        let rs = ctx.staff().report_scope();
+        let (n, mine, oldest): (i64, i64, Option<i64>) = sqlx::query_as(&format!(
+            "SELECT COUNT(*), COUNT(*) FILTER (WHERE claimed_by = $6), MIN(dateline) FROM reportedcontent WHERE reportstatus = 0 AND {}",
+            ReportScope::clause("", 1)
+        ))
+        .bind(rs.posts)
+        .bind(rs.posts_all)
+        .bind(&rs.post_forums)
+        .bind(rs.members)
+        .bind(rs.pms)
+        .bind(me)
+        .fetch_one(db)
+        .await?;
+        rep_n = n;
+        rep_mine = mine;
+        rep_oldest = oldest.unwrap_or(0);
+        let rows: Vec<ReportRow> = sqlx::query_as(&format!(
+            "SELECT r.rid, r.type, r.id, r.id2, r.reports, r.reason, r.reasonid, r.dateline, COALESCE(r.claimed_by, 0), cu.username,
+                    p.uid, p.username, t.subject, LEFT(p.message, 600), tu.uid, tu.username
+             FROM reportedcontent r
+             LEFT JOIN users cu ON cu.uid = r.claimed_by AND r.claimed_by > 0
+             LEFT JOIN posts p ON r.type = 'post' AND p.pid = r.id
+             LEFT JOIN threads t ON t.tid = p.tid
+             LEFT JOIN users tu ON r.type IN ('profile', 'reputation') AND tu.uid = r.id2
+             WHERE r.reportstatus = 0 AND {}
+             ORDER BY r.dateline LIMIT 10",
+            ReportScope::clause("r", 1)
+        ))
+        .bind(rs.posts)
+        .bind(rs.posts_all)
+        .bind(&rs.post_forums)
+        .bind(rs.members)
+        .bind(rs.pms)
+        .fetch_all(db)
+        .await?;
+        for (rid, kind, id, id2, n, reason, reasonid, dl, claimed_by, claimer, puid, puser, subject, msg, tuid, tuser) in rows {
+            let reason_title = ctx.cache.reportreasons.iter().find(|r| r.rid == reasonid).map(|r| r.title.clone()).unwrap_or_default();
+            let reason = if reason_title.is_empty() {
+                reason
+            } else if reason.is_empty() {
+                reason_title
+            } else {
+                format!("{reason_title}: {reason}")
+            };
+            let (subj, url, uid, uname) = match kind.as_str() {
+                "post" => (subject.unwrap_or_else(|| "Post".into()), format!("/post/{id}"), puid.unwrap_or(0), puser.unwrap_or_default()),
+                "profile" => (format!("Profile of {}", tuser.clone().unwrap_or_default()), format!("/user/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
+                "reputation" => ("Reputation comment".to_string(), format!("/reputation/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
+                _ => ("Private message".to_string(), format!("/modcp/reports/{rid}"), 0, String::new()),
+            };
+            if uid > 0 {
+                uids.push(uid);
+            }
+            items.push((
+                dl,
+                minijinja::context! {
+                    kind => "report", rid => rid, count => n, subject => subj, url => url, uid => uid, username => uname, reason => reason,
+                    ts => dl, excerpt => plain_excerpt(&msg.unwrap_or_default(), 220), claimed => claimed_by > 0, claimed_by_me => claimed_by == me,
+                    claimer => claimer, detail => format!("/modcp/reports/{rid}"),
+                },
+            ));
+        }
+    }
+
+    // Moderation queue in the viewer's scope.
+    let can_queue = ctx.can(Cap::ModQueue);
+    let (mut uthreads, mut uposts) = (0i64, 0i64);
+    if can_queue {
+        let (all, f) = queue_scope(&ctx);
+        let (a, b): (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE(SUM(unapprovedthreads), 0)::bigint, COALESCE(SUM(unapprovedposts), 0)::bigint FROM forums WHERE $1 OR fid = ANY($2)",
+        )
+        .bind(all)
+        .bind(&f)
+        .fetch_one(db)
+        .await?;
+        uthreads = a;
+        uposts = b;
+        if uthreads > 0 {
+            let rows: Vec<(i32, String, i32, String, i64, i32, String)> = sqlx::query_as(
+                "SELECT t.tid, t.subject, t.uid, t.username, t.dateline, t.fid, LEFT(COALESCE(p.message, ''), 600) FROM threads t LEFT JOIN posts p ON p.pid = t.firstpost
+                 WHERE t.visible = 0 AND ($1 OR t.fid = ANY($2)) ORDER BY t.dateline LIMIT 10",
+            )
+            .bind(all)
+            .bind(&f)
+            .fetch_all(db)
+            .await?;
+            for (tid, subj, uid, name, dl, fid, msg) in rows {
+                if uid > 0 {
+                    uids.push(uid);
+                }
+                items.push((
+                    dl,
+                    minijinja::context! {
+                        kind => "thread", id => tid, subject => format!("New thread: {subj}"), url => url_thread(tid as i64, Some(&subj)), uid => uid, username => name,
+                        forum => ctx.cache.forum(fid).map(|x| x.name.clone()), ts => dl, excerpt => plain_excerpt(&msg, 220),
+                    },
+                ));
+            }
+        }
+        if uposts > 0 {
+            let rows: Vec<(i32, String, i32, String, i64, i32, String)> = sqlx::query_as(
+                "SELECT p.pid, t.subject, p.uid, p.username, p.dateline, p.fid, LEFT(p.message, 600) FROM posts p JOIN threads t ON t.tid = p.tid
+                 WHERE p.visible = 0 AND p.pid <> t.firstpost AND ($1 OR p.fid = ANY($2)) ORDER BY p.dateline LIMIT 10",
+            )
+            .bind(all)
+            .bind(&f)
+            .fetch_all(db)
+            .await?;
+            for (pid, subj, uid, name, dl, fid, msg) in rows {
+                if uid > 0 {
+                    uids.push(uid);
+                }
+                items.push((
+                    dl,
+                    minijinja::context! {
+                        kind => "post", id => pid, subject => format!("Reply in: {subj}"), url => format!("/post/{pid}"), uid => uid, username => name,
+                        forum => ctx.cache.forum(fid).map(|x| x.name.clone()), ts => dl, excerpt => plain_excerpt(&msg, 220),
+                    },
+                ));
+            }
+        }
+    }
+
+    // Pending ban appeals.
+    let can_appeals = ctx.perms.canbanusers;
+    let (mut appeal_n, mut appeal_last) = (0i64, String::new());
+    if can_appeals {
+        let rows: Vec<(i32, i32, String, i64, String, String)> = sqlx::query_as(
+            "SELECT a.id, a.uid, u.username, a.created, a.ban_reason, LEFT(a.statement, 600) FROM ban_appeals a JOIN users u ON u.uid = a.uid
+             WHERE a.status = 0 ORDER BY a.created LIMIT 10",
+        )
+        .fetch_all(db)
+        .await?;
+        let (n, last): (i64, Option<String>) = sqlx::query_as(
+            "SELECT COUNT(*), (SELECT u.username FROM ban_appeals a JOIN users u ON u.uid = a.uid WHERE a.status = 0 ORDER BY a.created DESC LIMIT 1) FROM ban_appeals WHERE status = 0",
+        )
+        .fetch_one(db)
+        .await?;
+        appeal_n = n;
+        appeal_last = last.unwrap_or_default();
+        for (id, uid, name, created, reason, statement) in rows {
+            uids.push(uid);
+            items.push((
+                created,
+                minijinja::context! {
+                    kind => "appeal", id => id, subject => format!("{name} asks to be unbanned"), url => format!("/modcp/appeals/{id}"), uid => uid, username => name,
+                    reason => reason, ts => created, excerpt => plain_excerpt(&statement, 220),
+                },
+            ));
+        }
+    }
+
+    // Scheduled actions (the scheduled-actions page needs only Mod CP access too).
+    let (sched_n, sched_due): (i64, i64) = sqlx::query_as("SELECT COUNT(*), COUNT(*) FILTER (WHERE delaydateline < $1) FROM delayedmoderation")
+        .bind(t + 86_400)
+        .fetch_one(db)
+        .await?;
+
+    items.sort_by_key(|(ts, _)| *ts);
+    items.truncate(10);
+    uids.sort_unstable();
+    uids.dedup();
+    let view = crate::member_file::View::of(&ctx);
+    let flags = crate::member_file::flags_for(&ctx, &uids, view).await?;
+    let items: Vec<minijinja::Value> = items
+        .into_iter()
+        .map(|(_, v)| {
+            let uid = v.get_attr("uid").ok().and_then(|u| i32::try_from(u).ok()).unwrap_or(0);
+            let fl = flags.get(&uid).cloned().unwrap_or_default();
+            minijinja::context! { item => v, flags => fl }
+        })
+        .collect();
+
+    let watch = crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
+    let logs = if ctx.can(Cap::ModLog) { load_logs(&ctx, 0, 0, 6, 0).await? } else { vec![] };
+    page(
+        &ctx,
+        "modcp/home.html",
+        "home",
+        "Moderator Control Panel",
+        minijinja::context! {
+            items => items, watch => watch, logs => logs,
+            can_reports => can_reports, rep_n => rep_n, rep_mine => rep_mine, rep_oldest => rep_oldest, rep_old => rep_oldest > 0 && t - rep_oldest > 2 * 86_400,
+            can_queue => can_queue, uthreads => uthreads, uposts => uposts,
+            can_appeals => can_appeals, appeal_n => appeal_n, appeal_last => appeal_last,
+            sched_n => sched_n, sched_due => sched_due,
+        },
     )
-    .bind(all)
-    .bind(&f)
-    .fetch_one(&ctx.app.db)
-    .await?;
-    let rs = ctx.staff().report_scope();
-    let reports: i64 = sqlx::query_scalar(&format!(
-        "SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0 AND {}",
-        ReportScope::clause("", 1)
-    ))
-    .bind(rs.posts)
-    .bind(rs.posts_all)
-    .bind(&rs.post_forums)
-    .bind(rs.members)
-    .bind(rs.pms)
-    .fetch_one(&ctx.app.db)
-    .await?;
-    let logs = if ctx.can(Cap::ModLog) {
-        load_logs(&ctx, 0, 0, 10, 0).await?
-    } else {
-        vec![]
-    };
-    page(&ctx, "modcp/home.html", "home", "Moderator Control Panel", minijinja::context! { uthreads => uthreads, uposts => uposts, reports => reports, logs => logs }).await
+    .await
 }
 
 // ---------------------------------------------------------------- reports
