@@ -10,7 +10,7 @@
 </div>
 <div class="box" style="overflow-x:auto">
 <table class="calendar">
-  <thead><tr>{% for d in dow %}<th scope="col">{{ d }}</th>{% endfor %}</tr></thead>
+  <thead><tr>{% for d in dow %}<th scope="col"><span class="dow-long">{{ d }}</span><span class="dow-short">{{ d[:3] }}</span></th>{% endfor %}</tr></thead>
   <tbody>
   {% for w in weeks %}<tr>{% for d in w %}
     <td class="{% if d.other %}other{% endif %}{% if d.today %} today{% endif %}">

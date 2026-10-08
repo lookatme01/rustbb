@@ -67,7 +67,7 @@
 <section class="box online-card">
   <div class="box-head"><h2><a href="/online">{{ t("Who's Online") }}</a></h2><span class="right">{% if stats %}Record: {{ stats.mostonline|num }}{% if stats.mostonlinetime %}, {{ stats.mostonlinetime|date('date') }}{% endif %}{% endif %}</span></div>
   <div class="box-body">
-    <div class="online-summary">{{ online.total|num }} active in the past {{ online.cutoff }} minutes · {{ online.num_members }} member{{ '' if online.num_members == 1 else 's' }}, {{ online.num_guests }} guest{{ '' if online.num_guests == 1 else 's' }}{% if online.num_bots %}, {{ online.num_bots }} search engine{{ '' if online.num_bots == 1 else 's' }}{% endif %}{% if online.num_invisible %} ({{ online.num_invisible }} invisible){% endif %}</div>
+    <div class="online-summary">{{ online.total|num }} active in the past {{ m.span_mins(online.cutoff) }} · {{ online.num_members }} member{{ '' if online.num_members == 1 else 's' }}, {{ online.num_guests }} guest{{ '' if online.num_guests == 1 else 's' }}{% if online.num_bots %}, {{ online.num_bots }} search engine{{ '' if online.num_bots == 1 else 's' }}{% endif %}{% if online.num_invisible %} ({{ online.num_invisible }} invisible){% endif %}</div>
     {% if online.members %}
     <div class="people">{% for u in online.members %}<a href="{{ url_user(u.uid) }}"{% if u.invisible %} title="Invisible"{% endif %}>{{ m.face(u.avatar, u.username, u.uid, 24) }}{{ u.formatted|safe }}{% if u.invisible %}*{% endif %}</a>{% endfor %}</div>
     {% endif %}

@@ -371,7 +371,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--signal); width: 16
 .cat-head h2 { margin: 0; font-size: 1.12rem; display: flex; align-items: center; gap: 10px; }
 .cat-head h2 a { color: var(--ink); }
 .cat-head h2::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--line); box-shadow: 0 0 0 4px color-mix(in oklab, var(--line) 18%, transparent); }
-.cat-head .desc { color: var(--ink-soft); font-size: .88rem; flex-basis: 100%; padding-left: 20px; margin-top: -2px; }
+.cat-head .desc { order: 3; color: var(--ink-soft); font-size: .88rem; flex-basis: 100%; padding-left: 20px; margin-top: -2px; }
 .cat-head .collapse-toggle { order: 2; }
 .cat.collapsed > .forum-list { display: none; }
 .forum-list { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
@@ -753,6 +753,8 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .poll-option.mine .poll-bar span { background: var(--signal); }
 .calendar { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .calendar th { background: var(--surface-2); padding: 8px; font-size: .78rem; color: var(--ink-faint); border: 1px solid var(--rule); font-weight: 650; }
+.dow-short { display: none; }
+@media (max-width: 760px) { .dow-long { display: none; } .dow-short { display: inline; } .calendar th { padding: 8px 2px; } }
 .calendar td { border: 1px solid var(--rule); height: 104px; vertical-align: top; padding: 6px 8px; font-size: .82rem; }
 .calendar td.other { background: var(--surface-2); color: var(--ink-faint); }
 .calendar td.today { box-shadow: inset 0 0 0 2px var(--signal); }
@@ -829,7 +831,8 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
   .quicksearch { order: 3; margin: 8px 0 6px; flex: 1 1 100%; }
   .quicksearch input[type=search], .quicksearch input[type=search]:focus { width: 100%; }
   .account { margin-left: auto; }
-  .tabs { order: 4; flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 6px; padding: 0 12px; }
+  .tabs { order: 4; flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 6px; padding: 0 40px 0 12px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs a { height: 32px; padding: 0 12px; }
   h1 { font-size: 1.55rem; }
