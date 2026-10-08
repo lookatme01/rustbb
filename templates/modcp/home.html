@@ -36,13 +36,13 @@
         </div>
         <div class="inbox-actions">
           {% if i.kind == 'report' %}
-            <form method="post" action="/modcp/reports">{{ m.csrf_field() }}<input type="hidden" name="ids" value="{{ i.rid }}"><button class="btn small secondary" name="action" value="handled" data-act="dismiss">Dismiss</button></form>
+            <form method="post" action="/modcp/reports">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="ids" value="{{ i.rid }}"><button class="btn small secondary" name="action" value="handled" data-act="dismiss">Dismiss</button></form>
             {% if not i.claimed %}<form method="post" action="/modcp/reports/{{ i.rid }}/claim">{{ m.csrf_field() }}<button class="btn small secondary" name="action" value="claim">Claim</button></form>{% endif %}
             <a class="btn small secondary" href="{{ i.detail }}">Details</a>
           {% elif i.kind == 'appeal' %}
             <a class="btn small" href="{{ i.url }}">Review appeal</a>
           {% else %}
-            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn small" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn small danger" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
+            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn small" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn small danger" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
           {% endif %}
         </div>
       </li>

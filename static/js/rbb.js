@@ -520,3 +520,76 @@ document.addEventListener("change", (e) => {
   const n = i.closest(".file-pick")?.querySelector(".file-name");
   if (n) n.textContent = i.files && i.files.length ? i.files[0].name : "No file chosen";
 });
+
+// Staff hover cards: in the Admin CP and Mod CP, resting on a member's name shows their flags,
+// pinned note and last visit, fetched from /modcp/member/{uid}/card. Links work as before.
+(function () {
+  "use strict";
+  const body = document.body;
+  if (!body || !(body.classList.contains("acp") || body.classList.contains("modcp"))) return;
+  const PATTERNS = [/^\/user\/(\d+)(?:-[^/]*)?$/, /^\/admin\/users\/(\d+)$/, /^\/modcp\/member\/(\d+)$/];
+  const cache = new Map();
+  let card = null, timer = 0, hideTimer = 0, current = null;
+  const uidOf = (a) => {
+    if (!(a instanceof HTMLAnchorElement) || a.closest(".mf-hovercard, .sidenav, .mf-card") || a.origin !== location.origin) return 0;
+    for (const re of PATTERNS) { const m = a.pathname.match(re); if (m) return +m[1]; }
+    return 0;
+  };
+  function hide() {
+    clearTimeout(timer);
+    if (card) { card.remove(); card = null; }
+    if (current) current.removeAttribute("aria-describedby");
+    current = null;
+  }
+  async function show(a, uid) {
+    let html = cache.get(uid);
+    if (html === undefined) {
+      try {
+        const r = await fetch("/modcp/member/" + uid + "/card", { credentials: "same-origin" });
+        html = r.ok ? await r.text() : "";
+      } catch (e) { html = ""; }
+      cache.set(uid, html);
+    }
+    if (!html || current !== a) return;
+    if (card) card.remove();
+    card = document.createElement("div");
+    card.className = "mf-hovercard";
+    card.id = "mf-hovercard";
+    card.setAttribute("role", "tooltip");
+    card.innerHTML = html;
+    card.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+    card.addEventListener("mouseleave", () => { hideTimer = setTimeout(hide, 200); });
+    document.body.appendChild(card);
+    const r = a.getBoundingClientRect();
+    const w = card.offsetWidth;
+    let left = r.left + window.scrollX;
+    left = Math.max(8, Math.min(left, window.scrollX + document.documentElement.clientWidth - w - 8));
+    let top = r.bottom + window.scrollY + 6;
+    if (r.bottom + card.offsetHeight + 12 > window.innerHeight) top = r.top + window.scrollY - card.offsetHeight - 6;
+    card.style.left = left + "px";
+    card.style.top = top + "px";
+    a.setAttribute("aria-describedby", "mf-hovercard");
+  }
+  function arm(e) {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    const uid = a ? uidOf(a) : 0;
+    if (!uid || a === current) return;
+    clearTimeout(hideTimer);
+    hide();
+    current = a;
+    timer = setTimeout(() => show(a, uid), e.type === "focusin" ? 0 : 350);
+  }
+  function disarm(e) {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    if (!a || a !== current) return;
+    if (e.relatedTarget instanceof Node && card && card.contains(e.relatedTarget)) return;
+    clearTimeout(timer);
+    hideTimer = setTimeout(hide, 200);
+  }
+  document.addEventListener("mouseover", arm);
+  document.addEventListener("mouseout", disarm);
+  document.addEventListener("focusin", arm);
+  document.addEventListener("focusout", disarm);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  window.addEventListener("scroll", () => { if (card && !card.matches(":hover")) hide(); }, { passive: true });
+})();

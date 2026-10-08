@@ -20,6 +20,24 @@ pub struct StQuery {
     pub highlight: Option<String>,
 }
 
+
+/// Flag chips for the authors on a page, for staff only (see `member_file`): restrictions,
+/// warnings and the like, plus "New".
+async fn staff_flags(ctx: &Ctx, posts: &[PostView]) -> AppResult<Option<std::collections::HashMap<i32, Vec<crate::member_file::Flag>>>> {
+    if !ctx.can(crate::domain::staff::Cap::ModCp) {
+        return Ok(None);
+    }
+    let mut uids: Vec<i32> = posts.iter().map(|p| p.uid).filter(|u| *u > 0).collect();
+    uids.sort_unstable();
+    uids.dedup();
+    let mut flags = crate::member_file::flags_for(ctx, &uids, crate::member_file::View::of(ctx)).await?;
+    for v in flags.values_mut() {
+        v.retain(|f| matches!(f.level, crate::member_file::Level::Red | crate::member_file::Level::Orange) || f.key == "new");
+    }
+    flags.retain(|_, v| !v.is_empty());
+    Ok(Some(flags))
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct PostView {
     pub pid: i32,
@@ -516,6 +534,7 @@ pub async fn showthread(
             forum => &forum,
             forum_url => url_forum(forum.fid as i64, Some(&forum.name)),
             breadcrumb => breadcrumb(&ctx, forum.fid),
+            staff_flags => staff_flags(&ctx, &postbits).await?,
             posts => postbits,
             pagination => pagination,
             poll => poll,
@@ -793,7 +812,7 @@ pub async fn posts_since(ctx: Ctx, Path((tid, pid)): Path<(i32, i32)>) -> AppRes
     let postbits = build_postbits(&ctx, &thread, &fp, &mp, posts, before + 1, &[]).await?;
     ctx.render(
         "posts_fragment.html",
-        minijinja::context! { posts => postbits, thread => &thread, is_mod => mp.is_some(), modperms => &mp, reaction_types => ctx.cache.reaction_types() },
+        minijinja::context! { staff_flags => staff_flags(&ctx, &postbits).await?, posts => postbits, thread => &thread, is_mod => mp.is_some(), modperms => &mp, reaction_types => ctx.cache.reaction_types() },
     )
     .await
 }

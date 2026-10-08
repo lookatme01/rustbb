@@ -1950,12 +1950,14 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 .mf-actions form { margin: 0; }
 
 /* A small panel opened by a button (native popover: works without script). */
-.mf-pop { margin: 0; padding: 16px; width: min(340px, calc(100vw - 32px)); border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
+.mf-pop { margin: auto; padding: 18px; width: min(340px, calc(100vw - 32px)); border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
 .mf-pop::backdrop { background: rgba(0, 0, 0, .12); }
 .mf-pop form { display: grid; gap: 10px; }
 .mf-pop fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
 .mf-pop legend { font-weight: 650; margin-bottom: 6px; padding: 0; }
 .mf-pop label { font-size: .9rem; }
+.mf-pop label:has(> input[type=text], > select) { display: grid; gap: 4px; font-weight: 600; }
+.mf-pop input[type=text], .mf-pop select { width: 100%; }
 .mf-pop .mf-shown { font-size: .76rem; color: var(--ink-soft); font-weight: 500; }
 .mf-pop .consequences { margin: 0; padding: 10px 12px 10px 28px; background: var(--surface-3); border-radius: 10px; font-size: .84rem; color: var(--ink-soft); }
 
@@ -1976,7 +1978,7 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 .mf-filters a[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .mf-filters a .n { margin-left: 6px; opacity: .65; font-weight: 500; }
 
-.mf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.mf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .mf-tile { display: flex; flex-direction: column; gap: 3px; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--rule); color: var(--ink); }
 .mf-tile:hover { border-color: var(--signal); text-decoration: none; }
 .mf-tile b { font-size: 2rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
@@ -2008,6 +2010,7 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 .ucp-who { flex: 1 1 200px; min-width: 0; }
 .ucp-who h1 { margin: 0; font-size: 1.4rem; overflow-wrap: anywhere; }
 .ucp-since { margin-top: 3px; font-size: .86rem; color: var(--ink-soft); }
+.ucp-since a { text-decoration: underline; text-underline-offset: 2px; }
 .ucp-stats { display: flex; gap: 28px; flex-wrap: wrap; }
 .ucp-summary { color: var(--ink-soft); }
 .ucp-restrict { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; margin: 14px 0; border-radius: var(--radius); background: var(--bad-bg); border: 1px solid color-mix(in oklab, var(--bad) 25%, transparent); color: var(--ink); }
@@ -2017,6 +2020,7 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 @media (max-width: 760px) {
   .ucp-head { padding: 16px; gap: 14px; }
   .ucp-stats { gap: 22px; width: 100%; }
+}
 
 /* ===== Admin CP lists and dashboard */
 .acp-h { margin: 0 0 10px; font-size: .78rem; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); }
@@ -2049,6 +2053,7 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
   .acp-watch { padding: 10px 14px; flex-wrap: wrap; }
   .acp-today { padding: 14px; }
   .acp-bars-wrap { padding: 0 14px 16px; }
+}
 
 /* ===== Mod CP inbox */
 .inbox-h1 { margin: 0 0 14px; font-size: 1.6rem; letter-spacing: -.01em; }
@@ -2084,3 +2089,6 @@ a.inbox-row:hover { background: var(--surface-2); text-decoration: none; }
   .inbox-item { padding: 14px; }
   .inbox-actions { width: 100%; }
 }
+
+/* Staff-only flag chips on a post's author card. */
+.post-staff-flags { justify-content: center; margin: 6px 0 2px; }

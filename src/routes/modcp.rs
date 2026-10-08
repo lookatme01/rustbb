@@ -156,7 +156,7 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
             };
             let (subj, url, uid, uname) = match kind.as_str() {
                 "post" => (subject.unwrap_or_else(|| "Post".into()), format!("/post/{id}"), puid.unwrap_or(0), puser.unwrap_or_default()),
-                "profile" => (format!("Profile of {}", tuser.clone().unwrap_or_default()), format!("/user/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
+                "profile" => (format!("Profile of {}", tuser.clone().unwrap_or_else(|| "a deleted member".into())), format!("/user/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
                 "reputation" => ("Reputation comment".to_string(), format!("/reputation/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
                 _ => ("Private message".to_string(), format!("/modcp/reports/{rid}"), 0, String::new()),
             };
@@ -387,6 +387,9 @@ pub struct IdsForm {
     pub ids: Vec<i32>,
     #[serde(default, deserialize_with = "de::string")]
     pub action: String,
+    /// `/modcp` to return to the inbox instead of the reports page.
+    #[serde(default, deserialize_with = "de::string")]
+    pub back: String,
 }
 
 pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResult<Response> {
@@ -423,7 +426,8 @@ pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResu
         .await?;
     }
     ctx.app.mod_counts.invalidate_all();
-    Ok(ctx.redirect("/modcp/reports", "The selected reports have been updated."))
+    let to = if f.back == "/modcp" { "/modcp" } else { "/modcp/reports" };
+    Ok(ctx.redirect(to, "The selected reports have been updated."))
 }
 
 // ---------------------------------------------------------------- moderation queue
@@ -510,6 +514,9 @@ pub struct QueueForm {
     pub approve: Vec<i32>,
     #[serde(default, deserialize_with = "de::vec_i32")]
     pub delete: Vec<i32>,
+    /// `/modcp` to return to the inbox instead of the queue.
+    #[serde(default, deserialize_with = "de::string")]
+    pub back: String,
 }
 
 pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppResult<Response> {
@@ -616,10 +623,8 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
     .await?;
     uow.commit(&ctx.app).await?;
     ctx.app.mod_counts.invalidate_all();
-    Ok(ctx.redirect(
-        &format!("/modcp/modqueue?kind={}", f.kind),
-        "The moderation queue has been updated.",
-    ))
+    let to = if f.back == "/modcp" { "/modcp".to_string() } else { format!("/modcp/modqueue?kind={}", f.kind) };
+    Ok(ctx.redirect(&to, "The moderation queue has been updated."))
 }
 
 // ---------------------------------------------------------------- logs
