@@ -1483,19 +1483,23 @@ pub async fn alerts(
         util::clamp_page(q.page),
         "/usercp/alerts?page={page}",
     );
-    let rows: Vec<(i64, String, i32, serde_json::Value, i64, bool, Option<String>)> = sqlx::query_as(
-        "SELECT a.id, a.kind, a.object_id, a.extra, a.dateline, a.unread, u.username FROM alerts a LEFT JOIN users u ON u.uid = a.from_uid
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(i64, String, i32, serde_json::Value, i64, bool, Option<String>, Option<i32>)> = sqlx::query_as(
+        "SELECT a.id, a.kind, a.object_id, a.extra, a.dateline, a.unread, u.username, u.uid FROM alerts a LEFT JOIN users u ON u.uid = a.from_uid
          WHERE a.uid = $1 ORDER BY a.id DESC LIMIT 30 OFFSET $2",
     )
     .bind(me.uid)
     .bind((pg.page - 1) * 30)
     .fetch_all(&ctx.app.db)
     .await?;
+    let from_uids: Vec<i32> = rows.iter().filter_map(|r| r.7).collect();
+    let faces = crate::render::avatars(&ctx, &from_uids).await?;
     let list: Vec<_> = rows
         .into_iter()
-        .map(|(id, kind, oid, extra, dl, unread, from)| {
+        .map(|(id, kind, oid, extra, dl, unread, from, from_uid)| {
             let (text, url) = describe_alert(&kind, &extra, from.as_deref().unwrap_or("Someone"), oid);
-            minijinja::context! { id => id, text => text, url => url, dateline => dl, unread => unread }
+            let avatar = from_uid.and_then(|u| faces.get(&u)).map(|a| a.to_string()).unwrap_or_default();
+            minijinja::context! { id => id, kind => kind, text => text, url => url, dateline => dl, unread => unread, from => from, from_uid => from_uid, avatar => avatar }
         })
         .collect();
     // Viewing the list marks everything read.

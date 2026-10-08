@@ -2,7 +2,11 @@
 {% import "macros.html" as m %}
 {% block ucp %}
 <section class="box"><div class="box-head"><h2>Alerts</h2>{% if alerts %}<form method="post" action="/usercp/alerts/read" class="right">{{ m.csrf_field() }}<button class="btn secondary small" type="submit">Clear all</button></form>{% endif %}</div>
-{% for a in alerts %}<div class="alert-item{% if a.unread %} unread{% endif %}"><a href="{{ a.url }}">{{ a.text }}</a><span class="when">{{ a.dateline|date }}</span></div>{% else %}<div class="empty">You have no alerts. You'll be alerted when someone quotes or mentions you, replies to your subscriptions, or reacts to your posts.</div>{% endfor %}
+{% for a in alerts %}<a class="alert-item{% if a.unread %} unread{% endif %}" href="{{ a.url }}">
+  {% if a.from and 'badge' not in a.kind %}{{ m.face(a.avatar, a.from, a.from_uid, 32) }}{% else %}<span class="alert-icon" aria-hidden="true">{{ m.badge_icon('star' if 'badge' in a.kind else ('shield' if a.kind == 'warning' else 'bolt')) }}</span>{% endif %}
+  <span class="alert-text">{% if a.unread %}<span class="sr-only">New: </span>{% endif %}{% if a.from and a.text.startswith(a.from) %}<strong>{{ a.from }}</strong>{{ a.text[a.from|length:] }}{% else %}{{ a.text }}{% endif %}</span>
+  <span class="when">{{ a.dateline|date }}</span>
+</a>{% else %}<div class="empty">You have no alerts. You'll be alerted when someone quotes or mentions you, replies to your subscriptions, or reacts to your posts.</div>{% endfor %}
 </section>
 {{ m.pagination(pagination) }}
 {% endblock %}

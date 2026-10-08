@@ -762,8 +762,15 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .calendar .daynum { font-weight: 650; }
 .calendar .event { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 7px; margin-top: 3px; border-radius: 6px; background: var(--signal-wash); color: var(--signal-strong); }
 @media (max-width: 700px) { .calendar td { height: 56px; } .calendar .event { font-size: .7rem; } }
-.alert-item { display: flex; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.alert-item { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--rule); align-items: center; color: var(--ink); text-decoration: none; }
+.alert-item:last-child { border-bottom: 0; }
+.alert-item:hover { background: var(--surface-2); text-decoration: none; }
+.alert-item .face { flex: none; }
+.alert-icon { flex: none; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; background: var(--signal-wash); color: var(--signal-strong); }
+.alert-icon svg { width: 16px; height: 16px; }
+.alert-text { flex: 1; min-width: 0; font-size: .92rem; line-height: 1.45; }
 .alert-item.unread { background: var(--signal-wash); }
+.alert-item.unread .alert-text::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--signal); vertical-align: 2px; }
 .alert-item .when { margin-left: auto; font-size: .8rem; color: var(--ink-faint); white-space: nowrap; }
 .live-banner { position: sticky; bottom: 20px; z-index: 20; margin: 12px auto; width: max-content; max-width: 100%; }
 .live-banner button { box-shadow: var(--shadow-lg); animation: pop-in .25s var(--ease); }
