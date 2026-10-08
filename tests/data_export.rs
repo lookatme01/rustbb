@@ -192,3 +192,36 @@ async fn export_is_a_zip_split_by_kind_with_only_the_members_own_addresses() {
     .unwrap();
     assert_eq!(exported, 1);
 }
+
+#[tokio::test]
+async fn activity_page_hides_the_staff_members_address_and_browser() {
+    let t = test_app!();
+    let alice = t.create_user("alice", "Passw0rd-alice").await;
+    sqlx::query("INSERT INTO user_audit (uid, dateline, action, ipaddress, useragent) VALUES ($1, 100, 'login', '198.51.100.20', 'Mozilla/5.0 (Windows NT 10.0) Firefox/130.0')")
+        .bind(alice).execute(&t.db.pool).await.unwrap();
+    sqlx::query("INSERT INTO user_audit (uid, dateline, action, ipaddress, useragent, actor_uid) VALUES ($1, 200, 'warned', '198.51.100.77', 'Mozilla/5.0 (Macintosh) Safari/605.1', 1)")
+        .bind(alice).execute(&t.db.pool).await.unwrap();
+
+    let a = t.login_as(alice).await;
+    let r = a.get("/usercp/activity").await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(
+        r.body.contains("198.51.100.20"),
+        "own sign-in address missing"
+    );
+    assert!(
+        !r.body.contains("198.51.100.77") && !r.body.contains("Macintosh"),
+        "the staff member's address or browser leaked"
+    );
+
+    // Staff still see the address on the Admin CP view of the same log.
+    let admin = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(rbb::util::now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = admin.get(&format!("/admin/users/{alice}/activity")).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.body.contains("198.51.100.77"), "{}", r.body);
+}

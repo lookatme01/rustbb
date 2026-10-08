@@ -788,7 +788,7 @@ pub async fn activity(
     let user = load(&ctx, uid).await?;
     let base = format!("/admin/users/{uid}/activity?kind={}&page={{page}}", q.kind);
     let (events, pagination) =
-        crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base).await?;
+        crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base, false).await?;
     crate::admin::page(
         &ctx,
         "admin/user_activity.html",

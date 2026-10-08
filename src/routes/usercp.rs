@@ -2351,13 +2351,16 @@ pub struct ActivityQuery {
     pub kind: String,
 }
 
-/// Rows of the account audit log shaped for templates (shared with the Admin CP view).
+/// Rows of the account audit log shaped for templates (shared with the Admin CP view). Staff
+/// actions carry the staff member's IP address and browser, so `own_view` blanks both for the
+/// account owner.
 pub async fn audit_rows(
     ctx: &Ctx,
     uid: i32,
     kind: &str,
     page: Option<i64>,
     base: &str,
+    own_view: bool,
 ) -> AppResult<(Vec<minijinja::Value>, util::Pagination)> {
     let actions: Vec<&str> = crate::audit::ACTIONS
         .iter()
@@ -2390,9 +2393,15 @@ pub async fn audit_rows(
         .into_iter()
         .map(|(dateline, action, ip, ua, actor, details, actor_name)| {
             let (label, category) = crate::audit::describe(&action);
+            let device = crate::audit::device_label(&ua);
+            let (ip, ua, device) = if own_view && (actor > 0 || category == "staff") {
+                (String::new(), String::new(), String::new())
+            } else {
+                (ip, ua, device)
+            };
             minijinja::context! {
                 dateline => dateline, action => action, label => label, category => category, ip => ip,
-                device => crate::audit::device_label(&ua), useragent => ua, actor => actor, actor_name => actor_name,
+                device => device, useragent => ua, actor => actor, actor_name => actor_name,
                 details => details,
             }
         })
@@ -2407,7 +2416,7 @@ pub async fn activity(ctx: Ctx, Query(q): Query<ActivityQuery>) -> AppResult<Res
         _ => String::new(),
     };
     let base = format!("/usercp/activity?kind={kind}&page={{page}}");
-    let (events, pagination) = audit_rows(&ctx, me.uid, &kind, q.page, &base).await?;
+    let (events, pagination) = audit_rows(&ctx, me.uid, &kind, q.page, &base, true).await?;
     let failed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_audit WHERE uid = $1 AND action IN ('login_failed', 'login_locked', 'login_2fa_failed') AND dateline > $2")
         .bind(me.uid)
         .bind(now() - 7 * 86400)
