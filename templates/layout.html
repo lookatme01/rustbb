@@ -66,7 +66,7 @@
     {% if title and title != bb.bbname and not (breadcrumb and breadcrumb[-1][0] == title) %}<span class="sep">/</span><span class="current">{{ title }}</span>{% endif %}
   </nav>
   {% endif %}
-  {% if flash %}<div class="notice ok" role="status">{{ flash }}</div>{% endif %}
+  {% if flash %}<div class="notice ok{% if undo %} has-undo{% endif %}" role="status"><span>{{ flash }}</span>{% if undo %}<form method="post" action="{{ undo.action }}" class="js-undo"><input type="hidden" name="my_post_key" value="{{ csrf }}">{% for f in undo.fields %}<input type="hidden" name="{{ f[0] }}" value="{{ f[1] }}">{% endfor %}<button class="btn secondary small">Undo</button></form>{% endif %}</div>{% endif %}
   {% if bb.boardclosed == '1' and perms.canviewboardclosed %}<div class="notice warn">The board is currently closed. Only staff can see it.</div>{% endif %}
   {% if me and me.usergroup == 5 %}<div class="notice warn">Your account is awaiting activation. <a href="/member/resendactivation">Resend the activation email</a></div>{% endif %}
   {% block content %}{% endblock %}

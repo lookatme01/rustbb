@@ -1895,3 +1895,108 @@ input[type=date], input[type=datetime-local], input[type=time], select, textarea
 
 /* The admin and moderator panels are dense tool screens: give them more room. */
 body.acp, body.modcp { --page: 1320px; }
+
+/* ================================================================== member file
+   Flag chips, check rows with a coloured dot, headline numbers and count tiles, shared by the
+   Admin CP and Mod CP member pages, the user lists, the dashboards, hover cards, posts (staff
+   only) and the member's own User CP overview. Red: restricted. Orange: worth a look. Blue: staff
+   role. Grey: information. Green: a check that passed. */
+:root { --mf-orange: #7a4100; --mf-orange-bg: #fdefd9; --mf-orange-dot: #e8890c; --mf-red-dot: #d92d20; --mf-green-dot: #16884a; --mf-grey-dot: #a1a1aa; }
+@media (prefers-color-scheme: dark) { :root:not([data-colormode="light"]) { --mf-orange: #f6b766; --mf-orange-bg: #2f2210; } }
+:root[data-colormode="dark"] { --mf-orange: #f6b766; --mf-orange-bg: #2f2210; }
+
+.mf-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.mf-flag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; font-size: .78rem; font-weight: 650; white-space: nowrap; background: var(--surface-3); color: var(--ink-soft); }
+.mf-flag.red { background: var(--bad-bg); color: var(--bad); }
+.mf-flag.orange { background: var(--mf-orange-bg); color: var(--mf-orange); }
+.mf-flag.blue { background: var(--signal-wash); color: var(--signal-strong); }
+.mf-flag.green { background: var(--ok-bg); color: var(--ok); }
+.mf-flags.small .mf-flag { height: 20px; padding: 0 7px; font-size: .72rem; border-radius: 6px; }
+
+.mf-checks { margin: 0; padding: 0; list-style: none; }
+.mf-check { display: flex; align-items: flex-start; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--rule); font-size: .92rem; color: var(--ink); }
+.mf-checks > .mf-check:first-child { border-top: 0; }
+a.mf-check:hover { background: var(--surface-2); text-decoration: none; color: var(--ink); }
+.mf-check .mf-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.mf-check .mf-sub { display: block; font-size: .8rem; color: var(--ink-soft); margin-top: 2px; }
+.mf-check form, .mf-check > .btn { margin-left: auto; flex: none; }
+.mf-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; background: var(--mf-grey-dot); }
+.mf-dot.red { background: var(--mf-red-dot); } .mf-dot.orange { background: var(--mf-orange-dot); } .mf-dot.green { background: var(--mf-green-dot); } .mf-dot.blue { background: var(--signal); }
+.mf-head { font: 650 .72rem/1.2 var(--font-ui); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-faint); }
+
+.mf-hero { display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; gap: 16px; align-items: start; margin-bottom: 16px; }
+.mf-hero > * { min-width: 0; }
+.mf-hero .box, .mf-col .box { margin: 0; }
+.mf-col { display: flex; flex-direction: column; gap: 16px; }
+.mf-hero.two { grid-template-columns: 300px minmax(0, 1fr); }
+@media (max-width: 1180px) { .mf-hero, .mf-hero.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 760px) { .mf-hero, .mf-hero.two { grid-template-columns: minmax(0, 1fr); } }
+
+.mf-id { display: flex; gap: 14px; align-items: center; padding: 18px 18px 14px; }
+.mf-id h1 { margin: 0; font-size: 1.3rem; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.mf-id .mf-sub { font-size: .82rem; color: var(--ink-soft); margin-top: 2px; }
+.mf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 18px 16px; }
+.mf-stat { display: flex; flex-direction: column; gap: 1px; padding: 9px 11px; border-radius: 10px; background: var(--surface-3); color: var(--ink); }
+a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--ink) 7%, var(--surface-3)); }
+.mf-stat b { font-size: 1.1rem; font-weight: 700; }
+.mf-stat span { font-size: .74rem; color: var(--ink-soft); }
+.mf-stat.warn { background: var(--mf-orange-bg); } .mf-stat.warn b { color: var(--mf-orange); }
+.mf-section { padding: 14px 18px; border-top: 1px solid var(--rule); }
+.mf-seen { font-size: .82rem; color: var(--ink-soft); line-height: 1.6; }
+.mf-pinned { padding: 12px 18px; border-top: 1px solid var(--rule); background: var(--mf-orange-bg); font-size: .88rem; }
+.mf-pinned .mf-sub { display: block; font-size: .76rem; color: var(--ink-soft); margin-top: 3px; }
+.mf-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 16px 18px; }
+.mf-actions .btn, .mf-actions form .btn { width: 100%; }
+.mf-actions form { margin: 0; }
+
+/* A small panel opened by a button (native popover: works without script). */
+.mf-pop { margin: 0; padding: 16px; width: min(340px, calc(100vw - 32px)); border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
+.mf-pop::backdrop { background: rgba(0, 0, 0, .12); }
+.mf-pop form { display: grid; gap: 10px; }
+.mf-pop fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.mf-pop legend { font-weight: 650; margin-bottom: 6px; padding: 0; }
+.mf-pop label { font-size: .9rem; }
+.mf-pop .mf-shown { font-size: .76rem; color: var(--ink-soft); font-weight: 500; }
+.mf-pop .consequences { margin: 0; padding: 10px 12px 10px 28px; background: var(--surface-3); border-radius: 10px; font-size: .84rem; color: var(--ink-soft); }
+
+.mf-tabs { display: flex; gap: 22px; padding: 0 20px; border-bottom: 1px solid var(--rule); overflow-x: auto; scrollbar-width: none; }
+.mf-tabs a { display: inline-flex; align-items: center; height: 44px; border-bottom: 2px solid transparent; color: var(--ink-soft); font-weight: 600; white-space: nowrap; }
+.mf-tabs a:hover { color: var(--ink); text-decoration: none; }
+.mf-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--signal); }
+
+.mf-ev { display: grid; grid-template-columns: 110px 130px minmax(0, 1fr) 120px; gap: 14px; align-items: baseline; padding: 12px 20px; border-top: 1px solid var(--rule); font-size: .9rem; }
+.mf-ev:first-child { border-top: 0; }
+.mf-ev .when, .mf-ev .by { color: var(--ink-soft); font-size: .82rem; }
+.mf-ev .by { text-align: right; }
+.mf-ev.retracted .what { color: var(--ink-faint); }
+@media (max-width: 760px) { .mf-ev { grid-template-columns: 1fr; gap: 4px; } .mf-ev .by { text-align: left; } }
+.mf-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--rule); }
+.mf-filters a { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--rule-strong); color: var(--ink); font-size: .84rem; font-weight: 600; }
+.mf-filters a:hover { text-decoration: none; background: var(--surface-3); }
+.mf-filters a[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.mf-filters a .n { margin-left: 6px; opacity: .65; font-weight: 500; }
+
+.mf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.mf-tile { display: flex; flex-direction: column; gap: 3px; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--rule); color: var(--ink); }
+.mf-tile:hover { border-color: var(--signal); text-decoration: none; }
+.mf-tile b { font-size: 2rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.mf-tile span { font-size: .9rem; font-weight: 650; }
+.mf-tile small { font-size: .8rem; color: var(--ink-soft); }
+.mf-tile.hot { background: var(--bad-bg); border-color: color-mix(in oklab, var(--bad) 25%, transparent); }
+.mf-tile.calm b { color: var(--ink-faint); }
+
+.mf-danger { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; padding: 18px 20px; }
+.mf-danger > form, .mf-danger > div { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius); margin: 0; }
+.mf-danger p { margin: 0; font-size: .86rem; color: var(--ink-soft); }
+
+/* Hover card: the member file in small, for staff, over any username in the panels. */
+.mf-hovercard { position: absolute; z-index: 60; width: 300px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); font-size: .88rem; color: var(--ink); }
+.mf-hovercard .mf-id { padding: 14px 14px 10px; }
+.mf-hovercard .mf-id h1 { font-size: 1rem; }
+.mf-hovercard .mf-flags { padding: 0 14px 12px; }
+.mf-hovercard .mf-line { padding: 10px 14px; border-top: 1px solid var(--rule); color: var(--ink-soft); font-size: .8rem; }
+.mf-hovercard .mf-pinned { padding: 10px 14px; }
+
+/* "Banned nightowl · Undo" after a staff action. */
+.notice.ok.has-undo { align-items: center; }
+.notice.ok.has-undo form { margin: 0 0 0 auto; }
