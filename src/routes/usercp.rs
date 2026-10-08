@@ -128,7 +128,7 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
         "usercp/home.html",
         "home",
         "User Control Panel",
-        minijinja::context! { user => &me, subscribed => rows, latest => latest, warnings => warnings, warnlevel => me.warningpoints as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1) },
+        minijinja::context! { user => &me, email => &me.email, subscribed => rows, latest => latest, warnings => warnings, warnlevel => me.warningpoints as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1) },
     )
     .await
 }

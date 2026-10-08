@@ -282,3 +282,12 @@ async fn password_reset_token_is_consumed_atomically() {
     .unwrap();
     assert_eq!(audits, 1);
 }
+
+#[tokio::test]
+async fn control_panel_shows_the_members_own_email() {
+    let t = test_app!();
+    let uid = t.create_user("mailcheck", "Passw0rd-mailcheck").await;
+    let r = t.login_as(uid).await.get("/usercp").await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("mailcheck@example.com"), "{}", r.body);
+}

@@ -4,7 +4,7 @@
 <section class="box"><div class="box-head"><h2>Your account</h2></div>
 <div class="kv">
   <div>Username</div><div><a href="{{ url_user(user.uid, user.username) }}">{{ me.formatted|safe }}</a></div>
-  <div>Email</div><div>{{ user.email }}</div>
+  <div>Email</div><div>{{ email }} <a class="small" href="/usercp/email">Change</a></div>
   <div>Registered</div><div>{{ user.regdate|date('date') }}</div>
   <div>Posts</div><div>{{ user.postnum|num }} · <a href="/user/{{ user.uid }}/posts">find your posts</a></div>
   <div>Threads</div><div>{{ user.threadnum|num }} · <a href="/user/{{ user.uid }}/threads">find your threads</a></div>
