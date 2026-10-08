@@ -38,17 +38,25 @@
 <div class="actions toolbar">
   {{ m.pagination(pagination) }}
   <span class="spacer"></span>
-  <form method="get" action="{{ forum_url }}" class="filters">
+  {% set sort_labels = {'lastpost':'Last post','started':'Start date','subject':'Subject','starter':'Author','replies':'Replies','views':'Views','rating':'Rating'} %}
+  {% set filtered = (sortby and sortby != 'lastpost') or order == 'asc' or datecut or prefix %}
+  <details class="popmenu down">
+    <summary class="btn secondary small">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
+    <div class="menu">
+  <form method="get" action="{{ forum_url }}" class="filters menu-form">
     {% if prefixes %}<select name="prefix" aria-label="Prefix"><option value="0">Any prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
     <select name="sortby" aria-label="Sort by">
       {% for s in [('lastpost','Last post'),('started','Start date'),('subject','Subject'),('starter','Author'),('replies','Replies'),('views','Views'),('rating','Rating')] %}<option value="{{ s[0] }}"{% if sortby == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}
     </select>
-    <select name="order" aria-label="Order"><option value="desc"{% if order == 'desc' %} selected{% endif %}>Descending</option><option value="asc"{% if order == 'asc' %} selected{% endif %}>Ascending</option></select>
+    <select name="order" aria-label="Order"><option value="desc"{% if order == 'desc' %} selected{% endif %}>High to low / newest first</option><option value="asc"{% if order == 'asc' %} selected{% endif %}>Low to high / oldest first</option></select>
     <select name="datecut" aria-label="From">
       {% for d in [(0,'Any time'),(1,'Today'),(7,'Last week'),(30,'Last month'),(90,'Last 3 months'),(365,'Last year')] %}<option value="{{ d[0] }}"{% if datecut == d[0] %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}
     </select>
-    <button class="btn secondary small" type="submit">Apply</button>
+    <button class="btn small" type="submit">Apply</button>
+    {% if filtered %}<a class="menu-reset" href="{{ forum_url }}">Reset</a>{% endif %}
   </form>
+    </div>
+  </details>
 </div>
 
 <section class="thread-list">
