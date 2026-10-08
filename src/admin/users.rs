@@ -21,6 +21,7 @@ pub fn router() -> Router<crate::app::App> {
         .route("/users/{uid}/delete", post(delete))
         .route("/users/{uid}/erase", post(erase))
         .route("/users/{uid}/ban", post(ban))
+        .route("/users/{uid}/security", post(security))
         .route("/users/{uid}/activity", get(activity))
         .route("/adminperms", get(adminperms))
         .route(
@@ -224,9 +225,32 @@ async fn load(ctx: &Ctx, uid: i32) -> AppResult<User> {
     .ok_or_else(|| AppError::not_found("user"))
 }
 
-pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
+#[derive(Deserialize, Default)]
+pub struct EditQ {
+    #[serde(default)]
+    pub tab: String,
+    #[serde(default)]
+    pub r#type: String,
+}
+
+/// The member file: who this is and what's wrong at a glance, the actions, the timeline, and the
+/// edit form and sign-in details on their own tabs.
+pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>, Query(q): Query<EditQ>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
+    let view = crate::member_file::View::of(&ctx);
+    let mf = crate::member_file::load(&ctx, &user, view).await?;
+    let tab = match q.tab.as_str() {
+        "details" | "ips" => q.tab.as_str(),
+        _ => "timeline",
+    };
+    // The notes box always wants the notes; the timeline tab shows the chosen kinds.
+    let events = crate::routes::modnotes::timeline(&ctx, &user, if tab == "timeline" { &q.r#type } else { "notes" }).await?;
+    let notes = if tab == "timeline" && !q.r#type.is_empty() && q.r#type != "notes" {
+        crate::routes::modnotes::timeline(&ctx, &user, "notes").await?
+    } else {
+        vec![]
+    };
     let values: HashMap<String, String> =
         sqlx::query_as::<_, (i32, String)>("SELECT fid, value FROM userfields WHERE uid = $1")
             .bind(uid)
@@ -235,30 +259,100 @@ pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             .into_iter()
             .map(|(f, v)| (f.to_string(), v))
             .collect();
-    let ips: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
-    let logins: Vec<(i64, String, String)> = sqlx::query_as(
-        "SELECT created, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 ORDER BY created DESC LIMIT 20",
-    )
-    .bind(uid)
-    .fetch_all(&ctx.app.db)
-    .await?;
-    let banned: Option<(String, i64)> =
-        sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
+    let (ips, logins): (Vec<(String, i64, Vec<(i32, String, bool)>)>, Vec<(String, i64, String, String)>) = if tab == "ips" {
+        let rows: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
+        let mut ips = vec![];
+        for (ip, when) in rows {
+            let others: Vec<(i32, String, bool)> = sqlx::query_as(
+                "SELECT o.uid, o.username, EXISTS (SELECT 1 FROM banned b WHERE b.uid = o.uid) FROM users o WHERE o.uid <> $1 AND (o.lastip = $2::inet OR o.regip = $2::inet) ORDER BY 3 DESC LIMIT 5",
+            )
             .bind(uid)
-            .fetch_optional(&ctx.app.db)
+            .bind(&ip)
+            .fetch_all(&ctx.app.db)
             .await?;
-    let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
+            ips.push((ip, when, others));
+        }
+        let logins: Vec<(String, i64, String, String)> = sqlx::query_as(
+            "SELECT token_hash, lastused, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC LIMIT 20",
+        )
         .bind(uid)
-        .fetch_one(&ctx.app.db)
+        .bind(crate::util::now())
+        .fetch_all(&ctx.app.db)
         .await?;
+        let logins = logins.into_iter().map(|(_, used, ip, ua)| (String::new(), used, ip, crate::audit::device_label(&ua))).collect();
+        (ips, logins)
+    } else {
+        (vec![], vec![])
+    };
+    let reasons = crate::member_file::reason_suggestions(&ctx.app.db).await?;
+    let kinds: Vec<_> = crate::routes::modnotes::visible_kinds(&ctx);
     crate::admin::page(
         &ctx,
         "admin/user_edit.html",
         "users",
-        &format!("Edit User: {}", user.username),
-        minijinja::context! { user => &user, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty(), passkeys => passkeys },
+        &user.username,
+        minijinja::context! {
+            user => &user, mf => &mf, section_tab => tab, filter => &q.r#type, events => events, notes => if notes.is_empty() { None } else { Some(notes) },
+            kinds => kinds, reasons => reasons,
+            email => &user.email, regip => user.regip.to_string(), lastip => user.lastip.to_string(), groups => sorted_groups(&ctx),
+            fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins,
+            has2fa => !user.totp_secret.is_empty(),
+            passkeys => sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM passkeys WHERE uid = $1").bind(uid).fetch_one(&ctx.app.db).await?,
+            can_write_notes => ctx.can(crate::domain::staff::Cap::WriteModNotes),
+            can_warn => ctx.perms.canwarnusers,
+        },
     )
     .await
+}
+
+#[derive(Deserialize, Default)]
+pub struct SecurityForm {
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub reset2fa: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub removepasskeys: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub logoutall: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub sendreset: bool,
+}
+
+/// Sign-in help for a member: log them out everywhere, turn off two-factor, remove passkeys for
+/// a lost device, or send them a password reset link.
+pub async fn security(ctx: Ctx, Path(uid): Path<i32>, crate::ctx::CsrfForm(f): crate::ctx::CsrfForm<SecurityForm>) -> AppResult<Response> {
+    crate::admin::acp_guard!(ctx, "users");
+    let user = load(&ctx, uid).await?;
+    crate::system::guard(&ctx.cache, uid, "signed out")?;
+    let mut done = vec![];
+    if f.reset2fa {
+        sqlx::query("UPDATE users SET totp_secret = '' WHERE uid = $1").bind(uid).execute(&ctx.app.db).await?;
+        crate::audit::log(&ctx, uid, "twofa_disabled", serde_json::json!({"via": "admin"})).await;
+        done.push("two-factor is off");
+    }
+    if f.removepasskeys {
+        let n = sqlx::query("DELETE FROM passkeys WHERE uid = $1").bind(uid).execute(&ctx.app.db).await?.rows_affected();
+        if n > 0 {
+            crate::audit::log(&ctx, uid, "passkey_removed", serde_json::json!({"all": n, "via": "admin"})).await;
+            done.push("their passkeys are removed");
+        }
+    }
+    if f.logoutall {
+        crate::auth::destroy_all_logins(&ctx.app, uid, if uid == ctx.uid() { ctx.token_hash.as_deref() } else { None }).await?;
+        done.push("they're signed out everywhere");
+    }
+    if f.sendreset {
+        crate::usecase::accounts::request_password_reset(&ctx.app, &crate::audit::Actor::from_ctx(&ctx), &user.email).await?;
+        done.push("a password reset link is on its way");
+    }
+    crate::admin::log(&ctx, "users", "Changed a member's sign-in", serde_json::json!({"uid": uid, "username": user.username, "done": done})).await;
+    let msg = if done.is_empty() {
+        "Nothing changed.".to_string()
+    } else {
+        let mut m = done.join(", ");
+        m[..1].make_ascii_uppercase();
+        format!("{m}.")
+    };
+    Ok(ctx.redirect(&format!("/admin/users/{uid}?tab=ips"), &msg))
 }
 
 pub async fn edit_save(
@@ -327,19 +421,10 @@ pub async fn edit_save(
     let displaygroup = i(fl.get("displaygroup"));
     crate::system::guard_group(&ctx.cache, uid, &[gid, displaygroup])?;
     crate::system::guard_group(&ctx.cache, uid, &additional)?;
-    let until = |on: bool, days: i32| {
-        if !sys && on && days > 0 {
-            now() + days as i64 * 86400
-        } else {
-            0
-        }
-    };
     sqlx::query(
         "UPDATE users SET email = $2, usergroup = $3, additionalgroups = $4, displaygroup = $5, usertitle = $6, website = $7, signature = $8,
             postnum = COALESCE($9, postnum), threadnum = COALESCE($10, threadnum), timezone = $11,
-            suspendposting = $12, suspensiontime = $13, moderateposts = $14, moderationtime = $15, suspendsignature = $16, suspendsigtime = $17,
-            avatar = CASE WHEN $18 THEN '' ELSE avatar END, avatartype = CASE WHEN $18 THEN '' ELSE avatartype END,
-            totp_secret = CASE WHEN $19 THEN '' ELSE totp_secret END
+            avatar = CASE WHEN $12 THEN '' ELSE avatar END, avatartype = CASE WHEN $12 THEN '' ELSE avatartype END
          WHERE uid = $1",
     )
     .bind(uid)
@@ -354,14 +439,7 @@ pub async fn edit_save(
     .bind(fl.get("postnum").map(|v| i(Some(v)).max(0)))
     .bind(fl.get("threadnum").map(|v| i(Some(v)).max(0)))
     .bind(s(fl.get("timezone")).trim())
-    .bind(!sys && b(fl.get("suspendposting")))
-    .bind(until(b(fl.get("suspendposting")), i(fl.get("suspendposting_days"))))
-    .bind(!sys && b(fl.get("moderateposts")))
-    .bind(until(b(fl.get("moderateposts")), i(fl.get("moderateposts_days"))))
-    .bind(!sys && b(fl.get("suspendsignature")))
-    .bind(until(b(fl.get("suspendsignature")), i(fl.get("suspendsignature_days"))))
     .bind(b(fl.get("removeavatar")))
-    .bind(b(fl.get("reset2fa")))
     .execute(&ctx.app.db)
     .await?;
     let pw = s(fl.get("newpassword"));
@@ -512,32 +590,34 @@ pub async fn ban(
     if uid == ctx.uid() {
         return Err(AppError::user("You cannot ban yourself."));
     }
+    let back = format!("/admin/users/{uid}");
     if b(f.fields.get("lift")) {
         crate::routes::modcp::lift_ban_for(&ctx.app, uid).await?;
         crate::audit::log(&ctx, uid, "unbanned", serde_json::Value::Null).await;
-        return Ok(ctx.redirect(&format!("/admin/users/{uid}"), "The ban has been lifted."));
+        return Ok(ctx.redirect(&back, "The ban has been lifted."));
     }
-    crate::routes::modcp::ban_user(
-        &ctx.app,
-        &user,
-        7,
-        s(f.fields.get("reason")).trim(),
-        i(f.fields.get("days")) as i64,
-        ctx.uid(),
-    )
-    .await?;
+    let reason = s(f.fields.get("reason")).trim().to_string();
+    let days = i(f.fields.get("days")) as i64;
+    crate::routes::modcp::ban_user(&ctx.app, &user, 7, &reason, days, ctx.uid()).await?;
+    let deleted = b(f.fields.get("deleteposts"));
+    if deleted {
+        crate::routes::usercp::delete_user_content(&ctx.app, uid).await?;
+    }
     crate::admin::log(
         &ctx,
         "bans",
         "Banned user",
-        serde_json::json!({"uid": uid, "username": user.username}),
+        serde_json::json!({"uid": uid, "username": user.username, "deleteposts": deleted}),
     )
     .await;
-    crate::audit::log(&ctx, uid, "banned", serde_json::json!({"reason": s(f.fields.get("reason")).trim(), "days": i(f.fields.get("days"))})).await;
-    Ok(ctx.redirect(
-        &format!("/admin/users/{uid}"),
-        &format!("{} has been banned.", user.username),
-    ))
+    crate::audit::log(&ctx, uid, "banned", serde_json::json!({"reason": reason, "days": days})).await;
+    let msg = format!("{} has been banned.", user.username);
+    // Deleted content can't come back, so only a plain ban offers an undo.
+    if deleted {
+        Ok(ctx.redirect(&back, &msg))
+    } else {
+        Ok(ctx.redirect_undo(&back, &msg, "/modcp/liftban", &[("uid", uid.to_string()), ("back", back.clone())]))
+    }
 }
 
 pub async fn awaiting(ctx: Ctx) -> AppResult<Response> {

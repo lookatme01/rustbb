@@ -768,7 +768,7 @@ async fn load_user(ctx: &Ctx, uid: i32) -> AppResult<User> {
 }
 
 /// Moderators may not edit/ban users in groups with more power (admins, super mods).
-fn can_act_on(ctx: &Ctx, target: &User) -> bool {
+pub(crate) fn can_act_on(ctx: &Ctx, target: &User) -> bool {
     let tp = ctx.cache.group_perms(&target.all_groups());
     if tp.cancp && !ctx.perms.cancp {
         return false;
@@ -962,6 +962,8 @@ pub struct BanForm {
     pub gid: i32,
     #[serde(default, deserialize_with = "de::bool")]
     pub deleteposts: bool,
+    #[serde(default, deserialize_with = "de::string")]
+    pub back: String,
 }
 
 /// Ban a user (moves them to a banned group; restored when the ban lifts).
@@ -1071,16 +1073,27 @@ pub async fn ban_save(ctx: Ctx, CsrfForm(f): CsrfForm<BanForm>) -> AppResult<Res
     }
     crate::ops::log_moderator_action(&ctx.app, ctx.uid(), &ctx.ip, 0, 0, 0, "Banned user", serde_json::json!({"uid": uid, "username": user.username, "reason": f.reason, "days": f.days})).await;
     crate::audit::log(&ctx, uid, "banned", serde_json::json!({"reason": f.reason})).await;
-    Ok(ctx.redirect(
-        "/modcp/banning",
-        &format!("{} has been banned.", user.username),
-    ))
+    let msg = format!("{} has been banned.", user.username);
+    match member_back(&f.back, uid) {
+        // Deleted content can't come back, so only a plain ban offers an undo.
+        Some(back) if !f.deleteposts => Ok(ctx.redirect_undo(&back, &msg, "/modcp/liftban", &[("uid", uid.to_string()), ("back", back.clone())])),
+        Some(back) => Ok(ctx.redirect(&back, &msg)),
+        None => Ok(ctx.redirect("/modcp/banning", &msg)),
+    }
 }
 
 #[derive(Deserialize, Default)]
 pub struct LiftForm {
     #[serde(default, deserialize_with = "de::i32")]
     pub uid: i32,
+    #[serde(default, deserialize_with = "de::string")]
+    pub back: String,
+}
+
+/// A "back" form field naming a member page about `uid`, if that is what it is.
+pub(crate) fn member_back(back: &str, uid: i32) -> Option<String> {
+    let ok = back.starts_with(&format!("/admin/users/{uid}")) || back.starts_with(&format!("/modcp/member/{uid}"));
+    (ok && !back.contains("//")).then(|| back.to_string())
 }
 
 pub async fn lift_ban_for(app: &App, uid: i32) -> AppResult<()> {
@@ -1136,7 +1149,8 @@ pub async fn lift_ban(ctx: Ctx, CsrfForm(f): CsrfForm<LiftForm>) -> AppResult<Re
     }
     check_can_lift(&ctx, f.uid).await?;
     lift_ban_logged(&ctx, f.uid).await?;
-    Ok(ctx.redirect("/modcp/banning", "The ban has been lifted."))
+    let to = member_back(&f.back, f.uid).unwrap_or_else(|| "/modcp/banning".into());
+    Ok(ctx.redirect(&to, "The ban has been lifted."))
 }
 
 // ---------------------------------------------------------------- IP search

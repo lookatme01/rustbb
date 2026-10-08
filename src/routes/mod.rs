@@ -15,6 +15,7 @@ pub mod memberlist;
 pub mod misc;
 pub mod modcp;
 pub mod moderation;
+pub mod memberactions;
 pub mod modnotes;
 pub mod modreports;
 pub mod online;
@@ -172,6 +173,7 @@ pub fn router() -> Router<App> {
         .merge(pgp::router())
         .merge(modcp::router())
         .merge(modnotes::router())
+        .merge(memberactions::router())
         .merge(modreports::router())
         .merge(appeals::router())
         .merge(moderation::router())

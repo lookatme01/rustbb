@@ -153,7 +153,7 @@ pub async fn retract(
 
 /// One entry on the member's timeline.
 #[derive(Serialize)]
-struct Event {
+pub(crate) struct Event {
     kind: &'static str,
     when: i64,
     title: String,
@@ -164,6 +164,8 @@ struct Event {
     note_id: i64,
     retracted_by: Option<String>,
     can_retract: bool,
+    /// Notes only: pinned to the top of the member file.
+    pinned: bool,
 }
 
 impl Event {
@@ -178,6 +180,7 @@ impl Event {
             note_id: 0,
             retracted_by: None,
             can_retract: false,
+            pinned: false,
         }
     }
 }
@@ -197,29 +200,21 @@ const KINDS: &[(&str, &str)] = &[
     ("appeals", "Ban appeals"),
 ];
 
-pub async fn history(
-    ctx: Ctx,
-    Path(uid): Path<i32>,
-    Query(q): Query<HistoryQuery>,
-) -> AppResult<Response> {
-    require_staff(&ctx)?;
-    let member: crate::models::User = sqlx::query_as(&format!(
-        "SELECT {} FROM users WHERE uid = $1",
-        crate::models::USER_COLUMNS
-    ))
-    .bind(uid)
-    .fetch_optional(&ctx.app.db)
-    .await?
-    .ok_or_else(|| AppError::not_found("member"))?;
+/// Everything recorded about a member that the viewer may see, newest first: notes, warnings,
+/// staff actions on the account, reports, moderation of their content and ban appeals.
+/// `filter` is one of the [`KINDS`] keys, or empty for all.
+pub(crate) async fn timeline(ctx: &Ctx, member: &crate::models::User, filter: &str) -> AppResult<Vec<Event>> {
+    let uid = member.uid;
     let db = &ctx.app.db;
     let t = now();
-    let want = |k: &str| q.r#type.is_empty() || q.r#type == k;
+    let want = |k: &str| filter.is_empty() || filter == k;
     let mut events: Vec<Event> = vec![];
+
 
     let notes_visible = ctx.can(Cap::ReadModNotes);
     if want("notes") && notes_visible {
-        let rows: Vec<(i64, i32, String, i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT n.id, COALESCE(n.author, 0), n.note, n.created, n.retracted_at, a.username, r.username
+        let rows: Vec<(i64, i32, String, i64, i64, Option<String>, Option<String>, bool)> = sqlx::query_as(
+            "SELECT n.id, COALESCE(n.author, 0), n.note, n.created, n.retracted_at, a.username, r.username, n.pinned
              FROM moderator_notes n LEFT JOIN users a ON a.uid = n.author LEFT JOIN users r ON r.uid = n.retracted_by
              WHERE n.uid = $1 ORDER BY n.id DESC LIMIT $2",
         )
@@ -227,8 +222,9 @@ pub async fn history(
         .bind(SOURCE_LIMIT)
         .fetch_all(db)
         .await?;
-        for (id, author, note, created, retracted_at, author_name, retracted_name) in rows {
+        for (id, author, note, created, retracted_at, author_name, retracted_name, pinned) in rows {
             let mut e = Event::new("notes", created, "Note");
+            e.pinned = pinned;
             e.detail = note;
             e.actor = Some(if author == 0 {
                 "Imported".into()
@@ -399,7 +395,7 @@ pub async fn history(
         let rows: Vec<(String, i64, i32, i32, Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT l.action, l.dateline, l.tid, l.pid, u.username, t.subject
              FROM moderatorlog l LEFT JOIN users u ON u.uid = l.uid LEFT JOIN threads t ON t.tid = l.tid
-             WHERE ((l.data->>'uid' = $1::text AND l.action NOT IN ('Lifted ban', 'Warned user', 'Banned user'))
+             WHERE ((l.data->>'uid' = $1::text AND l.action NOT IN ('Lifted ban', 'Warned user', 'Banned user', 'Restricted member', 'Lifted restriction', 'Undid a restriction'))
                 OR (l.pid > 0 AND l.pid IN (SELECT pid FROM posts WHERE uid = $1))
                 OR (l.pid = 0 AND l.tid > 0 AND l.tid IN (SELECT tid FROM threads WHERE uid = $1)))
                AND ($3 OR l.fid = ANY($4))
@@ -460,38 +456,54 @@ pub async fn history(
     }
 
     events.sort_by_key(|a| std::cmp::Reverse(a.when));
-    let ban: Option<(String, i64)> =
-        sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
-            .bind(uid)
-            .fetch_optional(db)
-            .await?;
-    let warn_pct = (member.warningpoints as i64 * 100
-        / ctx.settings().int("maxwarningpoints").max(1))
-    .min(100);
-    let kinds: Vec<_> = KINDS
+    Ok(events)
+}
+
+/// The timeline filters the viewer may use.
+pub(crate) fn visible_kinds(ctx: &Ctx) -> Vec<minijinja::Value> {
+    KINDS
         .iter()
-        .filter(|k| (k.0 != "warnings" || warnings_visible) && (k.0 != "notes" || notes_visible))
+        .filter(|k| (k.0 != "warnings" || ctx.perms.canviewwarnlogs) && (k.0 != "notes" || ctx.can(Cap::ReadModNotes)))
         .map(|k| minijinja::context! { key => k.0, label => k.1 })
-        .collect();
-    let group = ctx
-        .cache
-        .group(member.usergroup)
-        .map(|g| g.title.clone())
-        .unwrap_or_default();
+        .collect()
+}
+
+pub async fn history(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    Query(q): Query<HistoryQuery>,
+) -> AppResult<Response> {
+    require_staff(&ctx)?;
+    let member: crate::models::User = sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("member"))?;
+    let events = timeline(&ctx, &member, &q.r#type).await?;
+    let notes = if !q.r#type.is_empty() && q.r#type != "notes" {
+        Some(timeline(&ctx, &member, "notes").await?)
+    } else {
+        None
+    };
+    let mf = crate::member_file::load(&ctx, &member, crate::member_file::View::of(&ctx)).await?;
+    let outranked = crate::routes::modcp::can_act_on(&ctx, &member) && member.uid != ctx.uid() && !member.is_system;
     ctx.render(
         "modcp/member.html",
         minijinja::context! {
-            title => format!("Moderation history: {}", member.username),
+            title => member.username.clone(),
             mcp_active => "finduser",
             breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string())],
-            member => minijinja::context! {
-                uid => member.uid, username => &member.username, group => group, regdate => member.regdate,
-                postnum => member.postnum, warn_pct => warn_pct, warnings_visible => warnings_visible,
-                suspendposting => member.suspendposting, moderateposts => member.moderateposts, suspendsignature => member.suspendsignature,
-            },
-            ban => ban.map(|(reason, lifted)| minijinja::context! { reason => reason, lifted => lifted }),
-            events => events, kinds => kinds, filter => &q.r#type, can_write_notes => ctx.can(Cap::WriteModNotes),
-            can_ban => ctx.perms.canbanusers, can_warn => ctx.perms.canwarnusers,
+            mf => mf, events => events, notes => notes, kinds => visible_kinds(&ctx), filter => &q.r#type,
+            reasons => crate::member_file::reason_suggestions(&ctx.app.db).await?,
+            can_write_notes => ctx.can(Cap::WriteModNotes),
+            can_ban => ctx.perms.canbanusers && outranked,
+            can_warn => ctx.perms.canwarnusers && outranked,
+            can_restrict => (ctx.is_admin() || ctx.perms.caneditprofiles) && outranked,
+            can_edit => ctx.perms.caneditprofiles,
+            is_admin => ctx.is_admin(),
         },
     )
     .await

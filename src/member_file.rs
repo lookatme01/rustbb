@@ -366,6 +366,8 @@ pub struct MemberFile {
     pub others: Vec<Other>,
     pub pinned: Option<PinnedNote>,
     pub is_system: bool,
+    /// For the ban preview: signed-in devices that a ban ends.
+    pub active_logins: i64,
 }
 
 impl MemberFile {
@@ -626,7 +628,30 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         others,
         pinned,
         is_system: u.is_system,
+        active_logins: sqlx::query_scalar("SELECT COUNT(*) FROM logins WHERE uid = $1 AND expires > $2")
+            .bind(u.uid)
+            .bind(t)
+            .fetch_one(db)
+            .await?,
     })
+}
+
+/// Reasons staff typed before, most used first, plus the warning types: offered as suggestions
+/// in the ban and restrict forms.
+pub async fn reason_suggestions(db: &sqlx::PgPool) -> AppResult<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT r FROM (
+            SELECT reason AS r, COUNT(*) AS n FROM banned WHERE reason <> '' GROUP BY reason
+            UNION ALL
+            SELECT details->>'reason', COUNT(*) FROM user_audit WHERE action = 'restricted' AND COALESCE(details->>'reason', '') <> '' AND dateline > $1 GROUP BY 1
+            UNION ALL
+            SELECT title, 0 FROM warningtypes
+         ) s GROUP BY r ORDER BY SUM(n) DESC, r LIMIT 12",
+    )
+    .bind(now() - 365 * 86_400)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
 fn non_empty(s: &str) -> Option<&str> {
