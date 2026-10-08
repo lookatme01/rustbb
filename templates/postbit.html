@@ -14,9 +14,8 @@
         {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
         <dl class="author-stats">
           <div><dt>Posts</dt><dd><a href="/user/{{ a.uid }}/posts">{{ a.postnum|num }}</a></dd></div>
-          <div><dt>Threads</dt><dd><a href="/user/{{ a.uid }}/threads">{{ a.threadnum|num }}</a></dd></div>
           <div><dt>Joined</dt><dd>{{ a.regdate|date('date') }}</dd></div>
-          {% if bb.enablereputation == '1' %}<div><dt>Reputation</dt><dd><a href="/reputation/{{ a.uid }}">{{ a.reputation }}</a></dd></div>{% endif %}
+          {% if bb.enablereputation == '1' and a.reputation %}<div><dt>Reputation</dt><dd><a href="/reputation/{{ a.uid }}">{{ a.reputation }}</a></dd></div>{% endif %}
           {% if a.warninglevel and (is_mod or (me and me.uid == a.uid)) %}<div><dt>Warning</dt><dd><a href="/warnings/{{ a.uid }}">{{ a.warninglevel }}%</a></dd></div>{% endif %}
           {% for f in a.fields or [] %}<div><dt>{{ f[0] }}</dt><dd>{{ f[1] }}</dd></div>{% endfor %}
         </dl>
@@ -63,14 +62,13 @@
         {% endif %}
       </div>
       <span class="spacer"></span>
-      {% if p.uid and p.author %}<a class="btn secondary small" href="/user/{{ p.uid }}">Profile</a>{% endif %}
       {% if p.can_report %}<a class="btn secondary small" href="/report?type=post&id={{ p.pid }}">{{ t("Report") }}</a>{% endif %}
       {% if p.can_warn %}<a class="btn secondary small" href="/warnings/{{ p.uid }}/warn?pid={{ p.pid }}">Warn</a>{% endif %}
       {% if p.visible == -1 and is_mod %}<form method="post" action="/restorepost/{{ p.pid }}"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">Restore</button></form>{% endif %}
       {% if p.can_edit %}<a class="btn secondary small" href="/editpost/{{ p.pid }}">{{ t("Edit") }}</a>{% endif %}
       {% if p.can_delete and p.visible != -1 %}<form method="post" action="/deletepost/{{ p.pid }}" class="js-confirm" data-confirm="Delete this post?"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">{{ t("Delete") }}</button></form>{% endif %}
       {% if p.can_quote and thread and not p.visible == -1 %}
-        {% if bb.multiquote == '1' %}<button type="button" class="btn secondary small js-multiquote" data-pid="{{ p.pid }}" aria-pressed="false">+ Quote</button>{% endif %}
+        {% if bb.multiquote == '1' %}<button type="button" class="btn secondary small js-multiquote" data-pid="{{ p.pid }}" aria-pressed="false" title="Collect several posts to quote in one reply">Multi-quote</button>{% endif %}
         <a class="btn small js-quote" data-pid="{{ p.pid }}" href="/newreply/{{ thread.tid }}?pid={{ p.pid }}">{{ t("Quote") }}</a>
       {% endif %}
     </footer>

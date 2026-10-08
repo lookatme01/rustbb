@@ -245,7 +245,7 @@
   // ------------------------------------------------------------------ quoting
   function initMultiquote() {
     const selected = () => readCookie("multiquote").split(",").filter(Boolean);
-    const sync = () => { const s = selected(); $$(".js-multiquote").forEach((b) => { const on = s.includes(b.dataset.pid); b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "− Quote" : "+ Quote"; }); };
+    const sync = () => { const s = selected(); $$(".js-multiquote").forEach((b) => { const on = s.includes(b.dataset.pid); b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "✓ Multi-quote" : "Multi-quote"; }); };
     $$(".js-multiquote").forEach((b) => b.addEventListener("click", () => {
       let s = selected();
       s = s.includes(b.dataset.pid) ? s.filter((x) => x !== b.dataset.pid) : s.concat([b.dataset.pid]);

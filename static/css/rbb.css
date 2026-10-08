@@ -1341,3 +1341,6 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
 .listing-head { margin-bottom: 14px; }
 .listing-head h1 { margin: 0 0 2px; }
 .listing-head .search-count { margin: 0; }
+/* With a quick reply box on the page, Quote already collects quotes there. */
+body:has(#quickreply) .js-multiquote { display: none; }
+.quickreply .wy-surface, .quickreply .editor textarea { min-height: 120px; }
