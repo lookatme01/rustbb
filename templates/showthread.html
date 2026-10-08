@@ -8,7 +8,7 @@
     <div class="meta">
       <a class="chip" href="{{ url_forum(forum.fid, forum.name) }}">{{ forum.name }}</a>
       <span>Started by {{ m.userlink(thread.uid, thread.username) }} · {{ thread.dateline|date }}</span>
-      <span>{{ thread.replies|num }} repl{{ 'y' if thread.replies == 1 else 'ies' }} · {{ thread.views|num }} views</span>
+      <span>{{ thread.replies|num }} repl{{ 'y' if thread.replies == 1 else 'ies' }} · {{ thread.views|num }} {{ thread.views|plural("view","views") }}</span>
       {% if thread.numratings and forum.allowtratings %}<span>★ {{ "%.1f"|format(rating) }} ({{ thread.numratings }})</span>{% endif %}
     </div>
   </div>

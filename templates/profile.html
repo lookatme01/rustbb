@@ -21,10 +21,16 @@
       {% if me and me.uid != user.uid and not user.is_system %}
       <form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removebuddy' if is_buddy else 'buddy' }}"><button class="btn secondary" type="submit">{{ 'Remove friend' if is_buddy else 'Add friend' }}</button></form>
       {% endif %}
-      {% if can_email %}<a class="btn secondary" href="/user/{{ user.uid }}/email">Email</a>{% endif %}
-      {% if can_rep and not user.is_system %}<a class="btn secondary" href="/reputation/{{ user.uid }}/add">Rate</a>{% endif %}
-      {% if me and me.uid != user.uid and not user.is_system %}
-      <form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removeignore' if is_ignored else 'ignore' }}"><button class="btn ghost" type="submit">{{ 'Unignore' if is_ignored else 'Ignore' }}</button></form>
+      {% set can_rate = can_rep and not user.is_system %}{% set can_ignore = me and me.uid != user.uid and not user.is_system %}
+      {% if can_email or can_rate or can_ignore %}
+      <details class="popmenu down">
+        <summary class="btn secondary" aria-label="More profile actions">More</summary>
+        <div class="menu">
+          {% if can_email %}<a href="/user/{{ user.uid }}/email">Email</a>{% endif %}
+          {% if can_rate %}<a href="/reputation/{{ user.uid }}/add">Rate</a>{% endif %}
+          {% if can_ignore %}<form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removeignore' if is_ignored else 'ignore' }}"><button type="submit">{{ 'Unignore' if is_ignored else 'Ignore' }}</button></form>{% endif %}
+        </div>
+      </details>
       {% endif %}
     </div>
   </div>
@@ -79,7 +85,7 @@
       <div>Total posts</div><div>{{ user.postnum|num }} ({{ posts_per_day }} per day · {{ posts_percent }}% of all) — <a href="/user/{{ user.uid }}/posts">find all posts</a></div>
       <div>Total threads</div><div>{{ user.threadnum|num }} ({{ threads_per_day }} per day · {{ threads_percent }}% of all) — <a href="/user/{{ user.uid }}/threads">find all threads</a></div>
       <div>Time online</div><div>{{ timeonline }}</div>
-      {% if active_forum %}<div>Most active in</div><div><a href="{{ active_forum.url }}">{{ active_forum.name }}</a> ({{ active_forum.count|num }} posts)</div>{% endif %}
+      {% if active_forum %}<div>Most active in</div><div><a href="{{ active_forum.url }}">{{ active_forum.name }}</a> ({{ active_forum.count|num }} {{ active_forum.count|plural("post","posts") }})</div>{% endif %}
       {% if bb.enablereputation == '1' %}<div>Reputation</div><div><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a>{% if can_rep %} · <a href="/reputation/{{ user.uid }}/add">rate</a>{% endif %}</div>{% endif %}
       {% if warnings_visible %}<div>Warning level</div><div><div class="meter warnlevel" style="max-width:200px"><span style="width:{{ warn_level }}%"></span></div><a href="/warnings/{{ user.uid }}">{{ warn_level }}%</a>{% if can_warn %} · <a href="/warnings/{{ user.uid }}/warn">warn</a>{% endif %}</div>{% endif %}
       {% if user.referrals %}<div>Referrals</div><div><a href="/user/{{ user.uid }}/referrals">{{ user.referrals }}</a></div>{% endif %}

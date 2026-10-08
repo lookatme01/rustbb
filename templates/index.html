@@ -10,7 +10,7 @@
       <p>{{ props.hero_text or ("Welcome back, " ~ me.username ~ "." if me else "A community built for good conversations. Join in.") }}</p>
       {% if stats or online %}
       <div class="hero-stats">
-        {% if stats %}<span><b>{{ stats.users|num }}</b> members</span><span><b>{{ stats.posts|num }}</b> posts</span>{% endif %}
+        {% if stats %}<span><b>{{ stats.users|num }}</b> {{ stats.users|plural("member","members") }}</span><span><b>{{ stats.posts|num }}</b> {{ stats.posts|plural("post","posts") }}</span>{% endif %}
         {% if online %}<span class="live"><b>{{ online.total|num }}</b> online now</span>{% endif %}
       </div>
       {% endif %}

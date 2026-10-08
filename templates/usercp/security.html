@@ -15,7 +15,7 @@
 {% else %}
   <form class="js-passkey-add" method="post" action="/usercp/passkeys/begin">{{ m.csrf_field() }}
     {% if not passkeys %}<div class="box-body small">A passkey lives on your phone, computer or security key and is unlocked the same way you unlock the device. It can't be guessed, reused or phished, and you never have to type it.</div>{% endif %}
-    <div class="form-row"><label for="pk-name">Name</label><input id="pk-name" name="name" maxlength="60" placeholder="e.g. My phone" autocomplete="off"></div>
+    <div class="form-row"><label for="pk-name">Name</label><input id="pk-name" type="text" name="name" maxlength="60" placeholder="e.g. My phone" autocomplete="off"></div>
     <div class="form-row"><label for="pk-pw">Password</label><input id="pk-pw" type="password" name="password" autocomplete="current-password" required></div>
     <p class="notice bad small js-passkey-error" role="alert" hidden></p>
     <noscript><p class="notice warn small">Adding a passkey needs JavaScript.</p></noscript>
@@ -26,20 +26,24 @@
 <section class="box"><div class="box-head"><h2>Two-factor authentication</h2><span class="right">{% if enabled %}<span class="tag">Enabled</span>{% else %}<span class="tag">Off</span>{% endif %}</span></div>
 {% if enabled %}
   <form method="post" action="/usercp/security/2fa">{{ m.csrf_field() }}<input type="hidden" name="disable" value="1">
-    <div class="form-row"><label for="code">Current code</label><input id="code" name="code" inputmode="numeric" maxlength="6" required></div>
+    <div class="form-row"><label for="code">Current code</label><input id="code" type="text" name="code" inputmode="numeric" maxlength="6" required></div>
     <div class="form-row"><label for="pw">Password</label><input id="pw" type="password" name="password" required></div>
     <div class="box-foot"><button class="btn danger" type="submit">Turn off two-factor authentication</button></div>
   </form>
 {% else %}
-  <form method="post" action="/usercp/security/2fa">{{ m.csrf_field() }}<input type="hidden" name="secret" value="{{ secret }}">
-    <div class="box-body" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
-      <div style="background:#fff;padding:6px;border-radius:6px;line-height:0">{{ qr|safe }}</div>
-      <div class="small">Scan this code with an authenticator app (1Password, Authy, Google Authenticator…), or enter the key manually:<br><code style="font-size:1rem;word-break:break-all">{{ secret }}</code></div>
-    </div>
-    <div class="form-row"><label for="code">Code from the app</label><input id="code" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>
-    <div class="form-row"><label for="pw">Password</label><input id="pw" type="password" name="password" required></div>
-    <div class="box-foot"><button class="btn" type="submit">Turn on two-factor authentication</button></div>
-  </form>
+  <div class="box-body small">Require a six-digit code from an authenticator app each time you sign in, on top of your password.</div>
+  <details class="twofa-setup">
+    <summary class="btn secondary">Set up two-factor authentication</summary>
+    <form method="post" action="/usercp/security/2fa">{{ m.csrf_field() }}<input type="hidden" name="secret" value="{{ secret }}">
+      <div class="box-body twofa-key">
+        <div class="twofa-qr">{{ qr|safe }}</div>
+        <div class="small">Scan this code with an authenticator app (1Password, Authy, Google Authenticator…), or enter the key manually:<br><code>{{ secret }}</code></div>
+      </div>
+      <div class="form-row"><label for="code">Code from the app</label><input id="code" type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>
+      <div class="form-row"><label for="pw">Password</label><input id="pw" type="password" name="password" autocomplete="current-password" required></div>
+      <div class="box-foot"><button class="btn" type="submit">Turn on two-factor authentication</button></div>
+    </form>
+  </details>
 {% endif %}
 </section>
 <section class="box"><div class="box-head"><h2>Where you're logged in</h2></div>

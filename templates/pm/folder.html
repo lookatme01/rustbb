@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block pm %}
 <form method="get" action="/pm" class="pm-toolbar" role="search"><input type="hidden" name="folder" value="{{ folder }}">
-  <input type="search" name="q" value="{{ search }}" placeholder="Search {{ folder_name|lower }}" aria-label="Search messages"><button class="btn secondary small">Search</button>
+  {% if messages or search %}<input type="search" name="q" value="{{ search }}" placeholder="Search {{ folder_name|lower }}" aria-label="Search messages"><button class="btn secondary small">Search</button>{% endif %}
   {% if quota %}<span class="pm-quota" title="{{ used }} of {{ quota }} messages used"><span class="small muted">{{ used }} / {{ quota }}</span><span class="meter"><span style="width:{{ [used * 100 // quota, 100]|min }}%"></span></span></span>{% endif %}
 </form>
 <form method="post" action="/pm/action" class="box pm-box{% if folder == 4 %} pm-trash{% endif %}" id="pmlist">{{ m.csrf_field() }}<input type="hidden" name="folder" value="{{ folder }}">
@@ -19,7 +19,7 @@
         <span class="pm-date">{{ p.dateline|date }}</span>
       </a>
     </li>
-  {% else %}<li class="empty">{% if search %}No messages match “{{ search }}”.{% else %}There are no messages in this folder.{% endif %}</li>{% endfor %}
+  {% else %}<li class="empty">{% if search %}No messages match “{{ search }}”.{% elif folder == 1 %}<strong>Your inbox is empty</strong><br><span class="small">New private messages will show up here.</span><br><a class="btn small" style="margin-top:12px" href="/pm/send">Compose message</a>{% else %}There are no messages in this folder.{% endif %}</li>{% endfor %}
   </ul>
   {% if messages or folder == 4 %}
   <div class="box-foot pm-bulk">

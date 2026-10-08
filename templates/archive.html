@@ -16,7 +16,7 @@ blockquote{border-left:3px solid #ccc;margin:6px 0;padding:2px 10px;color:#444}p
 {% elif mode == 'forum' %}
 <h1>{{ forum.name }}</h1>
 {% if subforums %}<p>Subforums: {% for s in subforums %}<a href="/archive/forum/{{ s[0] }}">{{ s[1] }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
-<ol start="{{ (pagination.page - 1) * 50 + 1 }}">{% for t in threads %}<li>{% if t[3] %}<strong>Sticky:</strong> {% endif %}<a href="/archive/thread/{{ t[0] }}">{{ t[1] }}</a> <span class="meta">({{ t[2] }} replies)</span></li>{% endfor %}</ol>
+<ol start="{{ (pagination.page - 1) * 50 + 1 }}">{% for t in threads %}<li>{% if t[3] %}<strong>Sticky:</strong> {% endif %}<a href="/archive/thread/{{ t[0] }}">{{ t[1] }}</a> <span class="meta">({{ t[2] }} {{ t[2]|plural("reply","replies") }})</span></li>{% endfor %}</ol>
 {% else %}
 <h1>{{ thread.subject }}</h1>
 {% for p in posts %}<div class="post"><div class="meta"><strong>{{ p.username }}</strong> — {{ p.dateline|date('datetime') }}</div><div>{{ p.html|safe }}</div></div>{% endfor %}

@@ -14,7 +14,7 @@
   <div>Threads</div><div>{{ base.threads|num }} (+{{ threads_today }} today)</div>
   <div>Posts</div><div>{{ base.posts|num }} (+{{ posts_today }} today)</div>
   <div>Online now</div><div>{{ online }}</div>
-  <div>Moderation</div><div><a href="/modcp/modqueue">{{ uthreads }} threads, {{ uposts }} posts awaiting approval</a> · <a href="/modcp/reports">{{ reports }} open reports</a></div>
+  <div>Moderation</div><div><a href="/modcp/modqueue">{{ uthreads }} {{ uthreads|plural("thread","threads") }}, {{ uposts }} {{ uposts|plural("post","posts") }} awaiting approval</a> · <a href="/modcp/reports">{{ reports }} open {{ reports|plural("report","reports") }}</a></div>
   <div>Mail queue</div><div><a href="/admin/tools/mailerrors">{{ mailq }} pending</a></div>
 </div></section>
 <section class="box"><div class="box-head"><h2>Server</h2></div><div class="kv">
@@ -28,7 +28,7 @@
 </div></section>
 </div>
 {% if history|length > 1 %}
-<section class="box"><div class="box-head"><h2>Last {{ history|length }} days</h2></div>
+<section class="box"><div class="box-head"><h2>Last {{ history|length }} {{ history|length|plural("day","days") }}</h2></div>
 <table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in history|reverse %}<tr><td>{{ h[0]|date('date') }}</td><td class="num">{{ h[1]|num }}</td><td class="num">{{ h[2]|num }}</td><td class="num">{{ h[3]|num }}</td></tr>{% endfor %}</tbody></table></section>
 {% endif %}
 <div class="two-col">

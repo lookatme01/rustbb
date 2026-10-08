@@ -5,7 +5,7 @@
   <div class="box-head"><h2>{{ member.username }}</h2><a class="right small" href="{{ url_user(member.uid, member.username) }}">Profile</a></div>
   <div class="kv">
     <div>Group</div><div>{{ member.group }}</div>
-    <div>Joined</div><div>{{ member.regdate|date('date') }} · {{ member.postnum|num }} posts</div>
+    <div>Joined</div><div>{{ member.regdate|date('date') }} · {{ member.postnum|num }} {{ member.postnum|plural("post","posts") }}</div>
     {% if ban %}<div>Status</div><div><strong>Banned</strong>{% if ban.reason %}: {{ ban.reason }}{% endif %} · {% if ban.lifted %}until {{ ban.lifted|date }}{% else %}permanent{% endif %}</div>{% endif %}
     {% if member.warnings_visible %}<div>Warning level</div><div>{{ member.warn_pct }}%</div>{% endif %}
     {% if member.suspendposting or member.moderateposts or member.suspendsignature %}<div>Restrictions</div><div>{% if member.suspendposting %}Posting suspended. {% endif %}{% if member.moderateposts %}Posts moderated. {% endif %}{% if member.suspendsignature %}Signature suspended.{% endif %}</div>{% endif %}

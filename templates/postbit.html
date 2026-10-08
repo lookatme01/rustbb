@@ -28,7 +28,7 @@
     <header class="post-head">
       <div class="who">
         {{ m.face(a.avatar if a else '', uname, a.uid if a else 0, 38, '', a.online if a else false) }}
-        <div><span class="name">{% if a %}{{ a.formatted|safe }}{% else %}{{ uname }}{% endif %}</span><span class="sub">{% if a %}{{ a.usertitle }}{% if a.usertitle %} · {% endif %}{{ a.postnum|num }} posts{% else %}{{ 'Guest' if not p.uid else 'Deleted user' }}{% endif %}</span></div>
+        <div><span class="name">{% if a %}{{ a.formatted|safe }}{% else %}{{ uname }}{% endif %}</span><span class="sub">{% if a %}{{ a.usertitle }}{% if a.usertitle %} · {% endif %}{{ a.postnum|num }} {{ a.postnum|plural("post","posts") }}{% else %}{{ 'Guest' if not p.uid else 'Deleted user' }}{% endif %}</span></div>
       </div>
       <div class="when">
         {% if p.icon %}<img class="thread-icon" src="{{ p.icon }}" alt="">{% endif %}
@@ -46,7 +46,7 @@
       <div class="post-body">{{ p.message|safe }}</div>
       {% if p.attachments %}
       <div class="post-attachments"><strong>Attached files</strong>
-        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} downloads){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
+        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
       </div>
       {% endif %}
       {% if p.edited %}<div class="post-edited">Last edited {{ p.edited[1]|date }} by {{ p.edited[0] }}{% if p.edited[2] %} — {{ p.edited[2] }}{% endif %}{% if p.has_history %} · <a href="/post/{{ p.pid }}/history">history</a>{% endif %}</div>{% endif %}

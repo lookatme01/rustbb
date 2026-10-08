@@ -4,7 +4,7 @@
 <section class="box"><div class="box-head"><h2>System automated moderation</h2></div>
 <div class="box-body">
 <p>System evaluates new and edited posts every 30 seconds. Observation records matches; quarantine sends them to the moderation queue. Existing content is preserved. Staff and System are exempt.</p>
-<p>{{ queued }} posts queued · {{ pending }} quarantine actions awaiting review · Policy revision {{ revision }}</p>
+<p>{{ queued }} {{ queued|plural("post","posts") }} queued · {{ pending }} quarantine actions awaiting review · Policy revision {{ revision }}</p>
 <form method="post" action="/admin/automod">
 {{ m.csrf_field() }}<input type="hidden" name="revision" value="{{ revision }}">
 <p><label>Mode <select name="mode">{% for mode in ['off','observe','quarantine'] %}<option value="{{ mode }}"{% if policy.mode == mode %} selected{% endif %}>{{ mode|capitalize }}</option>{% endfor %}</select></label></p>

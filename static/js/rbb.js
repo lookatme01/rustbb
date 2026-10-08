@@ -92,6 +92,13 @@
       });
     });
 
+    // Tables that scroll sideways on phones must be reachable by keyboard.
+    const focusScrollers = () => $$("table.grid").forEach((t) => {
+      if (t.scrollWidth > t.clientWidth + 1) t.tabIndex = 0; else t.removeAttribute("tabindex");
+    });
+    focusScrollers();
+    addEventListener("resize", focusScrollers);
+
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
       const key = "rbb.collapse." + box.dataset.collapse;
@@ -492,3 +499,11 @@
   const sweep = () => document.querySelectorAll("img[data-initial]").forEach((i) => { if (i.complete && i.naturalWidth === 0) fallback(i); });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", sweep); else sweep();
 })();
+
+// Show the chosen file's name next to a styled file picker.
+document.addEventListener("change", (e) => {
+  const i = e.target;
+  if (!(i instanceof HTMLInputElement) || i.type !== "file") return;
+  const n = i.closest(".file-pick")?.querySelector(".file-name");
+  if (n) n.textContent = i.files && i.files.length ? i.files[0].name : "No file chosen";
+});

@@ -170,6 +170,9 @@ main { padding: 8px 0 64px; flex: 1 0 auto; width: 100%; }
 }
 .quicksearch input[type=search]::placeholder { color: var(--ink-faint); }
 .quicksearch input[type=search]:focus { width: 300px; background: var(--surface); border-color: var(--signal); box-shadow: 0 0 0 4px var(--ring); outline: none; }
+.portal-search .quicksearch { margin: 0 0 8px; }
+.portal-search .quicksearch input[type=search], .portal-search .quicksearch input[type=search]:focus { width: 100%; }
+.portal-search > a { color: var(--ink-faint); }
 .account { display: flex; align-items: center; gap: 4px; }
 .icon-btn { position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 999px; color: var(--ink-soft); transition: background .15s, color .15s; }
 .icon-btn svg { width: 20px; height: 20px; }
@@ -649,6 +652,11 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .smilie-picker { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 8px; border-top: 1px solid var(--rule); }
 .smilie-picker button { background: none; border: 0; border-radius: 8px; padding: 4px; cursor: pointer; transition: transform .1s, background .1s; }
 .smilie-picker button:hover { background: var(--surface-3); transform: scale(1.15); }
+@media (max-width: 600px) {
+  .smilie-picker { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .smilie-picker::-webkit-scrollbar { display: none; }
+  .smilie-picker button { flex: none; }
+}
 .icon-choices { display: flex; flex-wrap: wrap; gap: 10px; }
 .icon-choices label { font-weight: 400; display: inline-flex; gap: 4px; align-items: center; }
 .icon-choices img { width: 16px; height: 16px; }
@@ -674,7 +682,7 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .sidenav a.active { background: var(--signal-wash); color: var(--signal-strong); font-weight: 650; }
 .sidenav a .count { margin-left: auto; font-size: .72rem; background: var(--signal); color: var(--signal-ink); padding: 1px 7px; border-radius: 999px; font-weight: 700; }
 @media (max-width: 860px) {
-  .with-sidebar { grid-template-columns: 1fr; }
+  .with-sidebar { grid-template-columns: minmax(0, 1fr); }
   .sidenav { position: static; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 6px; }
   .sidenav::-webkit-scrollbar { display: none; }
   .sidenav h3 { display: none; }
@@ -1243,6 +1251,7 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
 
 /* ================================================================== composer */
 .compose { display: grid; gap: 14px; padding: 18px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
+.compose > * { min-width: 0; }
 .compose-subject { display: flex; gap: 8px; }
 .compose-subject select { width: auto; flex: none; height: 48px; }
 .compose-subject input { flex: 1; min-width: 0; height: 48px; font-size: 1.12rem; font-weight: 600; }
@@ -1268,8 +1277,7 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
 .btn.ghost:hover { background: var(--surface-3); color: var(--ink); }
 @media (max-width: 600px) {
   .compose { padding: 12px; border-radius: var(--radius-lg); }
-  .compose-subject { flex-wrap: wrap; }
-  .compose-subject select { width: 100%; }
+  .compose-subject select { max-width: 36%; }
 }
 .editor-toolbar select[data-tag] { width: 78px; }
 @media (max-width: 600px) {
@@ -1348,6 +1356,7 @@ body:has(#quickreply) .js-multiquote { display: none; }
 .form-row .bday select, .form-row .bday input { width: 100%; max-width: none; }
 .bday select[name=birthdayprivacy] { grid-column: 1 / -1; }
 .popmenu.down .menu { top: calc(100% + 8px); bottom: auto; }
+.profile-head .popmenu .menu { min-width: 190px; }
 .menu-form { display: grid; gap: 8px; padding: 8px; }
 .menu-form select { width: 100%; }
 .popmenu .menu .menu-form .btn { justify-content: center; width: 100%; background: var(--signal); color: var(--signal-ink); font-weight: 650; }
@@ -1415,3 +1424,21 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .calendar a.wk { opacity: 0; transition: opacity .12s; }
 .calendar tr:hover a.wk, .calendar tr:focus-within a.wk, .calendar a.wk:focus-visible { opacity: 1; }
 @media (max-width: 700px), (hover: none) { .calendar a.wk { display: none; } }
+
+
+/* usercp: two-factor setup disclosure, avatar picker */
+.twofa-setup { border-top: 1px solid var(--rule); }
+.twofa-setup > summary { margin: 14px 20px; list-style: none; }
+.twofa-setup > summary::-webkit-details-marker { display: none; }
+.twofa-setup > summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.twofa-setup[open] > summary { margin-bottom: 0; }
+.twofa-key { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.twofa-qr { background: #fff; padding: 6px; border-radius: 6px; line-height: 0; }
+.twofa-key code { font-size: 1rem; word-break: break-all; }
+.avatar-current { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.avatar-current > .small { flex: 1 1 200px; min-width: 0; }
+.file-pick { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.file-pick .btn { position: relative; cursor: pointer; }
+.file-pick input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.file-pick .btn:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
+.file-pick .file-name { min-width: 0; overflow-wrap: anywhere; }
