@@ -1344,3 +1344,6 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
 /* With a quick reply box on the page, Quote already collects quotes there. */
 body:has(#quickreply) .js-multiquote { display: none; }
 .quickreply .wy-surface, .quickreply .editor textarea { min-height: 120px; }
+.bday { display: grid; grid-template-columns: 90px minmax(0, 1fr) 100px; gap: 6px; max-width: 480px; }
+.form-row .bday select, .form-row .bday input { width: 100%; max-width: none; }
+.bday select[name=birthdayprivacy] { grid-column: 1 / -1; }

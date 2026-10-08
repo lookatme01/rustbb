@@ -434,7 +434,7 @@ pub async fn install(
     for (i, (name, ty, opts)) in [
         ("Location", "text", ""),
         ("Bio", "textarea", ""),
-        ("Sex", "select", "Undisclosed\nMale\nFemale\nOther"),
+        ("Pronouns", "text", ""),
     ]
     .iter()
     .enumerate()
@@ -442,14 +442,18 @@ pub async fn install(
         sqlx::query("INSERT INTO profilefields (name, description, disporder, type, options, maxlength) VALUES ($1, $2, $3, $4, $5, $6)")
             .bind(name)
             .bind(match *name {
-                "Location" => "Where in the world do you live?",
-                "Bio" => "Enter a few short details about yourself, your life story etc.",
-                _ => "Please select your sex from the list below.",
+                "Location" => "Optional. Shown on your profile.",
+                "Bio" => "A few words about you.",
+                _ => "Optional, for example she/her or they/them.",
             })
             .bind(i as i32 + 1)
             .bind(ty)
             .bind(opts)
-            .bind(if *ty == "textarea" { 1000 } else { 255 })
+            .bind(match *name {
+                "Bio" => 1000,
+                "Pronouns" => 40,
+                _ => 255,
+            })
             .execute(&mut *tx)
             .await?;
     }

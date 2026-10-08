@@ -5,10 +5,10 @@
 <form method="post" action="/usercp/profile" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Edit profile</h2></div>
   <div class="form-row"><span class="label"><strong>Birthday</strong></span>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div class="bday">
       <select name="bday" aria-label="Day"><option value="0">Day</option>{% for d in range(1, 32) %}<option value="{{ d }}"{% if bday == d|string %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
       <select name="bmonth" aria-label="Month"><option value="0">Month</option>{% for mo in ['January','February','March','April','May','June','July','August','September','October','November','December'] %}<option value="{{ loop.index }}"{% if bmonth == loop.index|string %} selected{% endif %}>{{ mo }}</option>{% endfor %}</select>
-      <input type="number" name="byear" value="{{ byear }}" placeholder="Year" min="1900" max="2100" style="width:100px" aria-label="Year">
+      <input type="number" name="byear" value="{{ byear }}" placeholder="Year" min="1900" max="2100" aria-label="Year">
       <select name="birthdayprivacy" aria-label="Birthday privacy">{% for o in [('all','Show birthday and age'),('age','Show only age'),('none','Hide birthday')] %}<option value="{{ o[0] }}"{% if user.birthdayprivacy == o[0] %} selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
     </div>
   </div>
