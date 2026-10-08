@@ -4,5 +4,5 @@
 <form method="get" action="/admin/settings" class="actions"><input type="search" name="q" value="{{ q }}" placeholder="Search settings" aria-label="Search settings" style="flex:1"><button class="btn secondary small">Search</button></form>
 {% if results %}<section class="box"><div class="box-head"><h2>Matching settings</h2></div><table class="grid"><tbody>{% for r in results %}<tr><td><a href="/admin/settings/{{ r.group }}"><strong>{{ r.title }}</strong></a><br><span class="small muted">{{ r.description }}</span></td></tr>{% endfor %}</tbody></table></section>{% endif %}
 <section class="box"><div class="box-head"><h2>Setting groups</h2></div>
-<table class="grid"><tbody>{% for g in groups %}<tr><td><a href="/admin/settings/{{ g.name }}"><strong>{{ g.title }}</strong></a><br><span class="small muted">{{ g.description }}</span></td><td class="num small muted">{{ g.count }} settings</td></tr>{% endfor %}</tbody></table></section>
+<table class="grid"><tbody>{% for g in groups %}<tr><td><a href="/admin/settings/{{ g.name }}"><strong>{{ g.title }}</strong></a><br><span class="small muted">{{ g.description }}</span></td><td class="num small muted">{{ g.count }} setting{{ '' if g.count == 1 else 's' }}</td></tr>{% endfor %}</tbody></table></section>
 {% endblock %}

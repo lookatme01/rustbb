@@ -1,15 +1,15 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
-<form method="get" action="/admin/users" class="actions">
+<form method="get" action="/admin/users" class="admin-filter">
   <input type="search" name="username" value="{{ q.username }}" placeholder="Username" aria-label="Username">
   <input type="search" name="email" value="{{ q.email }}" placeholder="Email" aria-label="Email">
   <input type="search" name="ip" value="{{ q.ip }}" placeholder="IP address" aria-label="IP">
   <select name="gid" aria-label="Group"><option value="0">Any group</option>{% for g in groups %}<option value="{{ g[0] }}"{% if q.gid == g[0] %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
   <select name="sort" aria-label="Sort">{% for s in [('regdate','Newest'),('username','Username'),('postnum','Posts'),('lastactive','Last active'),('reputation','Reputation')] %}<option value="{{ s[0] }}"{% if q.sort == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}</select>
-  <button class="btn secondary small">Search</button><span class="spacer"></span><a class="btn small" href="/admin/users/new">Add user</a><a class="btn secondary small" href="/admin/users/merge">Merge users</a>
+  <button class="btn secondary">Search</button>
 </form>
-<section class="box"><div class="box-head"><h2>Users</h2><span class="right">{{ total|num }}</span></div>
+<section class="box"><div class="box-head"><h2>Users <span class="muted small">{{ total|num }}</span></h2><span class="right box-head-actions"><a class="btn secondary small" href="/admin/users/merge">Merge users</a><a class="btn small" href="/admin/users/new">Add user</a></span></div>
 <table class="grid"><thead><tr><th>User</th><th>Email</th><th>Group</th><th>Registered</th><th>Last active</th><th class="num">Posts</th><th>Last IP</th></tr></thead><tbody>
 {% for u in users %}<tr><td><a href="/admin/users/{{ u.uid }}">{{ u.formatted|safe }}</a></td><td class="small">{{ u.email }}</td><td class="small">{{ u.group }}</td><td class="small">{{ u.regdate|date('date') }}</td><td class="small">{{ u.lastactive|date }}</td><td class="num">{{ u.postnum }}</td><td class="small">{{ u.lastip }}</td></tr>
 {% else %}<tr><td colspan="7" class="empty">No users found.</td></tr>{% endfor %}

@@ -1376,3 +1376,8 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .welcome-step h2 svg { width: 16px; height: 16px; }
 .welcome-step p { margin: 0 0 10px; font-size: .86rem; color: var(--ink-soft); }
 .welcome-passkey { display: grid; gap: 10px; }
+.admin-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1fr) minmax(0, .8fr) auto; gap: 8px; margin-bottom: 14px; align-items: center; }
+.admin-filter input, .admin-filter select { width: 100%; min-width: 0; }
+.box-head-actions { display: inline-flex; gap: 6px; }
+@media (max-width: 900px) { .admin-filter { grid-template-columns: 1fr 1fr; } .admin-filter .btn { grid-column: 1 / -1; } }
+.box-head-actions .btn:not(.secondary) { color: var(--signal-ink); }

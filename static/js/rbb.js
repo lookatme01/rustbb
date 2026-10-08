@@ -56,6 +56,18 @@
       menus().forEach((d) => { d.open = false; if (d.contains(document.activeElement)) $("summary", d).focus(); });
     });
 
+    // Side navigation: mark the link for the current page when the server didn't.
+    $$(".sidenav").forEach((nav) => {
+      if ($("a.active, a[aria-current]", nav)) return;
+      const here = location.pathname;
+      let best = null;
+      $$("a[href^='/']", nav).forEach((a) => {
+        const h = a.getAttribute("href").split("?")[0];
+        if ((here === h || here.startsWith(h + "/")) && (!best || h.length > best.getAttribute("href").length)) best = a;
+      });
+      if (best) { best.classList.add("active"); best.setAttribute("aria-current", "page"); }
+    });
+
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
       const key = "rbb.collapse." + box.dataset.collapse;
