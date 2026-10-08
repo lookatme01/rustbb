@@ -1,15 +1,72 @@
 {% extends "modcp/base.html" %}
 {% import "macros.html" as m %}
+{% import "member_file.html" as mf %}
 {% block mcp %}
-<div class="two-col">
-  <section class="box"><div class="box-head"><h2>Awaiting moderation</h2></div><div class="kv">
-    <div>Threads</div><div><a href="/modcp/modqueue?kind=threads">{{ uthreads }}</a></div>
-    <div>Posts</div><div><a href="/modcp/modqueue?kind=posts">{{ uposts }}</a></div>
-    <div>Attachments</div><div><a href="/modcp/modqueue?kind=attachments">View</a></div>
-  </div></section>
-  <section class="box"><div class="box-head"><h2>Reports</h2></div><div class="box-body"><p><strong>{{ reports }}</strong> unread report{{ '' if reports == 1 else 's' }}.</p><a class="btn small" href="/modcp/reports">Review reports</a></div></section>
+<h1 class="inbox-h1">Inbox</h1>
+<div class="mf-tiles">
+  {% if can_reports %}<a class="mf-tile{% if rep_n == 0 %} calm{% elif rep_old %} hot{% endif %}" href="/modcp/reports"><b>{{ rep_n }}</b><span>{{ rep_n|plural("Report", "Reports") }}</span><small>{% if rep_mine %}{{ rep_mine }} claimed by you{% elif rep_n %}oldest {{ rep_oldest|date }}{% else %}All clear{% endif %}</small></a>{% endif %}
+  {% if can_queue %}<a class="mf-tile{% if uthreads + uposts == 0 %} calm{% endif %}" href="/modcp/modqueue"><b>{{ uthreads + uposts }}</b><span>Awaiting approval</span><small>{{ uthreads }} {{ uthreads|plural("thread", "threads") }}, {{ uposts }} {{ uposts|plural("post", "posts") }}</small></a>{% endif %}
+  {% if can_appeals %}<a class="mf-tile{% if appeal_n == 0 %} calm{% endif %}" href="/modcp/appeals"><b>{{ appeal_n }}</b><span>Ban {{ appeal_n|plural("appeal", "appeals") }}</span><small>{% if appeal_n %}latest from {{ appeal_last }}{% else %}Nothing waiting{% endif %}</small></a>{% endif %}
+  <a class="mf-tile{% if sched_n == 0 %} calm{% endif %}" href="/modcp/delayed"><b>{{ sched_n }}</b><span>Scheduled</span><small>{% if sched_due %}{{ sched_due }} due within a day{% else %}Nothing due today{% endif %}</small></a>
 </div>
-<section class="box"><div class="box-head"><h2>Latest moderator actions</h2><a class="right" href="/modcp/modlogs">All logs</a></div>
-{% include "modcp/logtable.html" %}
-</section>
+
+<div class="inbox-grid">
+  <section class="box inbox-next" aria-labelledby="next-up">
+    <div class="box-head"><h2 id="next-up">Next up</h2><span class="right muted small">Oldest first · <button type="button" class="inbox-link" data-triage-help>Keyboard shortcuts</button></span></div>
+    {% if items %}
+    <ol class="inbox-list" data-triage>
+      {% for e in items %}{% set i = e.item %}
+      <li class="inbox-item" tabindex="-1" data-open="{{ i.url }}">
+        <div class="inbox-main">
+          <div class="inbox-title">
+            {% if i.kind == 'report' %}<span class="mf-flag red">Report · {{ i.count }}</span>
+            {% elif i.kind == 'appeal' %}<span class="mf-flag orange">Appeal</span>
+            {% else %}<span class="mf-flag blue">Approval</span>{% endif %}
+            <a href="{{ i.url }}" data-primary>{{ i.subject }}</a>
+            {% if i.claimed %}<span class="inbox-claim">{% if i.claimed_by_me %}You're on this{% else %}{{ i.claimer }} is on this{% endif %}</span>{% endif %}
+          </div>
+          <div class="inbox-meta">
+            {% if i.uid %}{{ 'by' if i.kind != 'report' else 'Author' }} <a href="/modcp/member/{{ i.uid }}">{{ i.username }}</a>{% if e.flags %} {{ mf.flags(e.flags, true) }}{% endif %} · {% endif %}
+            {% if i.forum %}in {{ i.forum }} · {% endif %}
+            {% if i.kind == 'report' and i.reason %}reason: {{ i.reason }} · {% endif %}
+            {% if i.kind == 'appeal' and i.reason %}banned for: {{ i.reason }} · {% endif %}
+            {{ i.ts|date }}
+          </div>
+          {% if i.excerpt %}<p class="inbox-excerpt">{{ i.excerpt }}</p>{% endif %}
+        </div>
+        <div class="inbox-actions">
+          {% if i.kind == 'report' %}
+            <form method="post" action="/modcp/reports">{{ m.csrf_field() }}<input type="hidden" name="ids" value="{{ i.rid }}"><button class="btn small secondary" name="action" value="handled" data-act="dismiss">Dismiss</button></form>
+            {% if not i.claimed %}<form method="post" action="/modcp/reports/{{ i.rid }}/claim">{{ m.csrf_field() }}<button class="btn small secondary" name="action" value="claim">Claim</button></form>{% endif %}
+            <a class="btn small secondary" href="{{ i.detail }}">Details</a>
+          {% elif i.kind == 'appeal' %}
+            <a class="btn small" href="{{ i.url }}">Review appeal</a>
+          {% else %}
+            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn small" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn small danger" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}<div class="box-body muted">Nothing is waiting for you. Enjoy the quiet.</div>{% endif %}
+  </section>
+
+  <div class="inbox-side">
+    <section class="box"><div class="box-head"><h2>Members to watch</h2></div>
+      {% for w in watch %}
+      <a class="inbox-row" href="/modcp/member/{{ w.uid }}">{{ m.face(w.avatar, w.username, w.uid, 30) }}<span class="inbox-who">{{ w.formatted|safe }}{{ mf.flags(w.flags, true) }}</span></a>
+      {% else %}<div class="box-body muted">No one needs watching right now.</div>{% endfor %}
+    </section>
+    <section class="box"><div class="box-head"><h2>Latest actions</h2><a class="right" href="/modcp/modlogs">Moderator log</a></div>
+      {% for l in logs %}
+      <div class="inbox-row"><span class="inbox-who">{% if l.username %}<a href="{{ url_user(l.uid) }}">{{ l.username }}</a>{% endif %} {{ l.action }}{% if l.tid %} <a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% endif %}</span><span class="muted small">{{ l.dateline|date }}</span></div>
+      {% else %}<div class="box-body muted">No moderator actions have been logged.</div>{% endfor %}
+    </section>
+  </div>
+</div>
+<div class="triage-help" id="triage-help" role="dialog" aria-label="Keyboard shortcuts" hidden>
+  <h2>Keyboard shortcuts</h2>
+  <dl><dt>j / k</dt><dd>Next / previous item</dd><dt>a</dt><dd>Approve</dd><dt>d</dt><dd>Delete (or dismiss a report)</dd><dt>e</dt><dd>Dismiss report</dd><dt>o or Enter</dt><dd>Open item</dd><dt>?</dt><dd>Show or hide this list</dd></dl>
+</div>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('js/triage.js') }}" defer></script>{% endblock %}
