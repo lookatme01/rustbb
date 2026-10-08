@@ -1334,3 +1334,10 @@ a.daynum, .calendar a.wk { display: inline-block; min-width: 24px; min-height: 2
   .pm-subject { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
   .pm-quota { margin-left: 0; }
 }
+.listing-empty { max-width: 560px; margin: 40px auto; text-align: center; }
+.listing-empty h1 { font-size: 1.5rem; margin-bottom: 6px; }
+.listing-empty p { color: var(--ink-soft); margin: 0; }
+.listing-empty .search-shortcuts { justify-content: center; }
+.listing-head { margin-bottom: 14px; }
+.listing-head h1 { margin: 0 0 2px; }
+.listing-head .search-count { margin: 0; }

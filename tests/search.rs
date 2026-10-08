@@ -78,3 +78,23 @@ async fn failed_searches_come_back_to_a_filled_in_form() {
     assert!(r.body.contains("You did not enter any search terms"));
     assert!(r.body.contains(r#"value="2" checked"#));
 }
+
+#[tokio::test]
+async fn empty_thread_listings_render_a_friendly_page() {
+    let t = test_app!();
+    sqlx::query("UPDATE threads SET lastpost = 1, dateline = 1")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let uid = t.create_user("caughtup", "Passw0rd-caughtup").await;
+    let c = t.login_as(uid).await;
+    for (path, text) in [
+        ("/search/today", "Nobody has posted in the last 24 hours."),
+        ("/search/unread", "all caught up."),
+    ] {
+        let r = c.get(path).await;
+        assert_eq!(r.status, 200, "{path}: {}", r.body);
+        assert!(r.body.contains(text), "{path}");
+        assert!(r.body.contains("Browse the forums"));
+    }
+}

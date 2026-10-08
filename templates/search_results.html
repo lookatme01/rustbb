@@ -1,6 +1,21 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
+{% if empty %}
+<div class="listing-empty">
+  <h1>{{ title }}</h1>
+  <p>{{ empty }}</p>
+  <nav class="search-shortcuts" aria-label="Browse">
+    {% if me and path != '/search/unread' %}<a class="pill-link" href="/search/unread">Unread threads</a>{% endif %}
+    {% if path != '/search/today' %}<a class="pill-link" href="/search/today">Today's posts</a>{% endif %}
+    {% if path != '/search/unanswered' %}<a class="pill-link" href="/search/unanswered">Unanswered threads</a>{% endif %}
+    <a class="pill-link" href="/">Browse the forums</a>
+  </nav>
+</div>
+{% else %}
+{% if listing %}
+<header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} thread{{ '' if total == 1 else 's' }}</p></header>
+{% else %}
 <div class="search-refine">
   <form class="search-bar" action="/search/quick" method="get" role="search">
     <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
@@ -10,6 +25,7 @@
   <a class="pill-link" href="/search">Filters</a>
 </div>
 <p class="search-count">{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
+{% endif %}
 {{ m.pagination(pagination) }}
 {% if kind == 'threads' %}
 <section class="box"><div class="box-head"><h2>Threads</h2></div>
@@ -24,4 +40,5 @@
 {% endfor %}
 {% endif %}
 {{ m.pagination(pagination) }}
+{% endif %}
 {% endblock %}

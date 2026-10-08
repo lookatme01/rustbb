@@ -455,14 +455,17 @@ pub async fn results(
     Path(sid): Path<String>,
     Query(q): Query<PageQuery>,
 ) -> AppResult<Response> {
-    let row: Option<(i32, String, Vec<i32>, String, i64)> = sqlx::query_as(
-        "SELECT uid, resulttype, ids, keywords, dateline FROM searchlog WHERE sid = $1",
+    let row: Option<(i32, String, Vec<i32>, String, i64, serde_json::Value)> = sqlx::query_as(
+        "SELECT uid, resulttype, ids, keywords, dateline, params FROM searchlog WHERE sid = $1",
     )
     .bind(&sid)
     .fetch_optional(&ctx.app.db)
     .await?;
-    let (owner, kind, ids, keywords, _dl) =
+    let (owner, kind, ids, keywords, _dl, params) =
         row.ok_or_else(|| AppError::user("The search results have expired. Please search again."))?;
+    // Thread listings (what's new, unread, ...) are stored with their title.
+    let listing = params["listing"].as_str().map(str::to_string);
+    let title = listing.clone().unwrap_or_else(|| "Search Results".into());
     if owner != ctx.uid() && owner != 0 {
         return Err(AppError::no_perm());
     }
@@ -515,7 +518,7 @@ pub async fn results(
         for r in rows.iter_mut() {
             r.url = format!("{}{}", r.url, hl_param);
         }
-        ctx.render("search_results.html", minijinja::context! { title => "Search Results", kind => "threads", threads => rows, pagination => pg, keywords => keywords, total => total }).await
+        ctx.render("search_results.html", minijinja::context! { title => title, listing => listing, kind => "threads", threads => rows, pagination => pg, keywords => keywords, total => total }).await
     } else {
         let posts: Vec<Post> = sqlx::query_as(&format!(
             "SELECT {POST_COLUMNS} FROM posts WHERE pid = ANY($1)"
@@ -564,7 +567,7 @@ pub async fn results(
             });
         }
         crate::render::store_parsed(&ctx, stale);
-        ctx.render("search_results.html", minijinja::context! { title => "Search Results", kind => "posts", posts => out, pagination => pg, keywords => keywords, total => total }).await
+        ctx.render("search_results.html", minijinja::context! { title => title, listing => listing, kind => "posts", posts => out, pagination => pg, keywords => keywords, total => total }).await
     }
 }
 
@@ -591,7 +594,25 @@ fn strip(html: &str) -> String {
     t.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-async fn thread_listing(ctx: &Ctx, cond: &str, arg: i64, keywords: &str) -> AppResult<Response> {
+/// An empty thread listing: a friendly page instead of an error, with ways to keep reading.
+async fn empty_listing(ctx: &Ctx, title: &str, message: &str) -> AppResult<Response> {
+    let pg = util::paginate(0, 1, 1, "");
+    ctx.render(
+        "search_results.html",
+        minijinja::context! {
+            title => title, kind => "threads", threads => Vec::<String>::new(), pagination => pg,
+            keywords => "", total => 0, empty => message, listing => true,
+        },
+    )
+    .await
+}
+
+async fn thread_listing(
+    ctx: &Ctx,
+    cond: &str,
+    arg: i64,
+    (title, empty): (&str, &str),
+) -> AppResult<Response> {
     let (fids, own_only) = searchable_forums(ctx);
     let limit = ctx.settings().int("searchhardlimit").max(50);
     let tids: Vec<i32> = sqlx::query_scalar(&format!(
@@ -606,9 +627,16 @@ async fn thread_listing(ctx: &Ctx, cond: &str, arg: i64, keywords: &str) -> AppR
     .fetch_all(&ctx.app.db)
     .await?;
     if tids.is_empty() {
-        return Err(AppError::user("There are no threads to show."));
+        return empty_listing(ctx, title, empty).await;
     }
-    let sid = store(ctx, "threads", tids, keywords, serde_json::json!({})).await?;
+    let sid = store(
+        ctx,
+        "threads",
+        tids,
+        "",
+        serde_json::json!({ "listing": title }),
+    )
+    .await?;
     Ok(Redirect::to(&format!("/search/results/{sid}")).into_response())
 }
 
@@ -619,11 +647,23 @@ pub async fn new_posts(ctx: Ctx) -> AppResult<Response> {
         .map(|u| u.lastvisit)
         .filter(|v| *v > 0)
         .unwrap_or_else(|| now() - 86400);
-    thread_listing(&ctx, "t.lastpost > $4", since, "").await
+    thread_listing(
+        &ctx,
+        "t.lastpost > $4",
+        since,
+        ("What's new", "Nothing new since your last visit."),
+    )
+    .await
 }
 
 pub async fn today_posts(ctx: Ctx) -> AppResult<Response> {
-    thread_listing(&ctx, "t.lastpost > $4", now() - 86400, "").await
+    thread_listing(
+        &ctx,
+        "t.lastpost > $4",
+        now() - 86400,
+        ("Today's posts", "Nobody has posted in the last 24 hours."),
+    )
+    .await
 }
 
 pub async fn unanswered(ctx: Ctx) -> AppResult<Response> {
@@ -631,7 +671,10 @@ pub async fn unanswered(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "t.replies = 0 AND t.dateline > $4",
         now() - 90 * 86400,
-        "",
+        (
+            "Unanswered threads",
+            "Every thread from the last three months has a reply.",
+        ),
     )
     .await
 }
@@ -644,7 +687,13 @@ pub async fn unread_threads(ctx: Ctx) -> AppResult<Response> {
          AND NOT EXISTS (SELECT 1 FROM forumsread fr WHERE fr.fid = t.fid AND fr.uid = {uid} AND fr.dateline >= t.lastpost)",
         uid = me.uid
     );
-    thread_listing(&ctx, &cond, cut, "").await
+    thread_listing(
+        &ctx,
+        &cond,
+        cut,
+        ("Unread threads", "You're all caught up."),
+    )
+    .await
 }
 
 pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
