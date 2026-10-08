@@ -555,7 +555,7 @@ impl CtxInner {
         }
         let show_login = login || (status == StatusCode::FORBIDDEN && !self.logged_in());
         match self
-            .render_status(status, "error.html", minijinja::context! { message => msg, show_login => show_login, return_to => &self.path })
+            .render_status(status, "error.html", minijinja::context! { message => msg, status => status.as_u16(), show_login => show_login, return_to => &self.path })
             .await
         {
             Ok(r) => r,

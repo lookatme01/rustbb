@@ -1442,3 +1442,11 @@ body:has(input.inline-check[form="inlinemod-posts"]:checked) #inlinemod-posts { 
 .file-pick input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
 .file-pick .btn:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
 .file-pick .file-name { min-width: 0; overflow-wrap: anywhere; }
+
+/* Error pages */
+.error-code { margin: 0 0 6px; font-size: 3.2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--ink-faint); }
+.error-card > p.muted { margin-bottom: 18px; overflow-wrap: anywhere; }
+.error-search { width: 100%; margin: 0 0 18px; }
+.error-search input[type=search], .error-search input[type=search]:focus { width: 100%; height: 44px; }
+.error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 0 14px; }
+.error-card h1 + .error-actions { margin-top: 18px; }

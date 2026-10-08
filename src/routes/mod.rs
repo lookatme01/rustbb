@@ -66,8 +66,14 @@ pub fn upload_limit() -> axum::extract::DefaultBodyLimit {
     axum::extract::DefaultBodyLimit::max(mb * 1024 * 1024 + 64 * 1024)
 }
 
+/// Unknown URLs: the themed "not found" page rather than an empty 404.
+async fn not_found() -> crate::error::AppError {
+    crate::error::AppError::NotFound("The page you were looking for does not exist.".into())
+}
+
 pub fn router() -> Router<App> {
     Router::new()
+        .fallback(not_found)
         .route("/", get(index::index))
         .route("/index.php", get(index::index))
         .route("/forum/{fid}", get(forumdisplay::forumdisplay))
