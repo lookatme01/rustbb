@@ -828,7 +828,9 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
   .wrap { padding: 0 16px; }
   body { font-size: 15.5px; }
   .site-header .bar { flex-wrap: wrap; gap: 0 8px; padding-top: 8px; }
-  .logo span { max-width: 48vw; overflow: hidden; text-overflow: ellipsis; }
+  .logo { flex: 1 1 0; min-width: 0; }
+  .logo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account { flex: none; }
   .quicksearch { order: 3; margin: 8px 0 6px; flex: 1 1 100%; }
   .quicksearch input[type=search], .quicksearch input[type=search]:focus { width: 100%; }
   .account { margin-left: auto; }
