@@ -147,7 +147,13 @@ main { padding: 8px 0 64px; flex: 1 0 auto; width: 100%; }
 .logo { display: flex; align-items: center; gap: 10px; font: 700 1.1rem/1 var(--font-display); letter-spacing: -.03em; color: var(--ink); white-space: nowrap; }
 .logo img { height: 30px; width: auto; border-radius: 8px; }
 .logo:hover { text-decoration: none; }
-.tabs { display: flex; gap: 2px; }
+.logo { flex: 0 1 auto; min-width: 0; }
+.logo img { flex: none; }
+.logo span { min-width: 0; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.tabs { display: flex; gap: 2px; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs.overflowing { padding-right: 32px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+.quicksearch, .account { flex: none; }
 .tabs a {
   display: flex; align-items: center; height: 34px; padding: 0 13px; border-radius: 999px;
   color: var(--ink-soft); font-weight: 550; font-size: .92rem; white-space: nowrap;

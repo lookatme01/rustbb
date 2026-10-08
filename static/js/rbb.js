@@ -38,6 +38,11 @@
 
     // Keep the current tab in view when the main nav scrolls sideways (phones).
     const tabs = $(".tabs"), cur = $(".tabs a[aria-current]");
+    if (tabs) {
+      const fit = () => tabs.classList.toggle("overflowing", tabs.scrollWidth > tabs.clientWidth + 1);
+      fit();
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(tabs);
+    }
     if (tabs && cur && tabs.scrollWidth > tabs.clientWidth) {
       const right = cur.offsetLeft + cur.offsetWidth - tabs.offsetLeft + 40;
       if (right > tabs.clientWidth) tabs.scrollLeft = right - tabs.clientWidth;
