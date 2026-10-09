@@ -464,9 +464,11 @@ pub async fn do_move(ctx: Ctx, CsrfForm(f): CsrfForm<MoveForm>) -> AppResult<Res
     if !ctx.access().can_see(f.target) {
         return Err(AppError::no_perm());
     }
-    if let Some(mp) = ctx.mod_perms(threads[0].fid)
-        && !mp.canmovetononmodforum
-        && ctx.mod_perms(f.target).is_none()
+    // Every source forum in the batch counts, not just the first thread's.
+    if ctx.mod_perms(f.target).is_none()
+        && threads
+            .iter()
+            .any(|t| !ctx.mod_perms(t.fid).is_some_and(|m| m.canmovetononmodforum))
     {
         return Err(AppError::user(
             "You can only move threads to forums you moderate.",
@@ -556,6 +558,9 @@ pub async fn do_merge(ctx: Ctx, CsrfForm(f): CsrfForm<MergeForm>) -> AppResult<R
         return Err(AppError::not_found("thread"));
     }
     require(&ctx, &threads, |m| m.canmanagethreads)?;
+    if threads.iter().any(|t| t.moved_to().is_some()) {
+        return Err(AppError::user("A redirect cannot be merged."));
+    }
     // As in MyBB, the thread being viewed survives; the target is merged into it.
     let (into, from) = if threads[0].tid == f.tid {
         (&threads[0], &threads[1])
@@ -677,6 +682,11 @@ pub async fn do_moveposts(ctx: Ctx, CsrfForm(f): CsrfForm<MovePostsForm>) -> App
         return Err(AppError::not_found("thread"));
     }
     require(&ctx, &threads, |m| m.canmanagethreads)?;
+    if threads.iter().any(|t| t.moved_to().is_some()) {
+        return Err(AppError::user(
+            "Posts cannot be moved into or out of a redirect.",
+        ));
+    }
     let src = threads.iter().find(|t| t.tid == f.tid).unwrap();
     let pids: Vec<i32> =
         sqlx::query_scalar("SELECT pid FROM posts WHERE pid = ANY($1) AND tid = $2 AND pid <> $3")
@@ -771,19 +781,23 @@ async fn load_tool(
     ctx: &Ctx,
     id: i32,
     kind: &str,
-    fid: i32,
+    fids: &[i32],
 ) -> AppResult<(serde_json::Value, serde_json::Value, String)> {
     let row: Option<(String, Vec<i32>, Vec<i32>, serde_json::Value, serde_json::Value, String)> =
         sqlx::query_as("SELECT type::text, forums, groups, threadoptions, postoptions, name FROM modtools WHERE tid = $1").bind(id).fetch_optional(&ctx.app.db).await?;
     let (ty, forums, groups, topts, popts, name) =
         row.ok_or_else(|| AppError::not_found("moderator tool"))?;
-    let parents = ctx
-        .cache
-        .forum(fid)
-        .map(|f| f.parentlist.clone())
-        .unwrap_or_default();
+    // A tool limited to some forums must apply to every thread it is run on.
+    let in_scope = |fid: i32| {
+        let parents = ctx
+            .cache
+            .forum(fid)
+            .map(|f| f.parentlist.as_slice())
+            .unwrap_or_default();
+        forums.is_empty() || forums.iter().any(|f| parents.contains(f))
+    };
     if ty != kind
-        || (!forums.is_empty() && !forums.iter().any(|f| parents.contains(f)))
+        || !fids.iter().all(|fid| in_scope(*fid))
         || (!groups.is_empty() && !groups.iter().any(|g| ctx.groups.contains(g)))
     {
         return Err(AppError::no_perm());
@@ -813,7 +827,8 @@ fn opt_b(o: &serde_json::Value, k: &str) -> bool {
 /// deletepoll, removeredirects, removesubscriptions, movethread (fid), movethreadredirect, copythread (fid),
 /// newsubject ("{subject}" placeholder), threadprefix (pid), addreply (message), pm_subject/pm_message.
 async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<String> {
-    let (o, _, name) = load_tool(ctx, id, "t", threads[0].fid).await?;
+    let fids: Vec<i32> = threads.iter().map(|t| t.fid).collect();
+    let (o, _, name) = load_tool(ctx, id, "t", &fids).await?;
     let mut uow = Uow::begin(&ctx.app).await?;
     let tids: Vec<i32> = threads.iter().map(|t| t.tid).collect();
     ops::lock_threads(uow.conn(), &tids).await?;
@@ -826,11 +841,13 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
             _ => None,
         };
         if let Some(close) = toggle(opt_str(&o, "openthread"), !t.is_closed()).map(|open| !open) {
-            sqlx::query("UPDATE threads SET closed = $2 WHERE tid = $1")
-                .bind(tid)
-                .bind(if close { "1" } else { "" })
-                .execute(uow.conn())
-                .await?;
+            sqlx::query(
+                "UPDATE threads SET closed = $2 WHERE tid = $1 AND closed NOT LIKE 'moved|%'",
+            )
+            .bind(tid)
+            .bind(if close { "1" } else { "" })
+            .execute(uow.conn())
+            .await?;
         }
         if let Some(stick) = toggle(opt_str(&o, "stickthread"), t.sticky) {
             sqlx::query("UPDATE threads SET sticky = $2 WHERE tid = $1")
@@ -947,7 +964,7 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
 /// Post tool options: approveposts, softdeleteposts (softdelete|restore), deleteposts, mergeposts,
 /// splitposts (fid; -2 = same forum), splitpostsnewsubject.
 async fn run_post_tool(ctx: &Ctx, id: i32, t: &Thread, pids: &[i32]) -> AppResult<String> {
-    let (_, o, name) = load_tool(ctx, id, "p", t.fid).await?;
+    let (_, o, name) = load_tool(ctx, id, "p", &[t.fid]).await?;
     let mut uow = Uow::begin(&ctx.app).await?;
     match opt_str(&o, "approveposts") {
         "approve" => ops::set_posts_visibility_in(&mut uow, pids, 1).await?,
@@ -1007,17 +1024,57 @@ pub struct DelayedForm {
     pub target: i32,
 }
 
+/// Whether `m` allows the scheduled `action`; the same rights as running it right away.
+fn delayed_allowed(action: &str, m: &ModPerms) -> bool {
+    match action {
+        "close" | "open" => m.canopenclosethreads,
+        "stick" | "unstick" => m.canstickunstickthreads,
+        "softdelete" => m.cansoftdeletethreads,
+        "approve" => m.canapproveunapprovethreads,
+        "delete" => m.candeletethreads,
+        "move" => m.canmanagethreads,
+        _ => false,
+    }
+}
+
+/// A forum threads can be moved into: a real forum, not a category or link.
+fn is_move_target(cache: &crate::cache::Cache, fid: i32) -> bool {
+    cache
+        .forum(fid)
+        .is_some_and(|f| !f.is_category() && f.linkto.is_empty())
+}
+
 pub async fn schedule_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<DelayedForm>) -> AppResult<Response> {
     let threads = load_threads(&ctx, &f.tids).await?;
-    require(&ctx, &threads, |m| {
-        m.canmanagethreads || m.canopenclosethreads
-    })?;
     if !matches!(
         f.action.as_str(),
         "close" | "open" | "stick" | "unstick" | "softdelete" | "move" | "delete" | "approve"
     ) {
         return Err(AppError::user("That action cannot be scheduled."));
     }
+    require(&ctx, &threads, |m| delayed_allowed(&f.action, m))?;
+    let target = if f.action == "move" {
+        if !is_move_target(&ctx.cache, f.target) {
+            return Err(AppError::user(
+                "You cannot move threads into a category or link forum.",
+            ));
+        }
+        if !ctx.access().can_see(f.target) {
+            return Err(AppError::no_perm());
+        }
+        if ctx.mod_perms(f.target).is_none()
+            && threads
+                .iter()
+                .any(|t| !ctx.mod_perms(t.fid).is_some_and(|m| m.canmovetononmodforum))
+        {
+            return Err(AppError::user(
+                "You can only move threads to forums you moderate.",
+            ));
+        }
+        f.target
+    } else {
+        0
+    };
     let days = f.days.clamp(1, 365);
     sqlx::query("INSERT INTO delayedmoderation (type, delaydateline, uid, fid, tids, dateline, inputs) VALUES ($1, $2, $3, $4, $5, $6, $7)")
         .bind(&f.action)
@@ -1026,7 +1083,7 @@ pub async fn schedule_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<DelayedForm>) -> A
         .bind(threads[0].fid)
         .bind(&f.tids)
         .bind(now())
-        .bind(serde_json::json!({"target": f.target}))
+        .bind(serde_json::json!({"target": target}))
         .execute(&ctx.app.db)
         .await?;
     Ok(ctx.redirect(
@@ -1063,9 +1120,15 @@ pub async fn cancel_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<CancelForm>) -> AppR
     Ok(ctx.redirect("/modcp/delayed", "The scheduled action has been cancelled."))
 }
 
+/// A scheduled action that keeps failing is dropped (and logged) after this many tries.
+const DELAYED_MAX_ATTEMPTS: i64 = 3;
+
 /// Task: execute due delayed moderation actions. Each action is claimed (deleted, skipping
 /// rows another node is working on), performed and logged in one transaction, so a failure
-/// leaves it scheduled for the next run instead of losing it.
+/// leaves it scheduled for a later run instead of losing it (up to `DELAYED_MAX_ATTEMPTS`).
+///
+/// The scheduler's rights are checked again at run time: they may have been revoked since
+/// the action was queued, and then it is dropped with a log entry instead of executed.
 pub async fn run_delayed(app: &App) -> anyhow::Result<crate::tasks::Ran> {
     let mut n = 0;
     loop {
@@ -1081,7 +1144,36 @@ pub async fn run_delayed(app: &App) -> anyhow::Result<crate::tasks::Ran> {
         let Some((did, kind, tids, inputs, uid)) = due else {
             break;
         };
-        let r: AppResult<()> = async {
+        // Ok(Some(reason)) means the action was refused and dropped, Ok(None) that it ran.
+        let r: AppResult<Option<&'static str>> = async {
+            ops::lock_threads(uow.conn(), &tids).await?;
+            // Current forum of each thread (a move may have changed it since scheduling).
+            let fids: Vec<(i32, i32)> =
+                sqlx::query_as("SELECT tid, fid FROM threads WHERE tid = ANY($1)")
+                    .bind(&tids)
+                    .fetch_all(uow.conn())
+                    .await?;
+            let cache = app.cache();
+            let owner: Option<(i32, Vec<i32>)> =
+                sqlx::query_as("SELECT usergroup, additionalgroups FROM users WHERE uid = $1")
+                    .bind(uid)
+                    .fetch_optional(uow.conn())
+                    .await?;
+            let Some((primary, extra)) = owner else {
+                return Ok(Some("scheduler no longer exists"));
+            };
+            let mut groups = vec![primary];
+            groups.extend(extra);
+            let gperms = cache.group_perms(&groups);
+            let perms = |fid: i32| cache.mod_perms(uid, &groups, &gperms, fid);
+            if !fids
+                .iter()
+                .all(|(_, fid)| perms(*fid).is_some_and(|m| delayed_allowed(&kind, &m)))
+            {
+                return Ok(Some("scheduler no longer has permission"));
+            }
+            // Threads deleted in the meantime are simply gone.
+            let tids: Vec<i32> = fids.iter().map(|(t, _)| *t).collect();
             match kind.as_str() {
                 "close" | "open" => {
                     sqlx::query("UPDATE threads SET closed = $2 WHERE tid = ANY($1) AND closed NOT LIKE 'moved|%'")
@@ -1102,42 +1194,68 @@ pub async fn run_delayed(app: &App) -> anyhow::Result<crate::tasks::Ran> {
                 "delete" => ops::delete_threads_in(&mut uow, &tids).await?,
                 "move" => {
                     let target = inputs["target"].as_i64().unwrap_or(0) as i32;
-                    if target > 0 {
-                        ops::move_threads_in(&mut uow, &tids, target, None).await?;
+                    if !is_move_target(&cache, target) {
+                        return Ok(Some("invalid move target"));
                     }
+                    if perms(target).is_none()
+                        && !fids
+                            .iter()
+                            .all(|(_, fid)| perms(*fid).is_some_and(|m| m.canmovetononmodforum))
+                    {
+                        return Ok(Some("scheduler cannot move to that forum"));
+                    }
+                    ops::move_threads_in(&mut uow, &tids, target, None).await?;
                 }
                 _ => {}
             }
-            for t in &tids {
+            for (tid, fid) in &fids {
                 ops::log_moderator_action_in(
                     uow.conn(),
                     uid,
                     "",
-                    0,
-                    *t,
+                    *fid,
+                    *tid,
                     0,
                     &format!("Delayed moderation: {kind}"),
                     serde_json::json!({}),
                 )
                 .await?;
             }
-            Ok(())
+            Ok(None)
         }
         .await;
         match r {
-            Ok(()) => {
+            Ok(None) => {
                 uow.commit(app).await?;
                 n += 1;
             }
+            Ok(Some(reason)) => {
+                // Nothing was changed; commit the claim so the action is gone for good.
+                tracing::warn!(action = did, "delayed moderation {kind} dropped: {reason}");
+                uow.commit(app).await?;
+                log_delayed_failure(app, uid, &kind, &tids, reason).await?;
+            }
             Err(e) => {
-                // Rolled back: the action stays scheduled. Push it back so the loop moves on.
+                // Rolled back: the action stays scheduled. Push it back so the loop moves on,
+                // and give up after a few tries instead of retrying forever.
                 drop(uow);
-                tracing::warn!(action = did, "delayed moderation failed: {e}");
-                sqlx::query("UPDATE delayedmoderation SET delaydateline = $2 WHERE did = $1")
-                    .bind(did)
-                    .bind(now() + 3600)
-                    .execute(&app.db)
-                    .await?;
+                let attempts = inputs["attempts"].as_i64().unwrap_or(0) + 1;
+                tracing::warn!(action = did, attempts, "delayed moderation failed: {e}");
+                if attempts >= DELAYED_MAX_ATTEMPTS {
+                    sqlx::query("DELETE FROM delayedmoderation WHERE did = $1")
+                        .bind(did)
+                        .execute(&app.db)
+                        .await?;
+                    log_delayed_failure(app, uid, &kind, &tids, "gave up after repeated errors")
+                        .await?;
+                } else {
+                    sqlx::query("UPDATE delayedmoderation SET delaydateline = $2, inputs = inputs || jsonb_build_object('attempts', $3::bigint) WHERE did = $1")
+                        .bind(did)
+                        .bind(now() + 3600)
+                        .bind(attempts)
+                        .execute(&app.db)
+                        .await?;
+                }
             }
         }
     }
@@ -1148,4 +1266,34 @@ pub async fn run_delayed(app: &App) -> anyhow::Result<crate::tasks::Ran> {
         n > 0,
         format!("ran {n} delayed actions"),
     ))
+}
+
+/// Leave a moderator-log entry (with each thread's real forum) for a delayed action that
+/// was dropped without running.
+async fn log_delayed_failure(
+    app: &App,
+    uid: i32,
+    kind: &str,
+    tids: &[i32],
+    reason: &str,
+) -> anyhow::Result<()> {
+    let fids: Vec<(i32, i32)> = sqlx::query_as("SELECT tid, fid FROM threads WHERE tid = ANY($1)")
+        .bind(tids)
+        .fetch_all(&app.db)
+        .await?;
+    let mut conn = app.db.acquire().await?;
+    for (tid, fid) in fids {
+        ops::log_moderator_action_in(
+            &mut conn,
+            uid,
+            "",
+            fid,
+            tid,
+            0,
+            &format!("Delayed moderation not run: {kind}"),
+            serde_json::json!({"reason": reason}),
+        )
+        .await?;
+    }
+    Ok(())
 }

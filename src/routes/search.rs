@@ -180,23 +180,6 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             "One or more of your search terms were shorter than the minimum length ({minw} characters)."
         )));
     }
-    // Identical searches by the same viewer within the cache window reuse the stored result set.
-    let cache_key = format!(
-        "search:{}:{}:{:?}:{}",
-        ctx.uid(),
-        if ctx.uid() == 0 { ctx.ip.as_str() } else { "" },
-        ctx.groups,
-        serde_json::to_string(p).unwrap_or_default()
-    );
-    match ctx.app.short_cache.get(&cache_key) {
-        Some(serde_json::Value::String(sid)) => {
-            return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
-        }
-        // A search that just found nothing; repeating it shouldn't count against the flood limit.
-        Some(serde_json::Value::Null) => return Err(AppError::user(NO_RESULTS)),
-        _ => {}
-    }
-    flood_check(ctx).await?;
     let (mut fids, mut own_only) = searchable_forums(ctx);
     if !p.forums.is_empty() && !p.forums.contains(&0) {
         let mut wanted = p.forums.clone();
@@ -208,6 +191,26 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         fids.retain(|f| wanted.contains(f));
         own_only.retain(|f| wanted.contains(f));
     }
+    // Identical searches by the same viewer within the cache window reuse the stored result set.
+    let cache_key = format!(
+        "search:{}:{}:{:?}:{:?}:{:?}:{}:{}",
+        ctx.uid(),
+        if ctx.uid() == 0 { ctx.ip.as_str() } else { "" },
+        ctx.groups,
+        fids,
+        own_only,
+        ctx.is_supermod(),
+        serde_json::to_string(p).unwrap_or_default()
+    );
+    match ctx.app.short_cache.get(&cache_key) {
+        Some(serde_json::Value::String(sid)) => {
+            return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
+        }
+        // A search that just found nothing; repeating it shouldn't count against the flood limit.
+        Some(serde_json::Value::Null) => return Err(AppError::user(NO_RESULTS)),
+        _ => {}
+    }
+    flood_check(ctx).await?;
     let author_uids: Vec<i32> = if author.is_empty() {
         vec![]
     } else if p.matchusername {
@@ -315,10 +318,21 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .execute(&mut *tx)
             .await?;
         let res: Result<Vec<i32>, sqlx::Error> = if threads_mode {
-            // Scan matching posts newest-first (backward pkey scan stops early),
-            // then collapse to distinct threads preserving recency.
-            let cands: Result<Vec<i32>, sqlx::Error> = sqlx::query_scalar(&format!(
-                "SELECT p.tid {base} ORDER BY p.pid DESC LIMIT $10"
+            // Limit threads, not matching posts: a busy thread must not crowd out other
+            // matches, and sorting must apply to the complete set before the limit.
+            let order = sort_sql(&p.sortby, &p.sortordr, true);
+            sqlx::query_scalar(&format!(
+                "SELECT t.tid FROM threads t
+                 WHERE (t.fid = ANY($1) OR (t.fid = ANY($2) AND t.uid = $3)) AND t.visible = ANY($4)
+                   AND ($9 = 0 OR t.replies >= $9) AND ($11 = 0 OR t.prefix = $11)
+                   AND EXISTS (
+                     SELECT 1 FROM posts p WHERE p.tid = t.tid AND p.visible = ANY($4)
+                       AND (p.fid = ANY($1) OR (p.fid = ANY($2) AND t.uid = $3))
+                       AND ($5 = '' OR p.search_tsv @@ websearch_to_tsquery('english', $5))
+                       AND (cardinality($6::int[]) = 0 OR p.uid = ANY($6))
+                       AND ($7 = 0 OR ($8 AND p.dateline >= $7) OR (NOT $8 AND p.dateline < $7))
+                   )
+                 ORDER BY {order} LIMIT $10"
             ))
             .bind(&fids)
             .bind(&own_only)
@@ -329,32 +343,10 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .bind(date_cond)
             .bind(newer)
             .bind(p.numreplies)
-            .bind((limit * 3).min(1500))
+            .bind(limit)
             .bind(p.prefix)
             .fetch_all(&mut *tx)
-            .await;
-            match cands {
-                Ok(c) => {
-                    let mut seen = std::collections::HashSet::new();
-                    let tids: Vec<i32> = c
-                        .into_iter()
-                        .filter(|t| seen.insert(*t))
-                        .take(limit as usize)
-                        .collect();
-                    if p.sortby.is_empty() || p.sortby == "lastpost" && p.sortordr != "asc" {
-                        sqlx::query_scalar("SELECT tid FROM threads WHERE tid = ANY($1) ORDER BY lastpost DESC, tid DESC").bind(&tids).fetch_all(&mut *tx).await
-                    } else {
-                        let order = sort_sql(&p.sortby, &p.sortordr, true);
-                        sqlx::query_scalar(&format!(
-                            "SELECT t.tid FROM threads t WHERE t.tid = ANY($1) ORDER BY {order}"
-                        ))
-                        .bind(&tids)
-                        .fetch_all(&mut *tx)
-                        .await
-                    }
-                }
-                Err(e) => Err(e),
-            }
+            .await
         } else {
             let order = if !q.is_empty() && p.sortby == "relevance" {
                 "ts_rank(p.search_tsv, websearch_to_tsquery('english', $5)) DESC".to_string()

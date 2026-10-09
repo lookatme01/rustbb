@@ -318,6 +318,26 @@ pub struct FidForm {
     pub fid: i32,
 }
 
+/// Delete every thread in `fids` in batches, then the forums themselves.
+async fn purge_forums(app: &crate::app::App, fids: &[i32]) -> AppResult<()> {
+    loop {
+        let tids: Vec<i32> =
+            sqlx::query_scalar("SELECT tid FROM threads WHERE fid = ANY($1) LIMIT 500")
+                .bind(fids)
+                .fetch_all(&app.db)
+                .await?;
+        if tids.is_empty() {
+            break;
+        }
+        crate::ops::delete_threads(app, &tids).await?;
+    }
+    sqlx::query("DELETE FROM forums WHERE fid = ANY($1)")
+        .bind(fids)
+        .execute(&app.db)
+        .await?;
+    Ok(())
+}
+
 pub async fn delete(ctx: Ctx, CsrfForm(f): CsrfForm<FidForm>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "forums");
     let forum = ctx
@@ -327,38 +347,28 @@ pub async fn delete(ctx: Ctx, CsrfForm(f): CsrfForm<FidForm>) -> AppResult<Respo
         .ok_or_else(|| AppError::not_found("forum"))?;
     let mut fids = vec![f.fid];
     fids.extend(ctx.cache.descendants(f.fid));
-    let app = ctx.app.clone();
-    let fids2 = fids.clone();
-    // Content removal can be large; do it in the background in batches.
-    tokio::spawn(async move {
-        loop {
-            let tids: Vec<i32> =
-                sqlx::query_scalar("SELECT tid FROM threads WHERE fid = ANY($1) LIMIT 500")
-                    .bind(&fids2)
-                    .fetch_all(&app.db)
-                    .await
-                    .unwrap_or_default();
-            if tids.is_empty() {
-                break;
-            }
-            if let Err(e) = crate::ops::delete_threads(&app, &tids).await {
-                tracing::error!("forum deletion failed: {e}");
-                break;
-            }
-        }
-        let _ = sqlx::query("DELETE FROM forums WHERE fid = ANY($1)")
-            .bind(&fids2)
-            .execute(&app.db)
-            .await;
-        let _ = app
-            .invalidate(&["forums", "forumperms", "moderators"])
-            .await;
-    });
-    // Hide immediately.
+    // Hide immediately (before the purge starts, so the purge can't finish first).
     sqlx::query("UPDATE forums SET active = FALSE WHERE fid = ANY($1)")
         .bind(&fids)
         .execute(&ctx.app.db)
         .await?;
+    let app = ctx.app.clone();
+    let purge_fids = fids.clone();
+    // Content removal can be large; do it in the background in batches.
+    tokio::spawn(async move {
+        if let Err(e) = purge_forums(&app, &purge_fids).await {
+            // The forums stay hidden, not half-deleted and visible; deleting again resumes.
+            tracing::error!(
+                "forum deletion failed for fids {purge_fids:?}; they stay hidden, delete them again to retry: {e}"
+            );
+        }
+        if let Err(e) = app
+            .invalidate(&["forums", "forumperms", "moderators"])
+            .await
+        {
+            tracing::warn!("cache invalidation after forum deletion failed: {e:#}");
+        }
+    });
     ctx.app.invalidate(&["forums"]).await?;
     crate::admin::log(
         &ctx,
@@ -579,6 +589,9 @@ pub async fn moderator_add(
     CsrfForm(f): CsrfForm<AnyForm>,
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "forums");
+    if ctx.cache.forum(fid).is_none() {
+        return Err(AppError::not_found("forum"));
+    }
     let username = s(f.fields.get("username"));
     let gid = i(f.fields.get("gid"));
     let (id, isgroup) = if !username.trim().is_empty() {
@@ -592,6 +605,9 @@ pub async fn moderator_add(
         sqlx::query("UPDATE users SET additionalgroups = array_append(additionalgroups, 6) WHERE uid = $1 AND usergroup NOT IN (3, 4, 6) AND NOT (6 = ANY(additionalgroups))").bind(uid).execute(&ctx.app.db).await?;
         (uid, false)
     } else if gid > 0 {
+        if ctx.cache.group(gid).is_none() {
+            return Err(AppError::user("That user group does not exist."));
+        }
         (gid, true)
     } else {
         return Err(AppError::user("Enter a username or choose a group."));

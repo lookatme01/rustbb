@@ -2,6 +2,7 @@
 
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
+use crate::models::{POST_COLUMNS, Post};
 use crate::util::{self, now};
 use axum::Json;
 use axum::body::Body;
@@ -16,6 +17,41 @@ fn json_err(msg: &str) -> Response {
         Json(serde_json::json!({"error": msg})),
     )
         .into_response()
+}
+
+async fn upload_limit_error(
+    ctx: &Ctx,
+    pid: i32,
+    posthash: &str,
+    size: i64,
+    conn: &mut sqlx::PgConnection,
+) -> AppResult<Option<Response>> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE (posthash = $1 AND posthash <> '' AND uid = $3) OR (pid = $2 AND pid > 0)")
+        .bind(posthash)
+        .bind(pid)
+        .bind(ctx.uid())
+        .fetch_one(&mut *conn)
+        .await?;
+    let max = ctx.settings().int("maxattachments");
+    if max > 0 && count >= max && !ctx.can(crate::domain::staff::Cap::PostingExempt) {
+        return Ok(Some(json_err(&format!(
+            "You can attach at most {max} files to a post."
+        ))));
+    }
+    if ctx.perms.attachquota > 0 {
+        let used: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(filesize), 0)::bigint FROM attachments WHERE uid = $1",
+        )
+        .bind(ctx.uid())
+        .fetch_one(&mut *conn)
+        .await?;
+        if used + size > ctx.perms.attachquota as i64 * 1024 {
+            return Ok(Some(json_err(
+                "Uploading this file would exceed your attachment quota. Delete some attachments in the User CP first.",
+            )));
+        }
+    }
+    Ok(None)
 }
 
 /// The largest attachment any enabled type allows, capped by `RBB_MAX_UPLOAD_MB`.
@@ -47,7 +83,11 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let mut key = String::new();
     // The file streams to a temporary file, cut off at the largest size any enabled type allows
     // (the limit for its own type is checked once the form's other fields are known).
-    let limit = upload_ceiling(&ctx);
+    let limit = if ctx.perms.attachquota > 0 {
+        upload_ceiling(&ctx).min(ctx.perms.attachquota as u64 * 1024)
+    } else {
+        upload_ceiling(&ctx)
+    };
     let mut file: Option<crate::infra::uploads::Spooled> = None;
     while let Some(field) = mp
         .next_field()
@@ -77,18 +117,24 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let size = upload.size as i64;
     // Editing an existing post: must be allowed to edit it.
     if pid > 0 {
-        let row: Option<(i32, i32)> = sqlx::query_as("SELECT uid, fid FROM posts WHERE pid = $1")
-            .bind(pid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
-        let (puid, pfid) = row.ok_or_else(|| AppError::not_found("post"))?;
-        if puid != me.uid && !ctx.mod_perms(pfid).map(|m| m.caneditposts).unwrap_or(false) {
+        let post: Post =
+            sqlx::query_as(&format!("SELECT {POST_COLUMNS} FROM posts WHERE pid = $1"))
+                .bind(pid)
+                .fetch_optional(&ctx.app.db)
+                .await?
+                .ok_or_else(|| AppError::not_found("post"))?;
+        let (thread, _, fp) = super::showthread::check_thread(&ctx, post.tid).await?;
+        let mp = ctx.mod_perms(post.fid);
+        if !super::showthread::edit_allowed(&ctx, &post, &thread, &fp, &mp) {
             return Ok(json_err("You cannot add attachments to this post."));
         }
-        fid = pfid;
+        fid = post.fid;
         posthash.clear();
     } else if posthash.len() < 16 || !posthash.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Ok(json_err("Invalid upload session. Please reload the page."));
+    }
+    if fid > 0 {
+        ctx.check_forum(fid)?;
     }
     if fid > 0 && !ctx.forum_perms(fid).canpostattachments {
         return Ok(json_err("You cannot post attachments in this forum."));
@@ -128,30 +174,14 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
             util::format_bytes(at.maxsize as i64 * 1024)
         )));
     }
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE (posthash = $1 AND posthash <> '' AND uid = $3) OR (pid = $2 AND pid > 0)")
-        .bind(&posthash)
-        .bind(pid)
-        .bind(me.uid)
-        .fetch_one(&ctx.app.db)
-        .await?;
-    let max = s.int("maxattachments");
-    if max > 0 && count >= max && !ctx.can(crate::domain::staff::Cap::PostingExempt) {
-        return Ok(json_err(&format!(
-            "You can attach at most {max} files to a post."
-        )));
-    }
-    if ctx.perms.attachquota > 0 {
-        let used: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(filesize), 0)::bigint FROM attachments WHERE uid = $1",
-        )
-        .bind(me.uid)
-        .fetch_one(&ctx.app.db)
-        .await?;
-        if used + size > ctx.perms.attachquota as i64 * 1024 {
-            return Ok(json_err(
-                "Uploading this file would exceed your attachment quota. Delete some attachments in the User CP first.",
-            ));
-        }
+    // Reject exhausted quotas before image decoding without holding a connection
+    // through CPU work. The authoritative check is repeated under the locks below.
+    let preflight = {
+        let mut conn = ctx.app.db.acquire().await?;
+        upload_limit_error(&ctx, pid, &posthash, size, &mut conn).await?
+    };
+    if let Some(error) = preflight {
+        return Ok(error);
     }
     let is_image = at.mimetype.starts_with("image/");
     // Images must decode (within limits); thumbnails are made for large ones.
@@ -174,12 +204,40 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     } else {
         None
     };
+    // Serialize quota checks through insertion on every node. Separate namespaces
+    // distinguish account quotas from the attachment count shared by a post.
+    // Always lock the account before the post, and bound how long a rival upload waits.
+    let mut tx = ctx.app.db.begin().await?;
+    sqlx::query("SET LOCAL lock_timeout = '2s'")
+        .execute(&mut *tx)
+        .await?;
+    let locks = [(0x52424241_i32, me.uid), (0x52424250_i32, pid)];
+    for (namespace, id) in locks.into_iter().take(if pid > 0 { 2 } else { 1 }) {
+        if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+            .bind(namespace)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            if e.as_database_error()
+                .is_some_and(|e| e.code().as_deref() == Some("55P03"))
+            {
+                return Ok(json_err(
+                    "Another attachment upload is in progress. Please try again.",
+                ));
+            }
+            return Err(e.into());
+        }
+    }
+    if let Some(error) = upload_limit_error(&ctx, pid, &posthash, size, &mut tx).await? {
+        return Ok(error);
+    }
     let month = chrono::Utc::now().format("%Y%m").to_string();
     let stem = format!("{}_{}", me.uid, util::random_token(24));
     let attachname = format!("attachments/{month}/{stem}.attach");
     ctx.app
         .storage
-        .put_file(&attachname, &upload.take())
+        .put_file(&attachname, upload.path())
         .await
         .map_err(AppError::Other)?;
     let thumbname = match thumb {
@@ -212,14 +270,15 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     .bind(now())
     .bind(visible)
     .bind(if thumbname == attachname { String::new() } else { thumbname })
-    .fetch_one(&ctx.app.db)
+    .fetch_one(&mut *tx)
     .await?;
     if pid > 0 {
         sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = $1")
             .bind(pid)
-            .execute(&ctx.app.db)
+            .execute(&mut *tx)
             .await?;
     }
+    tx.commit().await?;
     Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(size), "visible": visible, "is_image": is_image})).into_response())
 }
 

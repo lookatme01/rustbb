@@ -540,10 +540,19 @@ impl CtxInner {
 
     /// Like [`Ctx::redirect`], with an "Undo" button beside the message that posts `fields` to
     /// `action`. The undo endpoint does its own permission checks: this only offers the button.
-    pub fn redirect_undo(&self, to: &str, msg: &str, action: &str, fields: &[(&str, String)]) -> Response {
+    pub fn redirect_undo(
+        &self,
+        to: &str,
+        msg: &str,
+        action: &str,
+        fields: &[(&str, String)],
+    ) -> Response {
         let undo = Undo {
             action: action.to_string(),
-            fields: fields.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
         };
         if let Ok(json) = serde_json::to_string(&undo) {
             self.add_cookie(UNDO_COOKIE, &json, Some(60), false);

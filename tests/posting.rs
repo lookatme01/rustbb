@@ -168,6 +168,41 @@ async fn simultaneous_double_posts_merge_into_one() {
 }
 
 #[tokio::test]
+async fn parallel_posts_cannot_dodge_flood_control() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "1").await;
+    setting(&t, "postfloodsecs", "600").await;
+    setting(&t, "postmergemins", "0").await;
+    let fid = forum(&t).await;
+    let starter = t.create_user("floodopener", "Passw0rd-opener").await;
+    let tid = new_thread(&t, &t.login_as(starter).await, fid).await;
+    // Everyone is past the flood window when the requests start, so each passes the
+    // snapshot check; only the locked re-check can stop the extra ones.
+    sqlx::query("UPDATE users SET lastpost = 0")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let uid = t.create_user("flooder", "Passw0rd-flooder").await;
+    let c = t.login_as(uid).await;
+    let path = format!("/newreply/{tid}");
+    let futs = (0..5).map(|_| c.post_form(&path, &[("message", "A reply sent in a burst.")]));
+    let ok = futures::future::join_all(futs)
+        .await
+        .iter()
+        .filter(|r| r.status.is_redirection())
+        .count();
+    assert_eq!(ok, 1, "only one reply of the burst may get through");
+    let posts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE tid = $1 AND uid = $2")
+        .bind(tid)
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(posts, 1);
+    assert_consistent(&t).await;
+}
+
+#[tokio::test]
 async fn editing_keeps_history_and_subject_together() {
     let t = test_app!();
     setting(&t, "postfloodcheck", "0").await;

@@ -252,7 +252,8 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
     )
     .fetch_optional(db)
     .await?;
-    let watch = crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
+    let watch =
+        crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
     let dbsize: i64 = sqlx::query_scalar("SELECT pg_database_size(current_database())")
         .fetch_one(db)
         .await?;
@@ -275,7 +276,10 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
     .await?;
     let history: Vec<(i64, i32, i32, i32)> = sqlx::query_as("SELECT dateline, numusers, numthreads, numposts FROM stats ORDER BY dateline DESC LIMIT 14").fetch_all(db).await?;
     // Posts per day for the strip: the stats rows are running totals, so take differences.
-    let deltas: Vec<(i64, i64)> = history.windows(2).map(|w| (w[0].0, (w[0].3 - w[1].3).max(0) as i64)).collect();
+    let deltas: Vec<(i64, i64)> = history
+        .windows(2)
+        .map(|w| (w[0].0, (w[0].3 - w[1].3).max(0) as i64))
+        .collect();
     let peak = deltas.iter().map(|d| d.1).max().unwrap_or(0).max(1);
     let n_bars = deltas.len();
     let bars: Vec<_> = deltas

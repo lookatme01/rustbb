@@ -203,13 +203,16 @@ const KINDS: &[(&str, &str)] = &[
 /// Everything recorded about a member that the viewer may see, newest first: notes, warnings,
 /// staff actions on the account, reports, moderation of their content and ban appeals.
 /// `filter` is one of the [`KINDS`] keys, or empty for all.
-pub(crate) async fn timeline(ctx: &Ctx, member: &crate::models::User, filter: &str) -> AppResult<Vec<Event>> {
+pub(crate) async fn timeline(
+    ctx: &Ctx,
+    member: &crate::models::User,
+    filter: &str,
+) -> AppResult<Vec<Event>> {
     let uid = member.uid;
     let db = &ctx.app.db;
     let t = now();
     let want = |k: &str| filter.is_empty() || filter == k;
     let mut events: Vec<Event> = vec![];
-
 
     let notes_visible = ctx.can(Cap::ReadModNotes);
     if want("notes") && notes_visible {
@@ -463,7 +466,10 @@ pub(crate) async fn timeline(ctx: &Ctx, member: &crate::models::User, filter: &s
 pub(crate) fn visible_kinds(ctx: &Ctx) -> Vec<minijinja::Value> {
     KINDS
         .iter()
-        .filter(|k| (k.0 != "warnings" || ctx.perms.canviewwarnlogs) && (k.0 != "notes" || ctx.can(Cap::ReadModNotes)))
+        .filter(|k| {
+            (k.0 != "warnings" || ctx.perms.canviewwarnlogs)
+                && (k.0 != "notes" || ctx.can(Cap::ReadModNotes))
+        })
         .map(|k| minijinja::context! { key => k.0, label => k.1 })
         .collect()
 }
@@ -489,7 +495,9 @@ pub async fn history(
         None
     };
     let mf = crate::member_file::load(&ctx, &member, crate::member_file::View::of(&ctx)).await?;
-    let outranked = crate::routes::modcp::can_act_on(&ctx, &member) && member.uid != ctx.uid() && !member.is_system;
+    let outranked = crate::routes::modcp::can_act_on(&ctx, &member)
+        && member.uid != ctx.uid()
+        && !member.is_system;
     ctx.render(
         "modcp/member.html",
         minijinja::context! {

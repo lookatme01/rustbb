@@ -149,12 +149,14 @@ pub async fn with_image<T: Send + 'static>(
     path: PathBuf,
     f: impl FnOnce(image::DynamicImage) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    let _permit = IMAGES
+    let permit = IMAGES
         .acquire()
         .await
         .map_err(|_| "Image processing is unavailable.".to_string())?;
     let t0 = std::time::Instant::now();
     let r = tokio::task::spawn_blocking(move || {
+        // Dropping the request cannot stop this job; hold its slot on the blocking thread.
+        let _permit = permit;
         let img = decode_file(&path).map_err(|_| {
             "The image appears to be corrupt, too large, or is not a supported format (PNG, JPEG, GIF, WebP)."
                 .to_string()
@@ -225,6 +227,41 @@ pub async fn sweep_tmp(upload_dir: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cancelled_image_request_holds_its_slot_until_processing_finishes() {
+        let p =
+            std::env::temp_dir().join(format!("rbb-cancel-{}.png", crate::util::random_token(6)));
+        image::RgbImage::new(1, 1).save(&p).unwrap();
+        let reserved = IMAGES
+            .acquire_many((image_slots() - 1) as u32)
+            .await
+            .unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+        let job = tokio::spawn(with_image(p.clone(), move |_| {
+            started_tx.send(()).unwrap();
+            finish_rx.recv().unwrap();
+            Ok(())
+        }));
+        started_rx.await.unwrap();
+        job.abort();
+        assert!(job.await.unwrap_err().is_cancelled());
+        let still_held = IMAGES.try_acquire().is_err();
+        // Always release the blocking job, even if the assertion below fails.
+        finish_tx.send(()).unwrap();
+        let released = tokio::time::timeout(std::time::Duration::from_secs(5), IMAGES.acquire())
+            .await
+            .unwrap()
+            .unwrap();
+        drop(released);
+        drop(reserved);
+        std::fs::remove_file(p).unwrap();
+        assert!(
+            still_held,
+            "request cancellation released a running image job's slot"
+        );
+    }
 
     #[test]
     fn oversized_images_are_refused_before_decoding() {
