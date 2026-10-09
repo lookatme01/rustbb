@@ -217,7 +217,7 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .await?
     } else {
         sqlx::query_scalar("SELECT uid FROM users WHERE username ILIKE '%' || $1 || '%' LIMIT 200")
-            .bind(&author)
+            .bind(util::like_escape(&author))
             .fetch_all(&ctx.app.db)
             .await?
     };
@@ -242,9 +242,15 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
 
     let ids: Vec<i32> = if titles_only || (keywords.is_empty() && threads_mode) {
         // Thread subject search (trigram index) and/or thread starter filter.
+        // One `ILIKE` predicate per word (all must match) so the trigram index on
+        // `subject` can serve each; `= ANY/ALL(array)` forms cannot use it.
         let words: Vec<String> = keywords
             .split_whitespace()
-            .map(|w| format!("%{}%", w.replace('%', "\\%").replace('_', "\\_")))
+            .take(5)
+            .map(|w| format!("%{}%", util::like_escape(w)))
+            .collect();
+        let word_sql: String = (0..words.len())
+            .map(|i| format!(" AND t.subject ILIKE ${}", i + 11))
             .collect();
         let order = sort_sql(&p.sortby, &p.sortordr, true);
         // Many `%word%` patterns are as expensive as full text: same concurrency cap and timeout.
@@ -258,29 +264,29 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         sqlx::query("SET LOCAL statement_timeout = '5s'")
             .execute(&mut *tx)
             .await?;
-        let words: Vec<String> = words.into_iter().take(10).collect();
-        let res: Result<Vec<i32>, sqlx::Error> = sqlx::query_scalar(&format!(
+        let thread_sql = format!(
             "SELECT t.tid FROM threads t WHERE (t.fid = ANY($1) OR (t.fid = ANY($2) AND t.uid = $3)) AND t.visible = ANY($4)
-               AND t.closed NOT LIKE 'moved|%'
-               AND (cardinality($5::text[]) = 0 OR t.subject ILIKE ALL($5))
-               AND (cardinality($6::int[]) = 0 OR t.uid = ANY($6))
-               AND ($7 = 0 OR ($8 AND t.lastpost >= $7) OR (NOT $8 AND t.lastpost < $7))
-               AND ($9 = 0 OR t.replies >= $9) AND ($11 = 0 OR t.prefix = $11)
-             ORDER BY {order} LIMIT $10"
-        ))
-        .bind(&fids)
-        .bind(&own_only)
-        .bind(uid)
-        .bind(&states)
-        .bind(&words)
-        .bind(&author_uids)
-        .bind(date_cond)
-        .bind(newer)
-        .bind(p.numreplies)
-        .bind(limit)
-        .bind(p.prefix)
-        .fetch_all(&mut *tx)
-        .await;
+               AND t.closed NOT LIKE 'moved|%'{word_sql}
+               AND (cardinality($5::int[]) = 0 OR t.uid = ANY($5))
+               AND ($6 = 0 OR ($7 AND t.lastpost >= $6) OR (NOT $7 AND t.lastpost < $6))
+               AND ($8 = 0 OR t.replies >= $8) AND ($10 = 0 OR t.prefix = $10)
+             ORDER BY {order} LIMIT $9"
+        );
+        let mut thread_q = sqlx::query_scalar::<_, i32>(&thread_sql)
+            .bind(&fids)
+            .bind(&own_only)
+            .bind(uid)
+            .bind(&states)
+            .bind(&author_uids)
+            .bind(date_cond)
+            .bind(newer)
+            .bind(p.numreplies)
+            .bind(limit)
+            .bind(p.prefix);
+        for w in &words {
+            thread_q = thread_q.bind(w);
+        }
+        let res: Result<Vec<i32>, sqlx::Error> = thread_q.fetch_all(&mut *tx).await;
         match res {
             Ok(v) => {
                 tx.commit().await?;
@@ -513,6 +519,7 @@ pub async fn results(
             .iter()
             .filter_map(|id| by_id.remove(id))
             .filter(|t| ctx.access().can_read_thread(t.fid, t.uid, ctx.uid()))
+            .filter(|t| ctx.visible_states(t.fid).contains(&t.visible))
             .collect();
         let mut rows = thread_rows(&ctx, ordered).await?;
         for r in rows.iter_mut() {

@@ -66,17 +66,21 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
     let where_sql = "NOT (usergroup = ANY($1)) AND ($2 = '' OR username ILIKE '%' || $2 || '%')
         AND ($3 = '' OR ($3 = '#' AND username !~ '^[A-Za-z]') OR lower(left(username, 1)) = lower($3))
         AND ($4 = '' OR website ILIKE '%' || $4 || '%') AND ($5 = 0 OR usergroup = $5 OR $5 = ANY(additionalgroups))";
+    // The name and website filters are substring matches, not user-supplied patterns.
+    let username_like = util::like_escape(q.username.trim());
+    let website_like = util::like_escape(q.website.trim());
     let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
         .bind(&hidden)
-        .bind(q.username.trim())
+        .bind(&username_like)
         .bind(&letter)
-        .bind(q.website.trim())
+        .bind(&website_like)
         .bind(q.gid)
         .fetch_one(&ctx.app.db)
         .await?;
     let per = s.int("membersperpage").max(5);
     let base = format!(
-        "/members?sort={sort}&order={}&username={}&letter={}&gid={}&page={{page}}",
+        "/members?sort={}&order={}&username={}&letter={}&gid={}&page={{page}}",
+        percent_encoding::utf8_percent_encode(&sort, percent_encoding::NON_ALPHANUMERIC),
         order.to_lowercase(),
         percent_encoding::utf8_percent_encode(
             q.username.trim(),
@@ -91,9 +95,9 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
          ORDER BY {col} {order}, uid LIMIT $6 OFFSET $7"
     ))
     .bind(&hidden)
-    .bind(q.username.trim())
+    .bind(&username_like)
     .bind(&letter)
-    .bind(q.website.trim())
+    .bind(&website_like)
     .bind(q.gid)
     .bind(per)
     .bind((pg.page - 1) * per)
