@@ -257,14 +257,10 @@ pub async fn new_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
             "The password must be at least 6 characters.",
         ));
     }
-    if ctx
-        .cache
-        .group(gid)
-        .map(|g| g.perms.0.cancp)
-        .unwrap_or(false)
-        && !ctx.is_admin()
-    {
-        return Err(AppError::no_perm());
+    if ctx.cache.group(gid).is_some_and(|g| g.perms.0.cancp) && !is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can create administrators.",
+        ));
     }
     let hash = crate::auth::hash_password(&password).await?;
     let uid: i32 = sqlx::query_scalar("INSERT INTO users (username, password, email, usergroup, regdate, lastactive, regip, pmfolders) VALUES ($1, $2, $3, $4, $5, 0, $6, '[]') RETURNING uid")
@@ -307,6 +303,76 @@ async fn load(ctx: &Ctx, uid: i32) -> AppResult<User> {
     .fetch_optional(&ctx.app.db)
     .await?
     .ok_or_else(|| AppError::not_found("user"))
+}
+
+/// Groups an account belongs to, primary first.
+fn member_groups(u: &User) -> impl Iterator<Item = i32> + '_ {
+    std::iter::once(u.usergroup).chain(u.additionalgroups.iter().copied())
+}
+
+/// True when any of the account's groups grants Admin CP access.
+fn has_cancp(ctx: &Ctx, u: &User) -> bool {
+    member_groups(u).any(|g| ctx.cache.group(g).is_some_and(|g| g.perms.0.cancp))
+}
+
+/// True when the account is an administrator or a (super) moderator.
+fn has_staff_role(ctx: &Ctx, u: &User) -> bool {
+    has_cancp(ctx, u)
+        || member_groups(u).any(|g| {
+            ctx.cache
+                .group(g)
+                .is_some_and(|g| g.perms.0.issupermod || g.perms.0.canmodcp)
+        })
+}
+
+/// Whether the signed-in admin has no per-module restrictions (Admin Permissions). Only these
+/// admins may touch other administrators' accounts or admin permissions.
+async fn is_full_admin(ctx: &Ctx) -> AppResult<bool> {
+    let perms: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT permissions FROM adminoptions WHERE uid = $1")
+            .bind(ctx.uid())
+            .fetch_optional(&ctx.app.db)
+            .await?;
+    let restricted = perms
+        .as_ref()
+        .and_then(|p| p.as_object())
+        .is_some_and(|o| o.values().any(|v| v == &serde_json::Value::Bool(false)));
+    Ok(!restricted)
+}
+
+/// A module-restricted admin may not act on another administrator, or on other staff when
+/// `staff_too`, or it could take over the account (password, 2FA, groups) or remove it.
+async fn guard_target(ctx: &Ctx, target: &User, staff_too: bool) -> AppResult<()> {
+    // System's cosmetic fields are editable by any admin; its other actions are refused elsewhere.
+    if target.uid == ctx.uid() || target.is_system {
+        return Ok(());
+    }
+    let protected = if staff_too {
+        has_staff_role(ctx, target)
+    } else {
+        has_cancp(ctx, target)
+    };
+    if protected && !is_full_admin(ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can do that to a staff account.",
+        ));
+    }
+    Ok(())
+}
+
+/// Refuse putting `target` into an administrator group it is not already in, unless the
+/// signed-in admin is unrestricted (otherwise a restricted admin could mint full admins).
+async fn guard_admin_grant(ctx: &Ctx, target: &User, new_groups: &[i32]) -> AppResult<()> {
+    let current: Vec<i32> = member_groups(target).collect();
+    let grants_cancp = new_groups
+        .iter()
+        .any(|g| !current.contains(g) && ctx.cache.group(*g).is_some_and(|g| g.perms.0.cancp));
+    if grants_cancp && !is_full_admin(ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can grant administrator access.",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize, Default)]
@@ -430,6 +496,7 @@ pub async fn security(
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
     crate::system::guard(&ctx.cache, uid, "signed out")?;
+    guard_target(&ctx, &user, false).await?;
     let mut done = vec![];
     if f.reset2fa {
         sqlx::query("UPDATE users SET totp_secret = '' WHERE uid = $1")
@@ -508,6 +575,7 @@ pub async fn edit_save(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, false).await?;
     let fl = &f.fields;
     let username = s(fl.get("username")).trim().to_string();
     // System keeps its email, groups and password; only cosmetic fields are editable.
@@ -536,6 +604,20 @@ pub async fn edit_save(
             "You cannot remove your own administrator access.",
         ));
     }
+    // Checked before the rename below so a refused edit changes nothing.
+    let mut additional: Vec<i32> = ints(fl.get("additionalgroups"))
+        .into_iter()
+        .filter(|g| *g != gid && ctx.cache.group(*g).is_some())
+        .collect();
+    additional.sort();
+    additional.dedup();
+    if sys {
+        additional = user.additionalgroups.clone();
+    }
+    let displaygroup = i(fl.get("displaygroup"));
+    crate::system::guard_group(&ctx.cache, uid, &[gid, displaygroup])?;
+    crate::system::guard_group(&ctx.cache, uid, &additional)?;
+    guard_admin_grant(&ctx, &user, &[&[gid][..], &additional].concat()).await?;
     if !sys && !util::valid_email(&email) {
         return Err(AppError::user("Invalid email address."));
     }
@@ -555,18 +637,6 @@ pub async fn edit_save(
         }
         crate::routes::usercp::rename_user(&ctx.app, uid, &user.username, &username).await?;
     }
-    let mut additional: Vec<i32> = ints(fl.get("additionalgroups"))
-        .into_iter()
-        .filter(|g| *g != gid && ctx.cache.group(*g).is_some())
-        .collect();
-    additional.sort();
-    additional.dedup();
-    if sys {
-        additional = user.additionalgroups.clone();
-    }
-    let displaygroup = i(fl.get("displaygroup"));
-    crate::system::guard_group(&ctx.cache, uid, &[gid, displaygroup])?;
-    crate::system::guard_group(&ctx.cache, uid, &additional)?;
     sqlx::query(
         "UPDATE users SET email = $2, usergroup = $3, additionalgroups = $4, displaygroup = $5, usertitle = $6, website = $7, signature = $8,
             postnum = COALESCE($9, postnum), threadnum = COALESCE($10, threadnum), timezone = $11,
@@ -664,6 +734,7 @@ pub async fn erase(
         return Err(AppError::user("You cannot erase your own account here."));
     }
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, true).await?;
     if s(f.fields.get("confirm")).trim() != user.username {
         return Err(AppError::user(
             "Type the member's username exactly to confirm the erasure.",
@@ -710,6 +781,7 @@ pub async fn delete(
         return Err(AppError::user("You cannot delete your own account here."));
     }
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, true).await?;
     let content = b(f.fields.get("deletecontent"));
     crate::routes::usercp::delete_user(&ctx.app, uid, content).await?;
     crate::admin::log(
@@ -736,6 +808,7 @@ pub async fn ban(
     if uid == ctx.uid() {
         return Err(AppError::user("You cannot ban yourself."));
     }
+    guard_target(&ctx, &user, true).await?;
     let back = format!("/admin/users/{uid}");
     if b(f.fields.get("lift")) {
         crate::routes::modcp::lift_ban_for(&ctx.app, uid).await?;
@@ -824,8 +897,18 @@ pub async fn awaiting_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppRes
             }
         }
         "delete" => {
-            for u in &uids {
-                crate::routes::usercp::delete_user(&ctx.app, *u, true).await?;
+            // Only genuinely awaiting accounts, never the admin's own or another staff account
+            // (an extra group can make a pending account staff).
+            let pending: Vec<User> = sqlx::query_as(&format!(
+                "SELECT {} FROM users WHERE uid = ANY($1) AND usergroup = 5 AND uid <> $2 AND NOT is_system",
+                crate::models::USER_COLUMNS
+            ))
+            .bind(&uids)
+            .bind(ctx.uid())
+            .fetch_all(&ctx.app.db)
+            .await?;
+            for u in pending.iter().filter(|u| !has_staff_role(&ctx, u)) {
+                crate::routes::usercp::delete_user(&ctx.app, u.uid, true).await?;
             }
         }
         _ => {}
@@ -881,6 +964,8 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
             "Choose two different users (and not yourself as the source).",
         ));
     }
+    // The source account is deleted, so it needs the same protection as a plain delete.
+    guard_target(&ctx, &load(&ctx, src).await?, true).await?;
     let mut tx = ctx.app.db.begin().await?;
     for sql in [
         "UPDATE posts SET uid = $2, username = $3 WHERE uid = $1",
@@ -917,8 +1002,7 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
             .execute(&mut *tx)
             .await?;
     }
-    tx.commit().await?;
-    crate::routes::usercp::delete_user(&ctx.app, src, false).await?;
+    // Recount in the same transaction: the moved content and the new totals land together.
     sqlx::query(
         "UPDATE users SET postnum = (SELECT COUNT(*) FROM posts p JOIN forums f ON f.fid = p.fid WHERE p.uid = $1 AND p.visible = 1 AND f.usepostcounts),
             threadnum = (SELECT COUNT(*) FROM threads WHERE uid = $1 AND visible = 1), reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1),
@@ -926,8 +1010,19 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
          WHERE uid = $1",
     )
     .bind(dst)
-    .execute(&ctx.app.db)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
+    // `delete_user` runs its own transactions, so it can only follow the commit. If it fails,
+    // the content has already moved; say so rather than leaving the admin guessing.
+    if let Err(e) = crate::routes::usercp::delete_user(&ctx.app, src, false).await {
+        tracing::error!(
+            "merge: moved {src_name} into {dst_name} but could not delete the source: {e}"
+        );
+        return Err(AppError::user(format!(
+            "{src_name}'s content was moved to {dst_name}, but the old account could not be deleted. Delete it from its member page."
+        )));
+    }
     crate::admin::log(
         &ctx,
         "users",
@@ -1001,6 +1096,17 @@ pub async fn adminperms_save(
             "You cannot restrict your own admin permissions.",
         ));
     }
+    // Only an unrestricted admin may change another's permissions. That also guarantees the
+    // change can never leave the board without an unrestricted administrator: the actor is one.
+    if !is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can change admin permissions.",
+        ));
+    }
+    let target = load(&ctx, uid).await?;
+    if !has_cancp(&ctx, &target) {
+        return Err(AppError::user("That member is not an administrator."));
+    }
     let mut p = serde_json::json!({});
     for (k, _) in crate::admin::MODULES {
         p[*k] = serde_json::Value::Bool(b(f.fields.get(*k)));
@@ -1023,15 +1129,20 @@ pub async fn activity(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
-    let base = format!("/admin/users/{uid}/activity?kind={}&page={{page}}", q.kind);
+    // Same whitelist as the member's own activity page: `kind` goes into a link.
+    let kind = match q.kind.as_str() {
+        "security" | "account" | "staff" => q.kind.as_str(),
+        _ => "",
+    };
+    let base = format!("/admin/users/{uid}/activity?kind={kind}&page={{page}}");
     let (events, pagination) =
-        crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base, false).await?;
+        crate::routes::usercp::audit_rows(&ctx, uid, kind, q.page, &base, false).await?;
     crate::admin::page(
         &ctx,
         "admin/user_activity.html",
         "users",
         &format!("Account activity: {}", user.username),
-        minijinja::context! { user => &user, events => events, pagination => pagination, kind => q.kind },
+        minijinja::context! { user => &user, events => events, pagination => pagination, kind => kind },
     )
     .await
 }

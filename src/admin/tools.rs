@@ -445,17 +445,35 @@ pub async fn testmail(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
     } else {
         to.trim().to_string()
     };
-    crate::mail::queue(
+    if !util::valid_email(&to) {
+        return Err(AppError::user("Enter a valid email address."));
+    }
+    let st = ctx.settings();
+    let smtp = st.get("mail_handler") == "smtp";
+    if smtp && st.get("smtp_host").trim().is_empty() {
+        return Err(AppError::user(
+            "Mail is set to SMTP but no SMTP host is configured in Settings.",
+        ));
+    }
+    // `mail::queue` only logs a failure; call `deliver` so the admin hears about it.
+    crate::mail::deliver(
         &ctx.app,
+        None,
         &to,
         "rbb test email",
         "This is a test email sent from the rbb Admin CP. If you received it, outgoing mail works.",
     )
-    .await;
-    Ok(ctx.redirect(
-        "/admin/tools/mailerrors",
-        &format!("A test email has been queued for {to}."),
-    ))
+    .await?;
+    let msg = if smtp {
+        format!(
+            "A test email has been queued for {to}. If it does not arrive, check the failures below."
+        )
+    } else {
+        format!(
+            "A test email for {to} has been queued, but mail is not set to SMTP: it will be written to the server log, not sent."
+        )
+    };
+    Ok(ctx.redirect("/admin/tools/mailerrors", &msg))
 }
 
 pub async fn spamlog(ctx: Ctx) -> AppResult<Response> {
@@ -520,26 +538,68 @@ pub async fn backup_page(ctx: Ctx) -> AppResult<Response> {
     .await
 }
 
+/// The connection URL without its password, plus the password for `PGPASSWORD`, so the secret
+/// is not visible in the process list. An unparsable URL is passed through as it is.
+fn split_db_password(url: &str) -> (String, Option<String>) {
+    let Ok(mut u) = url::Url::parse(url) else {
+        return (url.to_string(), None);
+    };
+    let Some(pw) = u.password() else {
+        return (url.to_string(), None);
+    };
+    let pw = percent_encoding::percent_decode_str(pw)
+        .decode_utf8_lossy()
+        .into_owned();
+    let _ = u.set_password(None);
+    (u.to_string(), Some(pw))
+}
+
 /// Stream a `pg_dump` of the database (custom format) to the browser.
+///
+/// The status line is sent before the dump ends, so a failure part-way aborts the connection
+/// (the browser sees a failed download, not a short file that looks complete) and is logged.
 pub async fn backup(ctx: Ctx, CsrfForm(_): CsrfForm<AnyForm>) -> AppResult<Response> {
+    use tokio::io::AsyncReadExt;
     crate::admin::acp_guard!(ctx, "tools");
     let bin = pg_dump_path()
         .ok_or_else(|| AppError::user("pg_dump was not found. Set RBB_PG_DUMP to its path."))?;
-    let mut child = tokio::process::Command::new(bin)
-        .arg("--format=custom")
+    let (url, password) = split_db_password(&ctx.app.cfg.database_url);
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.arg("--format=custom")
         .arg("--no-owner")
-        .arg(&ctx.app.cfg.database_url)
+        .arg(url)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| AppError::Other(e.into()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Other(anyhow::anyhow!("no stdout")))?;
-    tokio::spawn(async move {
-        let _ = child.wait().await;
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(pw) = password {
+        cmd.env("PGPASSWORD", pw);
+    }
+    let mut child = cmd.spawn().map_err(|e| AppError::Other(e.into()))?;
+    let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        return Err(AppError::Other(anyhow::anyhow!("pg_dump pipes missing")));
+    };
+    // Drained concurrently so a chatty pg_dump can never block on a full stderr pipe.
+    let errs = tokio::spawn(async move {
+        let mut b = Vec::new();
+        let _ = stderr.read_to_end(&mut b).await;
+        String::from_utf8_lossy(&b).into_owned()
     });
+    // pg_dump writes its header as soon as it is connected; no output at all means it failed
+    // (bad credentials, unreachable database), which can still be reported as an error page.
+    let mut first = vec![0u8; 64 * 1024];
+    let n = stdout
+        .read(&mut first)
+        .await
+        .map_err(|e| AppError::Other(e.into()))?;
+    if n == 0 {
+        let status = child.wait().await.map_err(|e| AppError::Other(e.into()))?;
+        let msg = errs.await.unwrap_or_default();
+        tracing::error!("pg_dump produced no output ({status}): {}", msg.trim());
+        return Err(AppError::Other(anyhow::anyhow!(
+            "pg_dump failed ({status}); see the server log"
+        )));
+    }
+    first.truncate(n);
     crate::admin::log(
         &ctx,
         "tools",
@@ -547,7 +607,7 @@ pub async fn backup(ctx: Ctx, CsrfForm(_): CsrfForm<AnyForm>) -> AppResult<Respo
         serde_json::json!({}),
     )
     .await;
-    let stream = tokio_util_reader(stdout);
+    let stream = dump_stream(child, stdout, bytes::Bytes::from(first), errs);
     let name = format!(
         "rbb-backup-{}.dump",
         chrono::Utc::now().format("%Y%m%d-%H%M%S")
@@ -565,17 +625,28 @@ pub async fn backup(ctx: Ctx, CsrfForm(_): CsrfForm<AnyForm>) -> AppResult<Respo
         .into_response())
 }
 
-fn tokio_util_reader(
-    r: tokio::process::ChildStdout,
+/// `first` (already read), then the rest of `stdout`; ends in an error when `pg_dump` exits
+/// non-zero, which aborts the response instead of completing it.
+fn dump_stream(
+    mut child: tokio::process::Child,
+    mut stdout: tokio::process::ChildStdout,
+    first: bytes::Bytes,
+    errs: tokio::task::JoinHandle<String>,
 ) -> impl futures::Stream<Item = std::io::Result<bytes::Bytes>> {
     use tokio::io::AsyncReadExt;
     async_stream::try_stream! {
-        let mut r = r;
+        yield first;
         let mut buf = vec![0u8; 64 * 1024];
         loop {
-            let n = r.read(&mut buf).await?;
+            let n = stdout.read(&mut buf).await?;
             if n == 0 { break; }
             yield bytes::Bytes::copy_from_slice(&buf[..n]);
+        }
+        let status = child.wait().await?;
+        if !status.success() {
+            let msg = errs.await.unwrap_or_default();
+            tracing::error!("pg_dump failed part-way ({status}); the download was cut off: {}", msg.trim());
+            Err::<(), _>(std::io::Error::other(format!("pg_dump exited with {status}")))?;
         }
     }
 }
