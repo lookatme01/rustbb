@@ -543,6 +543,9 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     {
         let name = field.name().unwrap_or("").to_string();
         if name == "file" {
+            // Don't spool anything to disk for a forged request: the form puts the token before
+            // the file, so it has arrived by now (a header token works too).
+            ctx.check_csrf(fields.get("my_post_key").map(String::as_str).unwrap_or(""))?;
             // Streamed to disk and cut off at the avatar size limit.
             match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, max_kb * 1024).await
             {
@@ -828,11 +831,20 @@ pub struct NameChange {
 /// Rename a user everywhere their name is denormalized.
 pub async fn rename_user(app: &crate::app::App, uid: i32, old: &str, new: &str) -> AppResult<()> {
     let mut tx = app.db.begin().await?;
-    sqlx::query("UPDATE users SET username = $2 WHERE uid = $1")
+    // The unique index on lower(username) is what really guards against two people racing for a
+    // name; the callers' "taken" lookups are only the friendly early answer.
+    match sqlx::query("UPDATE users SET username = $2 WHERE uid = $1")
         .bind(uid)
         .bind(new)
         .execute(&mut *tx)
-        .await?;
+        .await
+    {
+        Ok(_) => {}
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            return Err(AppError::user("That username is already taken."));
+        }
+        Err(e) => return Err(e.into()),
+    }
     sqlx::query("UPDATE posts SET username = $2 WHERE uid = $1")
         .bind(uid)
         .bind(new)
@@ -1064,10 +1076,13 @@ pub async fn subscriptions(
         .bind((pg.page - 1) * per)
         .fetch_all(&ctx.app.db)
         .await?;
+        // Only this page's threads, not every subscription the member has ever made.
+        let tids: Vec<i32> = threads.iter().map(|t| t.tid).collect();
         let notif: HashMap<i32, i16> = sqlx::query_as::<_, (i32, i16)>(
-            "SELECT tid, notification FROM threadsubscriptions WHERE uid = $1",
+            "SELECT tid, notification FROM threadsubscriptions WHERE uid = $1 AND tid = ANY($2)",
         )
         .bind(me.uid)
+        .bind(&tids)
         .fetch_all(&ctx.app.db)
         .await?
         .into_iter()
@@ -1313,6 +1328,9 @@ pub struct ListAdd {
     pub usernames: String,
 }
 
+/// Most usernames accepted in one "add to list" request.
+const MAX_LIST_NAMES: usize = 20;
+
 pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let mut uids: Vec<i32> = vec![];
@@ -1326,6 +1344,11 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
             .map(|s| s.trim().to_lowercase())
             .filter(|s| !s.is_empty())
             .collect();
+        if names.len() > MAX_LIST_NAMES {
+            return Err(AppError::user(format!(
+                "You can add at most {MAX_LIST_NAMES} names at a time."
+            )));
+        }
         uids.extend(
             sqlx::query_scalar::<_, i32>("SELECT uid FROM users WHERE lower(username) = ANY($1)")
                 .bind(&names)
@@ -1334,6 +1357,8 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
         );
     }
     uids.retain(|u| *u != me.uid);
+    uids.sort_unstable();
+    uids.dedup();
     let (col, add) = match f.list.as_str() {
         "buddy" => ("buddylist", true),
         "ignore" => ("ignorelist", true),
@@ -1342,6 +1367,12 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
         _ => return Err(AppError::user("Unknown list.")),
     };
     if add {
+        // `uid` comes straight from the form: keep only members that exist, so nobody
+        // is alerted for (or stored as) an id that is not an account.
+        uids = sqlx::query_scalar("SELECT uid FROM users WHERE uid = ANY($1)")
+            .bind(&uids)
+            .fetch_all(&ctx.app.db)
+            .await?;
         sqlx::query(&format!(
             "UPDATE users SET {col} = (SELECT ARRAY(SELECT DISTINCT unnest({col} || $2::int[]))) WHERE uid = $1"
         ))
@@ -1361,7 +1392,8 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
             .execute(&ctx.app.db)
             .await?;
         if col == "buddylist" {
-            for u in &uids {
+            // Only people who weren't already friends: re-adding must not re-alert them.
+            for u in uids.iter().filter(|u| !me.buddylist.contains(u)) {
                 crate::notify::alert(
                     &ctx.app,
                     *u,
@@ -1680,7 +1712,7 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
             .await?;
     let sessions: Vec<_> = logins
         .into_iter()
-        .map(|(h, c, _l, ip, ua)| minijinja::context! { id => h[..16].to_string(), current => Some(&h) == ctx.token_hash.as_ref(), created => c, ip => ip, useragent => ua })
+        .map(|(h, c, _l, ip, ua)| minijinja::context! { id => h.get(..16).unwrap_or(&h).to_string(), current => Some(&h) == ctx.token_hash.as_ref(), created => c, ip => ip, useragent => ua })
         .collect();
     let tokens: Vec<(i64, String, Vec<String>, i64, Option<i64>, i64)> = sqlx::query_as(
         "SELECT id, name, scopes, EXTRACT(EPOCH FROM created_at)::bigint, EXTRACT(EPOCH FROM last_used_at)::bigint,
@@ -1909,6 +1941,9 @@ pub async fn usergroups_action(
     .bind(f.gid)
     .fetch_optional(&ctx.app.db)
     .await?;
+    // Leaders run custom and public groups (kinds 2-4). The built-in groups (kind 1: staff,
+    // members, ...) are admin-assigned, so a leader row on one grants nothing here.
+    let leader = leader.filter(|_| group.as_ref().is_some_and(|g| g.kind != 1));
     let msg = match f.action.as_str() {
         "join" => {
             let g = group.ok_or_else(|| AppError::not_found("group"))?;
@@ -1977,7 +2012,7 @@ pub async fn usergroups_action(
                 return Err(AppError::no_perm());
             }
             let req: Option<(i32, i32)> = sqlx::query_as(
-                "DELETE FROM joinrequests WHERE rid = $1 AND gid = $2 RETURNING uid, gid",
+                "DELETE FROM joinrequests WHERE rid = $1 AND gid = $2 AND NOT invite RETURNING uid, gid",
             )
             .bind(f.rid)
             .bind(f.gid)
@@ -2283,14 +2318,17 @@ pub async fn export(ctx: Ctx) -> AppResult<Response> {
             .collect(),
     ));
 
-    // The account audit log, split into sign-ins and everything else.
-    let audit: Vec<(i64, String, Option<String>, String, Option<i32>, Option<String>, serde_json::Value)> = sqlx::query_as(
+    // The account audit log, split into sign-ins and everything else. Capped so a very old
+    // account can't make this one request build an unbounded zip in memory: the newest entries
+    // are kept, then put back in chronological order.
+    let mut audit: Vec<(i64, String, Option<String>, String, Option<i32>, Option<String>, serde_json::Value)> = sqlx::query_as(
         "SELECT a.dateline, a.action, host(a.ipaddress), a.useragent, a.actor_uid, u.username, a.details
-         FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid WHERE a.uid = $1 ORDER BY a.id",
+         FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid WHERE a.uid = $1 ORDER BY a.id DESC LIMIT 50000",
     )
     .bind(me.uid)
     .fetch_all(db)
     .await?;
+    audit.reverse();
     let (mut sign_ins, mut activity) = (Vec::new(), Vec::new());
     for (dateline, action, ip, ua, actor, actor_name, details) in audit {
         let (label, category) = crate::audit::describe(&action);
