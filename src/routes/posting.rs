@@ -822,15 +822,19 @@ pub async fn editpost_submit(
     }
     let silent = form.silent && mp.is_some();
     let reason: String = form.editreason.chars().take(150).collect();
-    let prefix = (is_first
-        && form.prefix != thread.prefix
-        && (form.prefix == 0
-            || ctx
-                .cache
-                .prefixes_for(thread.fid, &ctx.groups)
-                .iter()
-                .any(|p| p.pid == form.prefix)))
-    .then_some(form.prefix);
+    // An author may only swap prefixes among those their groups can use, and cannot replace or
+    // clear one they could not have chosen themselves (e.g. set by staff). Managing moderators
+    // may always clear it.
+    let prefix = if is_first && form.prefix != thread.prefix {
+        let usable = ctx.cache.prefixes_for(thread.fid, &ctx.groups);
+        let can_use = |pid: i32| usable.iter().any(|p| p.pid == pid);
+        let manages = mp.as_ref().is_some_and(|m| m.canmanagethreads);
+        let may_change = thread.prefix == 0 || manages || can_use(thread.prefix);
+        let may_set = form.prefix == 0 || can_use(form.prefix);
+        (may_change && may_set).then_some(form.prefix)
+    } else {
+        None
+    };
     let moderated = posting::edit_post(
         &ctx,
         pid,

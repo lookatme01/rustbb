@@ -332,8 +332,17 @@ pub async fn showthread(
     if states.contains(&-1) {
         total += thread.deletedposts as i64;
     }
-    // The author can see their own unapproved posts.
+    // The author can see their own unapproved posts; count them too, or the last pages vanish.
     let own_unapproved = ctx.uid() > 0 && !states.contains(&0);
+    if own_unapproved && thread.unapprovedposts > 0 {
+        total += sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM posts WHERE tid = $1 AND visible = 0 AND uid = $2",
+        )
+        .bind(tid)
+        .bind(ctx.uid())
+        .fetch_one(&ctx.app.db)
+        .await?;
+    }
     let url = url_thread(tid as i64, Some(&thread.subject));
     let pagination = util::paginate(
         total,
@@ -696,12 +705,15 @@ pub async fn goto_post(ctx: Ctx, Path(pid): Path<i32>) -> AppResult<Response> {
     let (thread, _, _) = check_thread(&ctx, tid).await?;
     let states = ctx.listed_states(thread.fid);
     let before: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM posts WHERE tid = $1 AND visible = ANY($2) AND (dateline < $3 OR (dateline = $3 AND pid < $4))",
+        "SELECT COUNT(*) FROM posts WHERE tid = $1 AND (visible = ANY($2) OR ($5 AND visible = 0 AND uid = $6))
+         AND (dateline < $3 OR (dateline = $3 AND pid < $4))",
     )
     .bind(tid)
     .bind(&states)
     .bind(dateline)
     .bind(pid)
+    .bind(ctx.uid() > 0 && !states.contains(&0))
+    .bind(ctx.uid())
     .fetch_one(&ctx.app.db)
     .await?;
     let page = before / posts_per_page(&ctx) + 1;
