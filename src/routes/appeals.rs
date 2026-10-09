@@ -345,7 +345,7 @@ pub async fn decide(
 ) -> AppResult<Response> {
     require_ban_rights(&ctx)?;
     let row = load(&ctx, id).await?;
-    let (uid, username, status) = (row.1, row.2.clone(), row.7);
+    let (uid, username, ban_dateline, status) = (row.1, row.2.clone(), row.3, row.7);
     if status != PENDING {
         return Err(AppError::user("This appeal has already been decided."));
     }
@@ -360,25 +360,49 @@ pub async fn decide(
             "Please tell the member why the appeal was rejected.",
         ));
     }
-    let still_banned = current_ban(&ctx.app.db, uid).await?.is_some();
-    if accept && still_banned {
+    let current = current_ban(&ctx.app.db, uid).await?;
+    // The appeal was filed against one specific ban; a newer ban is a different case.
+    if accept && current.as_ref().is_some_and(|(d, _, _)| *d != ban_dateline) {
+        return Err(AppError::user(
+            "The member has been banned again since this appeal was sent, so accepting it would not lift the new ban. Reject it instead.",
+        ));
+    }
+    if accept && current.is_some() {
         // The same rank check as lifting a ban by hand.
         crate::routes::modcp::check_can_lift(&ctx, uid).await?;
     }
+    // Deciding and lifting happen together: if the lift fails the appeal stays pending.
+    let mut tx = ctx.app.db.begin().await?;
     let claimed = sqlx::query("UPDATE ban_appeals SET status = $2, decided_by = $3, decided_at = $4, response = $5 WHERE id = $1 AND status = 0")
         .bind(id)
         .bind(if accept { ACCEPTED } else { REJECTED })
         .bind(ctx.uid())
         .bind(now())
         .bind(&response)
-        .execute(&ctx.app.db)
+        .execute(&mut *tx)
         .await?
         .rows_affected();
     if claimed == 0 {
         return Err(AppError::user("This appeal has already been decided."));
     }
-    if accept && still_banned {
-        crate::routes::modcp::lift_ban_logged(&ctx, uid).await?;
+    let lifted =
+        accept && crate::routes::modcp::lift_ban_in(&mut tx, uid, Some(ban_dateline)).await?;
+    if accept && !lifted {
+        // Nothing of that ban was left to lift; a different ban appearing meanwhile is an error.
+        let banned_now: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM banned WHERE uid = $1)")
+                .bind(uid)
+                .fetch_one(&mut *tx)
+                .await?;
+        if banned_now {
+            return Err(AppError::user(
+                "The member's ban changed while you were deciding. Please review the appeal again.",
+            ));
+        }
+    }
+    tx.commit().await?;
+    if lifted {
+        crate::routes::modcp::log_ban_lifted(&ctx, uid).await;
     }
     let action = if accept {
         "Accepted ban appeal"

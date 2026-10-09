@@ -1142,7 +1142,7 @@ pub async fn editprofile_save(
     let sys = user.is_system;
     let until = |on: bool, days: i64| {
         if !sys && on && days > 0 {
-            now() + days * 86400
+            now() + days.min(MAX_RESTRICTION_DAYS) * 86400
         } else {
             0
         }
@@ -1258,6 +1258,9 @@ pub struct BanForm {
     pub back: String,
 }
 
+/// Longest ban, suspension or moderation period a form may ask for (about 100 years).
+const MAX_RESTRICTION_DAYS: i64 = 36_500;
+
 /// Ban a user (moves them to a banned group; restored when the ban lifts).
 pub async fn ban_user(
     app: &App,
@@ -1268,6 +1271,8 @@ pub async fn ban_user(
     admin: i32,
 ) -> AppResult<()> {
     crate::system::guard(&app.cache(), target.uid, "banned")?;
+    // Cap the length so `days * 86400` cannot overflow; 100 years is as good as permanent.
+    let days = days.clamp(0, MAX_RESTRICTION_DAYS);
     let lifted = if days > 0 { now() + days * 86400 } else { 0 };
     let bantime = if days > 0 {
         format!("{days}-0-0")
@@ -1394,12 +1399,39 @@ pub(crate) fn member_back(back: &str, uid: i32) -> Option<String> {
     (ok && !back.contains("//")).then(|| back.to_string())
 }
 
-pub async fn lift_ban_for(app: &App, uid: i32) -> AppResult<()> {
+/// Remove the member's ban and restore their old groups on `c`. With `only_started` the ban
+/// is lifted only if it is the one that started at that time (a newer ban stays). Returns
+/// whether a ban was lifted.
+pub async fn lift_ban_in(
+    c: &mut sqlx::PgConnection,
+    uid: i32,
+    only_started: Option<i64>,
+) -> AppResult<bool> {
     let row: Option<(i32, Vec<i32>, i32)> =
-        sqlx::query_as("DELETE FROM banned WHERE uid = $1 RETURNING oldgroup, oldadditionalgroups, olddisplaygroup").bind(uid).fetch_optional(&app.db).await?;
-    if let Some((g, ag, dg)) = row {
-        sqlx::query("UPDATE users SET usergroup = $2, additionalgroups = $3, displaygroup = $4 WHERE uid = $1").bind(uid).bind(g).bind(ag).bind(dg).execute(&app.db).await?;
-    }
+        sqlx::query_as("DELETE FROM banned WHERE uid = $1 AND ($2::bigint IS NULL OR dateline = $2) RETURNING oldgroup, oldadditionalgroups, olddisplaygroup")
+            .bind(uid)
+            .bind(only_started)
+            .fetch_optional(&mut *c)
+            .await?;
+    let Some((g, ag, dg)) = row else {
+        return Ok(false);
+    };
+    sqlx::query(
+        "UPDATE users SET usergroup = $2, additionalgroups = $3, displaygroup = $4 WHERE uid = $1",
+    )
+    .bind(uid)
+    .bind(g)
+    .bind(ag)
+    .bind(dg)
+    .execute(&mut *c)
+    .await?;
+    Ok(true)
+}
+
+pub async fn lift_ban_for(app: &App, uid: i32) -> AppResult<()> {
+    let mut tx = app.db.begin().await?;
+    lift_ban_in(&mut tx, uid, None).await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -1425,6 +1457,12 @@ pub async fn check_can_lift(ctx: &Ctx, uid: i32) -> AppResult<()> {
 /// Lift a ban and record it in the moderator log and the member's audit log.
 pub async fn lift_ban_logged(ctx: &Ctx, uid: i32) -> AppResult<()> {
     lift_ban_for(&ctx.app, uid).await?;
+    log_ban_lifted(ctx, uid).await;
+    Ok(())
+}
+
+/// The moderator-log and audit entries for a lifted ban.
+pub async fn log_ban_lifted(ctx: &Ctx, uid: i32) {
     crate::ops::log_moderator_action(
         &ctx.app,
         ctx.uid(),
@@ -1437,7 +1475,6 @@ pub async fn lift_ban_logged(ctx: &Ctx, uid: i32) -> AppResult<()> {
     )
     .await;
     crate::audit::log(ctx, uid, "unbanned", serde_json::Value::Null).await;
-    Ok(())
 }
 
 pub async fn lift_ban(ctx: Ctx, CsrfForm(f): CsrfForm<LiftForm>) -> AppResult<Response> {

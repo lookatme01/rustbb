@@ -273,19 +273,42 @@ pub async fn lock_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
 
 /// Lock the threads of these posts, then the posts (both in id order). Returns
 /// (pid, tid, firstpost of its thread) for the posts that exist.
+///
+/// The thread set is read before any lock is held, so a post moved by a concurrent split or
+/// merge could belong to a thread we did not lock. After locking, the posts are re-read and,
+/// if any now sits in an unlocked thread, we lock that set too and look again.
 pub async fn lock_posts(c: &mut PgConnection, pids: &[i32]) -> AppResult<Vec<(i32, i32, i32)>> {
-    let tids: Vec<i32> = sqlx::query_scalar("SELECT DISTINCT tid FROM posts WHERE pid = ANY($1)")
+    let mut tids: Vec<i32> =
+        sqlx::query_scalar("SELECT DISTINCT tid FROM posts WHERE pid = ANY($1) ORDER BY tid")
+            .bind(pids)
+            .fetch_all(&mut *c)
+            .await?;
+    let mut attempts = 0;
+    loop {
+        lock_threads(c, &tids).await?;
+        let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
+            "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid
+             WHERE p.pid = ANY($1) ORDER BY p.pid FOR UPDATE OF p",
+        )
         .bind(pids)
         .fetch_all(&mut *c)
         .await?;
-    lock_threads(c, &tids).await?;
-    Ok(sqlx::query_as(
-        "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid
-         WHERE p.pid = ANY($1) ORDER BY p.pid FOR UPDATE OF p",
-    )
-    .bind(pids)
-    .fetch_all(&mut *c)
-    .await?)
+        attempts += 1;
+        if rows.iter().all(|r| tids.contains(&r.1)) {
+            return Ok(rows);
+        }
+        if attempts >= 3 {
+            return Err(crate::error::AppError::user(
+                "Those posts are being changed by someone else; please try again.",
+            ));
+        }
+        for r in &rows {
+            if !tids.contains(&r.1) {
+                tids.push(r.1);
+            }
+        }
+        tids.sort_unstable();
+    }
 }
 
 /// Run `f` as its own unit of work.
@@ -640,9 +663,14 @@ pub async fn split_posts_in(
     subject: &str,
     to_fid: i32,
 ) -> AppResult<i32> {
+    let Some(&first_pid) = pids.first() else {
+        return Err(crate::error::AppError::user(
+            "Select at least one post to split.",
+        ));
+    };
     let tx = uow.conn();
     let old_tid: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
-        .bind(pids[0])
+        .bind(first_pid)
         .fetch_one(&mut *tx)
         .await?;
     lock_threads(tx, &[old_tid]).await?;
