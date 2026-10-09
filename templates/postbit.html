@@ -47,7 +47,7 @@
       <div class="post-body">{{ p.message|safe }}</div>
       {% if p.attachments %}
       <div class="post-attachments"><strong>Attached files</strong>
-        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
+        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank" rel="noopener"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
       </div>
       {% endif %}
       {% if p.edited %}<div class="post-edited">Last edited {{ p.edited[1]|date }} by {{ p.edited[0] }}{% if p.edited[2] %} — {{ p.edited[2] }}{% endif %}{% if p.has_history %} · <a href="/post/{{ p.pid }}/history">history</a>{% endif %}</div>{% endif %}

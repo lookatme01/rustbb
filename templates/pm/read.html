@@ -32,7 +32,7 @@
     {% if pm.fromid and pm.fromid != me.uid and not from_system %}
     <details class="ao-more up">
       <summary aria-label="More"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg></summary>
-      <div class="menu" role="menu">
+      <div class="menu">
         <a href="/pm/verify/{{ pm.fromid }}">Verify identity</a>
         {% if pm.folder != 2 %}<a href="/report?type=pm&id={{ pm.pmid }}">Report</a>{% endif %}
       </div>

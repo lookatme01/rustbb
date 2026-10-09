@@ -110,7 +110,8 @@
       if (t.scrollWidth > t.clientWidth + 1) t.tabIndex = 0; else t.removeAttribute("tabindex");
     });
     focusScrollers();
-    addEventListener("resize", focusScrollers);
+    let scrollRaf = 0;
+    addEventListener("resize", () => { cancelAnimationFrame(scrollRaf); scrollRaf = requestAnimationFrame(focusScrollers); });
 
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
@@ -134,12 +135,18 @@
       const d = new Date(parseInt(t.dataset.ts, 10) * 1000);
       if (!isNaN(d)) { t.textContent = d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); t.dateTime = d.toISOString(); }
     });
-    // Copy code buttons.
+    // Copy code buttons. Labels come from the page (body data attributes) so they can be translated.
+    const copyLabel = (k, d) => document.body.dataset[k] || d;
+    const localizeCopy = () => $$(".copy_code").forEach((b) => { b.textContent = copyLabel("copy", b.textContent); b.title = copyLabel("copy", b.title); });
+    localizeCopy();
     document.addEventListener("click", (e) => {
       const b = e.target.closest(".copy_code");
       if (!b) return;
-      const code = b.closest(".codeblock").querySelector("code");
-      navigator.clipboard && navigator.clipboard.writeText(code.textContent).then(() => { b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); });
+      const code = b.closest(".codeblock") && b.closest(".codeblock").querySelector("code");
+      if (!code) return;
+      const flash = (text) => { clearTimeout(b.rbbTimer); b.textContent = text; b.rbbTimer = setTimeout(() => (b.textContent = copyLabel("copy", "Copy")), 1500); };
+      if (!navigator.clipboard || !navigator.clipboard.writeText) return flash(copyLabel("copyFailed", "Copy failed"));
+      navigator.clipboard.writeText(code.textContent).then(() => flash(copyLabel("copied", "Copied")), () => flash(copyLabel("copyFailed", "Copy failed")));
     });
 
     // Inline moderation selection.
@@ -182,7 +189,7 @@
           if (!r.ok) return;
           const j = await r.json();
           const s = $(".js-name-status");
-          if (nameInput.value.trim() !== v) return;
+          if (!s || nameInput.value.trim() !== v) return;
           s.textContent = j.available ? "That username is available." : (j.valid ? "That username is already taken." : "That username contains invalid characters.");
           s.classList.toggle("ok", !!j.available);
           s.classList.toggle("bad", !j.available);
@@ -204,10 +211,10 @@
     });
 
     initEditors();
-    initMultiquote();
+    const syncMultiquote = initMultiquote();
     initReactions();
     initAttachments();
-    initLive();
+    initLive(() => { syncMultiquote(); localizeCopy(); });
   });
 
   // ------------------------------------------------------------------ editor
@@ -274,13 +281,17 @@
       // Preview tab.
       const pv = $(".live-preview", ed);
       const tabW = $(".js-tab-write", ed), tabP = $(".js-tab-preview", ed);
+      const showTab = (preview) => {
+        ed.classList.toggle("previewing", preview);
+        [[tabP, preview], [tabW, !preview]].forEach(([t, on]) => { if (t) { t.classList.toggle("active", on); t.setAttribute("aria-pressed", String(on)); } });
+      };
       if (tabP) tabP.addEventListener("click", async () => {
-        ed.classList.add("previewing"); tabP.classList.add("active"); tabW.classList.remove("active");
+        showTab(true);
         pv.textContent = "Loading preview…";
         const r = await post("/preview", { message: ta.value, fid: (form && form.dataset.fid) || 0 });
         if (r.ok) { const j = await r.json(); pv.innerHTML = j.html; } else pv.textContent = "Preview failed.";
       });
-      if (tabW) tabW.addEventListener("click", () => { ed.classList.remove("previewing"); tabW.classList.add("active"); tabP.classList.remove("active"); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
+      if (tabW) tabW.addEventListener("click", () => { showTab(false); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
       // Character count.
       const cc = $(".js-charcount", ed);
       const count = () => { if (cc) cc.textContent = ta.value.length + " characters"; };
@@ -302,13 +313,17 @@
   function initMultiquote() {
     const selected = () => readCookie("multiquote").split(",").filter(Boolean);
     const sync = () => { const s = selected(); $$(".js-multiquote").forEach((b) => { const on = s.includes(b.dataset.pid); b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "✓ Multi-quote" : "Multi-quote"; }); };
-    $$(".js-multiquote").forEach((b) => b.addEventListener("click", () => {
+    // Delegated, so posts inserted later (live updates) work too.
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".js-multiquote");
+      if (!b) return;
       let s = selected();
       s = s.includes(b.dataset.pid) ? s.filter((x) => x !== b.dataset.pid) : s.concat([b.dataset.pid]);
       cookie("multiquote", s.join(","), s.length ? 3600 : 0);
       sync();
-    }));
+    });
     sync();
+    return sync;
     // Quote into the quick reply box without leaving the page.
     document.addEventListener("click", async (e) => {
       const q = e.target.closest(".js-quote");
@@ -384,11 +399,13 @@
       };
       if (ta) ta.rbbUpload = upload; // files pasted or dropped into the rich-text view
       const input = $(".js-file", wrapEl);
-      input.addEventListener("change", () => { upload(input.files); input.value = ""; });
+      if (input) input.addEventListener("change", () => { upload(input.files); input.value = ""; });
       const dz = $(".js-dropzone", wrapEl);
-      ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
-      ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
-      dz.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+      if (dz) {
+        ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
+        ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
+        dz.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+      }
       if (ta) ta.addEventListener("paste", (e) => {
         const files = [...(e.clipboardData || {}).files || []];
         if (files.length) { e.preventDefault(); upload(files); }
@@ -406,7 +423,7 @@
   }
 
   // ------------------------------------------------------------------ live updates (SSE)
-  function initLive() {
+  function initLive(onInsert) {
     if (!window.EventSource) return;
     const posts = $("#posts");
     const uid = document.body.dataset.uid;
@@ -433,6 +450,7 @@
       const arts = $$("article.post", doc);
       arts.forEach((a) => { if (!document.getElementById(a.id)) posts.appendChild(document.importNode(a, true)); });
       if (arts.length) posts.dataset.lastPid = arts[arts.length - 1].dataset.pid;
+      if (onInsert) onInsert();
       pending = 0;
       banner.hidden = true;
     });
