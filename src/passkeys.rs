@@ -340,7 +340,7 @@ pub async fn finish_sign_in(app: &App, credential: &str) -> AppResult<i32> {
             "That passkey isn't registered on this board. Sign in with your password, then add it in User CP → Security.",
         )
     };
-    let (id, uid, static_state, dynamic_state, handle, is_system) = row.ok_or_else(not_here)?;
+    let (id, uid, static_state, prior_state, handle, is_system) = row.ok_or_else(not_here)?;
     if is_system {
         return Err(not_here());
     }
@@ -357,7 +357,7 @@ pub async fn finish_sign_in(app: &App, credential: &str) -> AppResult<i32> {
         )
         .map_err(|_| internal("passkey key"))?;
     let dynamic_state = DynamicState::decode(
-        dynamic_state
+        prior_state
             .as_slice()
             .try_into()
             .map_err(|_| internal("passkey state"))?,
@@ -385,12 +385,22 @@ pub async fn finish_sign_in(app: &App, credential: &str) -> AppResult<i32> {
         .dynamic_state()
         .encode()
         .map_err(|e| internal(format!("passkey state: {e}")))?;
-    sqlx::query("UPDATE passkeys SET dynamic_state = $2, last_used = $3 WHERE id = $1")
-        .bind(id)
-        .bind(dynamic_state.as_slice())
-        .bind(now())
-        .execute(&app.db)
-        .await?;
+    // Compare-and-set on the state we verified against: two sign-ins racing on the same stored
+    // counter must not both succeed, and a cloned authenticator replaying an old counter is
+    // exactly what the counter exists to catch.
+    let updated = sqlx::query(
+        "UPDATE passkeys SET dynamic_state = $2, last_used = $3 WHERE id = $1 AND dynamic_state = $4",
+    )
+    .bind(id)
+    .bind(dynamic_state.as_slice())
+    .bind(now())
+    .bind(prior_state.as_slice())
+    .execute(&app.db)
+    .await?;
+    if updated.rows_affected() == 0 {
+        tracing::info!(uid, "passkey state changed during sign-in; rejected");
+        return Err(bad("The passkey couldn't be verified."));
+    }
     Ok(uid)
 }
 

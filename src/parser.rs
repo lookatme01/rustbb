@@ -461,15 +461,23 @@ impl<'a> Parser<'a> {
     }
 
     fn render_nodes(&self, nodes: &[Node], ctx: &mut Ctx, out: &mut String) {
+        self.render_node_list(nodes, false, ctx, out);
+    }
+
+    /// With `trim_edges`, one newline is dropped from the start of the first node and the end
+    /// of the last (the content of a block element), without copying the tree.
+    fn render_node_list(&self, nodes: &[Node], trim_edges: bool, ctx: &mut Ctx, out: &mut String) {
         let mut skip_nl = false;
-        for n in nodes {
+        for (i, n) in nodes.iter().enumerate() {
             match n {
                 Node::Text(t) => {
-                    let t = if skip_nl {
-                        t.strip_prefix('\n').unwrap_or(t)
-                    } else {
-                        t.as_str()
-                    };
+                    let mut t = t.as_str();
+                    if skip_nl || (trim_edges && i == 0) {
+                        t = t.strip_prefix('\n').unwrap_or(t);
+                    }
+                    if trim_edges && i + 1 == nodes.len() {
+                        t = t.strip_suffix('\n').unwrap_or(t);
+                    }
                     out.push_str(&self.render_text(t, ctx));
                     skip_nl = false;
                 }
@@ -503,19 +511,8 @@ impl<'a> Parser<'a> {
 
     fn children_html(&self, children: &[Node], ctx: &mut Ctx) -> String {
         let mut s = String::new();
-        // strip one leading newline inside block elements
-        let mut v = children.to_vec();
-        if let Some(Node::Text(t)) = v.first_mut()
-            && let Some(rest) = t.strip_prefix('\n')
-        {
-            *t = rest.to_string();
-        }
-        if let Some(Node::Text(t)) = v.last_mut()
-            && let Some(rest) = t.strip_suffix('\n')
-        {
-            *t = rest.to_string();
-        }
-        self.render_nodes(&v, ctx, &mut s);
+        // strip one leading and trailing newline inside block elements
+        self.render_node_list(children, true, ctx, &mut s);
         s
     }
 
@@ -1418,6 +1415,10 @@ pub fn extract_quoted_pids(message: &str) -> Vec<i32> {
     v
 }
 
+/// Compiled highlight patterns: a page highlights the same terms in every post.
+static HIGHLIGHT_RES: LazyLock<moka::sync::Cache<String, Regex>> =
+    LazyLock::new(|| moka::sync::Cache::new(64));
+
 /// Highlight search terms in rendered HTML (text outside tags only).
 pub fn highlight(html: &str, terms: &[String]) -> String {
     let terms: Vec<String> = terms
@@ -1428,7 +1429,12 @@ pub fn highlight(html: &str, terms: &[String]) -> String {
     if terms.is_empty() {
         return html.to_string();
     }
-    let Ok(re) = Regex::new(&format!("(?i)({})", terms.join("|"))) else {
+    let pattern = format!("(?i)({})", terms.join("|"));
+    let Some(re) = HIGHLIGHT_RES.get(&pattern).or_else(|| {
+        let re = Regex::new(&pattern).ok()?;
+        HIGHLIGHT_RES.insert(pattern, re.clone());
+        Some(re)
+    }) else {
         return html.to_string();
     };
     let mut out = String::with_capacity(html.len() + 64);

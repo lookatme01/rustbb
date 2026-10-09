@@ -153,6 +153,13 @@ fn transport(s: &crate::settings::Settings) -> anyhow::Result<Option<Transport>>
         _ => Transport::builder_dangerous(&host).port(port),
     };
     let builder = if !s.get("smtp_user").is_empty() {
+        // Anything but tls/starttls above is plaintext SMTP; never put a password on the wire
+        // in the clear to a remote host.
+        if !matches!(s.get("secure_smtp"), "tls" | "starttls") && !is_loopback_host(&host) {
+            anyhow::bail!(
+                "refusing to send SMTP credentials to {host} without encryption (set SMTP Encryption to STARTTLS or TLS)"
+            );
+        }
         builder.credentials(Credentials::new(
             s.get("smtp_user").to_string(),
             s.get("smtp_pass").to_string(),
@@ -163,6 +170,14 @@ fn transport(s: &crate::settings::Settings) -> anyhow::Result<Option<Transport>>
     Ok(Some(builder.timeout(Some(SEND_TIMEOUT)).build()))
 }
 
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 async fn send(
     t: Option<&Transport>,
     from: &Mailbox,
@@ -170,7 +185,9 @@ async fn send(
     m: &Claimed,
 ) -> Result<(), SendError> {
     let Some(t) = t else {
-        tracing::info!(target: "mail", "[mail:log] To: {}\nSubject: {}\n\n{}", m.to, m.subject, m.body);
+        // The body can carry reset and activation codes, so it is only logged on request (debug).
+        tracing::info!(target: "mail", "[mail:log] To: {} Subject: {}", m.to, m.subject);
+        tracing::debug!(target: "mail", "[mail:log] Body for {}:\n{}", m.to, m.body);
         return Ok(());
     };
     let to: Mailbox =
@@ -253,13 +270,18 @@ pub async fn deliver_batch(app: &App) -> anyhow::Result<usize> {
     .parse()
     .unwrap_or_else(|_| "rbb <noreply@localhost>".parse().unwrap());
     let domain = from.email.domain().to_string();
-    let transport = transport(&s)?;
+    // The batch is already claimed (attempts bumped, lease held), so a bad configuration must go
+    // through acknowledge() for backoff and eventual `dead`, not return early and be re-leased.
+    let transport = transport(&s).map_err(|e| format!("{e:#}"));
     let n = batch.len();
     futures::stream::iter(batch)
         .for_each_concurrent(None, |m| {
-            let (transport, from, domain) = (transport.as_ref(), &from, &domain);
+            let (transport, from, domain) = (&transport, &from, &domain);
             async move {
-                let r = send(transport, from, domain, &m).await;
+                let r = match transport {
+                    Ok(t) => send(t.as_ref(), from, domain, &m).await,
+                    Err(e) => Err(SendError::Transient(e.clone())),
+                };
                 if let Err(e) = acknowledge(app, lease, &m, r).await {
                     // The lease expires and the message is retried.
                     tracing::warn!(mid = m.mid, "could not record mail result: {e}");
