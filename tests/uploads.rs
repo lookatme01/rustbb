@@ -33,6 +33,157 @@ fn tmp_files(t: &common::TestApp) -> usize {
 }
 
 #[tokio::test]
+async fn existing_post_uploads_enforce_edit_and_forum_access_rules() {
+    let t = test_app!();
+    let uid = t.create_user("attachmentowner", "Passw0rd-owner").await;
+    let tid: i32 = sqlx::query_scalar("INSERT INTO threads (fid, subject, uid, dateline, lastpost) VALUES (3, 'Upload permissions', $1, 1, 1) RETURNING tid")
+        .bind(uid).fetch_one(&t.db.pool).await.unwrap();
+    let pid: i32 = sqlx::query_scalar("INSERT INTO posts (tid, fid, uid, message, dateline) VALUES ($1, 3, $2, 'Original message', 1) RETURNING pid")
+        .bind(tid).bind(uid).fetch_one(&t.db.pool).await.unwrap();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enableattachments', '1'), ('edittimelimit', '1') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+        .execute(&t.db.pool).await.unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let owner = t.login_as(uid).await;
+    for state in [
+        "expired",
+        "closed",
+        "deleted",
+        "locked",
+        "edit_denied",
+        "allowed",
+    ] {
+        sqlx::query("UPDATE threads SET closed = $2 WHERE tid = $1")
+            .bind(tid)
+            .bind(if state == "closed" { "1" } else { "" })
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE posts SET dateline = $2, visible = $3 WHERE pid = $1")
+            .bind(pid)
+            .bind(if state == "expired" {
+                1
+            } else {
+                rbb::util::now()
+            })
+            .bind(if state == "deleted" { -1i16 } else { 1 })
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE forums SET password = $1 WHERE fid = 3")
+            .bind(if state == "locked" { "locked" } else { "" })
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES (3, 2, $1) ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+            .bind(serde_json::json!({"caneditposts": state != "edit_denied"})).execute(&t.db.pool).await.unwrap();
+        t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+        let before = tmp_files(&t);
+        let csrf = owner.csrf();
+        let pid_text = pid.to_string();
+        let (ct, body) = multipart(
+            &[("my_post_key", &csrf), ("pid", &pid_text)],
+            Some(("notes.txt", b"New attachment")),
+        );
+        let r = owner
+            .request(
+                Request::post("/attachment/upload")
+                    .header(header::CONTENT_TYPE, ct)
+                    .header(
+                        header::COOKIE,
+                        format!("rbb_auth={}", owner.cookie("rbb_auth").unwrap()),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await;
+        if state == "allowed" {
+            assert_eq!(r.status, 200, "{}", r.body);
+        } else {
+            assert!(
+                r.status.is_client_error(),
+                "{state} permitted an upload: {} {}",
+                r.status,
+                r.body
+            );
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE pid = $1")
+                .bind(pid)
+                .fetch_one(&t.db.pool)
+                .await
+                .unwrap();
+            assert_eq!(count, 0, "{state}");
+        }
+        assert_eq!(tmp_files(&t), before, "{state} left a partial upload");
+    }
+    // Staff retain their explicit edit override on closed, old posts.
+    sqlx::query("UPDATE threads SET closed = '1' WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE posts SET dateline = 1 WHERE pid = $1")
+        .bind(pid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let admin = t.login_as(1).await;
+    let csrf = admin.csrf();
+    let pid_text = pid.to_string();
+    let (ct, body) = multipart(
+        &[("my_post_key", &csrf), ("pid", &pid_text)],
+        Some(("staff.txt", b"Staff attachment")),
+    );
+    let r = admin
+        .request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", admin.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}", r.body);
+
+    // A new-post upload must also respect the target forum's password.
+    sqlx::query("UPDATE forums SET password = 'locked' WHERE fid = 3")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums"]).await.unwrap();
+    let csrf = owner.csrf();
+    let (ct, body) = multipart(
+        &[
+            ("my_post_key", &csrf),
+            ("fid", "3"),
+            ("posthash", "0123456789abcdef"),
+        ],
+        Some(("new.txt", b"New-post attachment")),
+    );
+    let before = tmp_files(&t);
+    let r = owner
+        .request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", owner.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await;
+    assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+    let orphans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE pid = 0")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(orphans, 0);
+    assert_eq!(tmp_files(&t), before);
+}
+
+#[tokio::test]
 async fn ordinary_routes_refuse_large_bodies() {
     let t = test_app!();
     let uid = t.create_user("bigposter", "Passw0rd-bigposter").await;

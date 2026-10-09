@@ -180,23 +180,6 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             "One or more of your search terms were shorter than the minimum length ({minw} characters)."
         )));
     }
-    // Identical searches by the same viewer within the cache window reuse the stored result set.
-    let cache_key = format!(
-        "search:{}:{}:{:?}:{}",
-        ctx.uid(),
-        if ctx.uid() == 0 { ctx.ip.as_str() } else { "" },
-        ctx.groups,
-        serde_json::to_string(p).unwrap_or_default()
-    );
-    match ctx.app.short_cache.get(&cache_key) {
-        Some(serde_json::Value::String(sid)) => {
-            return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
-        }
-        // A search that just found nothing; repeating it shouldn't count against the flood limit.
-        Some(serde_json::Value::Null) => return Err(AppError::user(NO_RESULTS)),
-        _ => {}
-    }
-    flood_check(ctx).await?;
     let (mut fids, mut own_only) = searchable_forums(ctx);
     if !p.forums.is_empty() && !p.forums.contains(&0) {
         let mut wanted = p.forums.clone();
@@ -208,6 +191,26 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
         fids.retain(|f| wanted.contains(f));
         own_only.retain(|f| wanted.contains(f));
     }
+    // Identical searches by the same viewer within the cache window reuse the stored result set.
+    let cache_key = format!(
+        "search:{}:{}:{:?}:{:?}:{:?}:{}:{}",
+        ctx.uid(),
+        if ctx.uid() == 0 { ctx.ip.as_str() } else { "" },
+        ctx.groups,
+        fids,
+        own_only,
+        ctx.is_supermod(),
+        serde_json::to_string(p).unwrap_or_default()
+    );
+    match ctx.app.short_cache.get(&cache_key) {
+        Some(serde_json::Value::String(sid)) => {
+            return Ok(Redirect::to(&format!("/search/results/{sid}")).into_response());
+        }
+        // A search that just found nothing; repeating it shouldn't count against the flood limit.
+        Some(serde_json::Value::Null) => return Err(AppError::user(NO_RESULTS)),
+        _ => {}
+    }
+    flood_check(ctx).await?;
     let author_uids: Vec<i32> = if author.is_empty() {
         vec![]
     } else if p.matchusername {

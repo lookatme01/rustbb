@@ -2,6 +2,7 @@
 
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
+use crate::models::{POST_COLUMNS, Post};
 use crate::util::{self, now};
 use axum::Json;
 use axum::body::Body;
@@ -77,18 +78,24 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     let size = upload.size as i64;
     // Editing an existing post: must be allowed to edit it.
     if pid > 0 {
-        let row: Option<(i32, i32)> = sqlx::query_as("SELECT uid, fid FROM posts WHERE pid = $1")
-            .bind(pid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
-        let (puid, pfid) = row.ok_or_else(|| AppError::not_found("post"))?;
-        if puid != me.uid && !ctx.mod_perms(pfid).map(|m| m.caneditposts).unwrap_or(false) {
+        let post: Post =
+            sqlx::query_as(&format!("SELECT {POST_COLUMNS} FROM posts WHERE pid = $1"))
+                .bind(pid)
+                .fetch_optional(&ctx.app.db)
+                .await?
+                .ok_or_else(|| AppError::not_found("post"))?;
+        let (thread, _, fp) = super::showthread::check_thread(&ctx, post.tid).await?;
+        let mp = ctx.mod_perms(post.fid);
+        if !super::showthread::edit_allowed(&ctx, &post, &thread, &fp, &mp) {
             return Ok(json_err("You cannot add attachments to this post."));
         }
-        fid = pfid;
+        fid = post.fid;
         posthash.clear();
     } else if posthash.len() < 16 || !posthash.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Ok(json_err("Invalid upload session. Please reload the page."));
+    }
+    if fid > 0 {
+        ctx.check_forum(fid)?;
     }
     if fid > 0 && !ctx.forum_perms(fid).canpostattachments {
         return Ok(json_err("You cannot post attachments in this forum."));

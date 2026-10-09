@@ -1,6 +1,47 @@
 mod common;
 
 #[tokio::test]
+async fn empty_search_cache_is_not_reused_after_unlocking_a_forum() {
+    let t = test_app!();
+    let uid = t.create_user("unlocksearch", "Passw0rd-search").await;
+    let hash = rbb::auth::hash_password("open sesame").await.unwrap();
+    sqlx::query(
+        "UPDATE forums SET password = $1, password_version = password_version + 1 WHERE fid = 3",
+    )
+    .bind(hash)
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('searchfloodtime', '0') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+        .execute(&t.db.pool).await.unwrap();
+    sqlx::query("INSERT INTO threads (fid, subject, uid, dateline, lastpost) VALUES (3, 'Zebracorn password search', $1, 100, 100)")
+        .bind(uid).execute(&t.db.pool).await.unwrap();
+    t.app.invalidate(&["forums", "settings"]).await.unwrap();
+    let c = t.login_as(uid).await;
+    let fields = [("keywords", "Zebracorn"), ("postthread", "2")];
+    let r = c.post_form("/search", &fields).await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("No results for"));
+    let r = c
+        .post_form("/forum/3/password", &[("password", "open sesame")])
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    assert!(c.cookie("forumpass_3").is_some());
+    let r = c.post_form("/search", &fields).await;
+    assert!(
+        r.status.is_redirection(),
+        "unlocked search reused empty results: {}",
+        r.body
+    );
+    assert!(
+        c.get(r.location())
+            .await
+            .body
+            .contains("Zebracorn password search")
+    );
+}
+
+#[tokio::test]
 async fn full_text_thread_search_deduplicates_and_sorts_before_limiting() {
     let t = test_app!();
     sqlx::query("INSERT INTO settings (name, value) VALUES ('searchhardlimit', '50') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
