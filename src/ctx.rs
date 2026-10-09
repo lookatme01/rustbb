@@ -21,6 +21,8 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Largest guest page kept in the page cache.
+const GUEST_PAGE_CACHE_MAX: usize = 2 * 1024 * 1024;
 pub const AUTH_COOKIE: &str = "rbb_auth";
 pub const SID_COOKIE: &str = "rbb_sid";
 pub const FLASH_COOKIE: &str = "rbb_flash";
@@ -1001,7 +1003,12 @@ pub async fn context_middleware(
             let bytes = axum::body::to_bytes(body, usize::MAX)
                 .await
                 .unwrap_or_default();
-            if parts.status == StatusCode::OK && ctx.guest_cacheable.load(Ordering::Relaxed) {
+            // The page is buffered anyway (the CSRF slot must be filled), but very large ones
+            // are not worth keeping: they would evict many small pages from a weighted cache.
+            if parts.status == StatusCode::OK
+                && ctx.guest_cacheable.load(Ordering::Relaxed)
+                && bytes.len() <= GUEST_PAGE_CACHE_MAX
+            {
                 app.page_cache.put(
                     key.clone(),
                     crate::pagecache::Entry {

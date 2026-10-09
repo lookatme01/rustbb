@@ -149,12 +149,15 @@ pub async fn with_image<T: Send + 'static>(
     path: PathBuf,
     f: impl FnOnce(image::DynamicImage) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    let _permit = IMAGES
+    let permit = IMAGES
         .acquire()
         .await
         .map_err(|_| "Image processing is unavailable.".to_string())?;
     let t0 = std::time::Instant::now();
     let r = tokio::task::spawn_blocking(move || {
+        // The slot is held until the decode finishes even if the caller's future is dropped
+        // meanwhile; a blocking task cannot be cancelled.
+        let _permit = permit;
         let img = decode_file(&path).map_err(|_| {
             "The image appears to be corrupt, too large, or is not a supported format (PNG, JPEG, GIF, WebP)."
                 .to_string()

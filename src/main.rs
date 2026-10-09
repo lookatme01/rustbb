@@ -289,7 +289,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 db.clone()
             };
-            let mut imp = import::Importer::connect(&mysql_url, load_db.clone(), &prefix).await?;
+            let imp = import::Importer::connect(&mysql_url, load_db.clone(), &prefix).await?;
             imp.run(&uploads_prefix).await?;
             load_db.close().await;
             install::upgrade(&db).await?;

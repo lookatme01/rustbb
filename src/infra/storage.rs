@@ -140,8 +140,14 @@ impl Storage {
                 }
                 // Write to a temporary name first so readers never see half a file.
                 let tmp = dest.with_extension(format!("tmp{}", crate::util::random_token(6)));
-                tokio::fs::write(&tmp, &data).await?;
-                tokio::fs::rename(&tmp, &dest).await?;
+                let written = match tokio::fs::write(&tmp, &data).await {
+                    Ok(()) => tokio::fs::rename(&tmp, &dest).await,
+                    Err(e) => Err(e),
+                };
+                if let Err(e) = written {
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                    return Err(e.into());
+                }
                 Ok(())
             }
             Storage::Object { store, prefix } => {
