@@ -936,7 +936,8 @@ impl<'a> Parser<'a> {
             s = MENTION_RE
                 .replace_all(&s, |c: &regex::Captures| {
                     let whole = c.get(0).unwrap().as_str();
-                    let lead = if whole.starts_with('@') { "" } else { &whole[..1] };
+                    // The lead is one Unicode whitespace char or `(`, so cut at the `@`, not at byte 1.
+                    let lead = &whole[..whole.find('@').unwrap_or(0)];
                     let name = c.get(1).or(c.get(2)).unwrap().as_str();
                     let raw_name = html_unescape(name);
                     let name_url = percent_encoding::utf8_percent_encode(&raw_name, percent_encoding::NON_ALPHANUMERIC);
@@ -1209,8 +1210,16 @@ pub fn sanitize_html(input: &str) -> String {
         last = whole.end();
         let Some(name) = m.get(2) else {
             // keep our own attachment placeholders only
-            if whole.as_str().starts_with("<!--attachment:") {
-                out.push_str(whole.as_str());
+            // The comment match runs to the first `-->`, so rebuild the marker from its id rather
+            // than copying the match: `<!--attachment:1--!><img onerror=…>-->` is one match, but
+            // browsers end that comment at `--!>`.
+            if let Some(aid) = whole
+                .as_str()
+                .strip_prefix("<!--attachment:")
+                .and_then(|r| r.strip_suffix("-->"))
+                .filter(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()))
+            {
+                out.push_str(&format!("<!--attachment:{aid}-->"));
             }
             continue;
         };
@@ -1596,6 +1605,19 @@ mod tests {
         let h = Parser::new(&data, &o)
             .parse("hi <meta http-equiv=refresh content=\"0;url=//evil.example/x\"");
         assert!(!h.contains("<meta"), "{h}");
+    }
+
+    #[test]
+    fn forged_attachment_comment_cannot_smuggle_markup() {
+        let s = sanitize_html("<!--attachment:1--!><img src=x onerror=alert(1)>-->");
+        assert!(!s.contains("onerror") && !s.contains("<img"), "{s}");
+        assert_eq!(sanitize_html("<!--attachment:x-->"), "");
+    }
+
+    #[test]
+    fn mention_after_multibyte_space_does_not_panic() {
+        let h = p("hi\u{3000}@alice and\u{a0}@bob");
+        assert!(h.contains("@alice</a>") && h.contains("@bob</a>"), "{h}");
     }
 
     #[test]
