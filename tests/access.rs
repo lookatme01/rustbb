@@ -5,6 +5,36 @@ mod common;
 use common::TestApp;
 
 #[tokio::test]
+async fn archive_own_thread_forums_hide_other_authors_and_allow_moderators() {
+    let t = test_app!();
+    let (_, owner) = hidden_subforum(&t).await;
+    sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES (8, 1, '{\"canonlyviewownthreads\":true}'), (8, 2, '{\"canonlyviewownthreads\":true}'), (8, 4, '{\"canonlyviewownthreads\":true}') ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+        .execute(&t.db.pool).await.unwrap();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enablearchive', '1') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+        .execute(&t.db.pool).await.unwrap();
+    t.app
+        .invalidate(&["forums", "forumperms", "settings"])
+        .await
+        .unwrap();
+    let guest = t.client().get("/archive/forum/8").await;
+    assert!(guest.status.is_client_error());
+    assert!(!guest.body.contains("Zebracorn sightings"));
+    let r = t.login_as(owner).await.get("/archive/forum/8").await;
+    assert_eq!(r.status, 200);
+    assert!(r.body.contains("Zebracorn sightings"));
+    let other = t.create_user("archiveoutsider", "Passw0rd-outsider").await;
+    let r = t.login_as(other).await.get("/archive/forum/8").await;
+    assert_eq!(r.status, 200);
+    assert!(!r.body.contains("Zebracorn sightings"));
+    let r = t.login_as(1).await.get("/archive/forum/8").await;
+    assert_eq!(r.status, 200);
+    assert!(
+        r.body.contains("Zebracorn sightings"),
+        "moderators should see all threads"
+    );
+}
+
+#[tokio::test]
 async fn api_own_thread_forums_hide_other_authors_and_remain_searchable() {
     let t = test_app!();
     let (tid, uid) = hidden_subforum(&t).await;

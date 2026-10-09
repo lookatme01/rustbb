@@ -24,6 +24,8 @@ use std::time::Duration;
 pub const CSRF_SLOT: &str = "rbbcsrfslot7c1e9a4f2d";
 /// Upper bound on how stale a cached guest page can be.
 pub const TTL: Duration = Duration::from_secs(30);
+/// Generation metadata must be bounded too, including tags of pages that have expired.
+const MAX_TAGS: usize = 10_000;
 
 pub struct Entry {
     pub html: Bytes,
@@ -53,7 +55,7 @@ impl PageCache {
                 .weigher(|k: &String, v: &Arc<Entry>| {
                     (k.len() + v.html.len()).min(u32::MAX as usize) as u32
                 })
-                .max_capacity(max_mb.max(1) * 1024 * 1024)
+                .max_capacity(max_mb.max(1).saturating_mul(1024 * 1024))
                 .build(),
             epoch: AtomicU64::new(0),
             gate: RwLock::new(()),
@@ -97,6 +99,13 @@ impl PageCache {
         let _gate = self.gate.write().unwrap();
         self.epoch.fetch_add(1, Ordering::AcqRel);
         for t in tags {
+            if self.generations.len() >= MAX_TAGS && !self.generations.contains_key(t.as_ref()) {
+                // Resetting generations alone would make old snapshots valid again. Evict
+                // entries under the same gate; the epoch also rejects renders in flight.
+                self.entries.invalidate_all();
+                self.generations.clear();
+                return;
+            }
             *self.generations.entry(t.as_ref().to_string()).or_insert(0) += 1;
         }
     }
@@ -117,6 +126,7 @@ impl PageCache {
         let _gate = self.gate.write().unwrap();
         self.epoch.fetch_add(1, Ordering::AcqRel);
         self.entries.invalidate_all();
+        self.generations.clear();
     }
 
     pub fn len(&self) -> u64 {
@@ -189,6 +199,44 @@ pub fn personalize(html: &[u8], csrf: &str) -> Bytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_metadata_is_bounded_without_reviving_stale_pages() {
+        let c = PageCache::new(4);
+        c.put(
+            "old".into(),
+            Entry {
+                html: Bytes::from_static(b"old"),
+                tags: vec![("thread:0".into(), 0)],
+                fid: 0,
+                tid: 0,
+            },
+            c.epoch(),
+        );
+        let epoch = c.epoch();
+        for i in 0..=MAX_TAGS {
+            c.invalidate_tags(&[format!("thread:{i}")]);
+        }
+        assert!(c.generations.len() <= MAX_TAGS);
+        assert!(
+            c.get("old").is_none(),
+            "resetting metadata revived a stale page"
+        );
+        c.put(
+            "inflight".into(),
+            Entry {
+                html: Bytes::from_static(b"old"),
+                tags: vec![],
+                fid: 0,
+                tid: 0,
+            },
+            epoch,
+        );
+        assert!(c.get("inflight").is_none());
+        c.invalidate_tags(&["thread:new"]);
+        c.clear();
+        assert!(c.generations.is_empty());
+    }
 
     #[test]
     fn epoch_guards_stale_renders() {

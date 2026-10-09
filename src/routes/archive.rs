@@ -48,23 +48,32 @@ pub async fn forum(
     if !fp.canviewthreads {
         return Err(AppError::no_perm());
     }
+    // Use resolved access: guests cannot have "own" threads, and moderators see all.
+    let own_only = ctx
+        .access()
+        .forum(fid)
+        .is_ok_and(|a| a.threads == crate::domain::access::Threads::Own);
+    if own_only && ctx.uid() == 0 {
+        return Err(AppError::no_perm());
+    }
     let per = 50;
-    let total: i64 = sqlx::query_scalar("SELECT threads FROM forums WHERE fid = $1")
-        .bind(fid)
-        .fetch_one(&ctx.app.db)
-        .await
-        .map(|t: i32| t as i64)?;
+    let total: i64 = if own_only {
+        sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE fid = $1 AND uid = $2 AND visible = 1 AND closed NOT LIKE 'moved|%'")
+            .bind(fid).bind(ctx.uid()).fetch_one(&ctx.app.db).await?
+    } else {
+        sqlx::query_scalar("SELECT threads FROM forums WHERE fid = $1")
+            .bind(fid)
+            .fetch_one(&ctx.app.db)
+            .await
+            .map(|t: i32| t as i64)?
+    };
     let pg = util::paginate(
         total,
         per,
         util::clamp_page(q.page),
         &format!("/archive/forum/{fid}?page={{page}}"),
     );
-    let own = if fp.canonlyviewownthreads {
-        ctx.uid()
-    } else {
-        0
-    };
+    let own = if own_only { ctx.uid() } else { 0 };
     let threads: Vec<(i32, String, i32, bool)> = sqlx::query_as(
         "SELECT tid, subject, replies, sticky FROM threads WHERE fid = $1 AND visible = 1 AND closed NOT LIKE 'moved|%' AND ($4 = 0 OR uid = $4) ORDER BY sticky DESC, lastpost DESC LIMIT $2 OFFSET $3",
     )
