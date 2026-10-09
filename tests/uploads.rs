@@ -32,6 +32,265 @@ fn tmp_files(t: &common::TestApp) -> usize {
         .unwrap_or(0)
 }
 
+/// Hold INSERTs until both requests are blocked in PostgreSQL. Without quota
+/// serialization both have already observed the old count when the gate opens.
+async fn race_uploads(
+    t: &common::TestApp,
+    c: &common::Client,
+    sessions: &[(&str, i32)],
+    data: &[u8],
+) -> Vec<common::Response> {
+    let mut gate = t.db.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE attachments IN SHARE MODE")
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let csrf = c.csrf();
+    let requests = sessions.iter().map(|(hash, pid)| {
+        let pid = pid.to_string();
+        let (ct, body) = multipart(
+            &[("my_post_key", &csrf), ("posthash", hash), ("pid", &pid)],
+            Some(("race.txt", data)),
+        );
+        c.request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+    });
+    let release = async {
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND state = 'active'")
+                    .fetch_one(&t.db.pool).await.unwrap();
+                if waiting >= 2 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }).await;
+        gate.rollback().await.unwrap();
+        assert!(
+            ready.is_ok(),
+            "both uploads did not reach the database gate"
+        );
+    };
+    let (responses, ()) = tokio::join!(futures::future::join_all(requests), release);
+    responses
+}
+
+#[tokio::test]
+async fn failed_storage_cleans_up_temporary_files_and_rolls_back_quota() {
+    let t = test_app!();
+    sqlx::query(
+        "UPDATE usergroups SET perms = perms || '{\"attachquota\":1}'::jsonb WHERE gid = 2",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let uid = t.create_user("storagefailure", "Passw0rd-storage").await;
+    let c = t.login_as(uid).await;
+    let path = format!("{}/attachments", t.app.cfg.upload_dir);
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::write(&path, b"block the storage directory").unwrap();
+    let csrf = c.csrf();
+    let (ct, body) = multipart(
+        &[("my_post_key", &csrf), ("posthash", "0123456789abcdef")],
+        Some(("failure.txt", &vec![b'x'; 700])),
+    );
+    let request = || {
+        Request::post("/attachment/upload")
+            .header(header::CONTENT_TYPE, ct.clone())
+            .header(
+                header::COOKIE,
+                format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+            )
+            .body(Body::from(body.clone()))
+            .unwrap()
+    };
+    let r = c.request(request()).await;
+    assert_eq!(r.status, 500, "{}", r.body);
+    assert_eq!(tmp_files(&t), 0, "failed storage leaked the upload");
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    let r = c.request(request()).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(tmp_files(&t), 0);
+}
+
+#[tokio::test]
+async fn busy_uploads_time_out_and_recover_after_the_lock_is_released() {
+    let t = test_app!();
+    let uid = t.create_user("busyupload", "Passw0rd-busy").await;
+    let c = t.login_as(uid).await;
+    let mut gate = t.db.pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(0x52424241_i32)
+        .bind(uid)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let csrf = c.csrf();
+    let (ct, body) = multipart(
+        &[("my_post_key", &csrf), ("posthash", "0123456789abcdef")],
+        Some(("busy.txt", b"attachment")),
+    );
+    let request = || {
+        Request::post("/attachment/upload")
+            .header(header::CONTENT_TYPE, ct.clone())
+            .header(
+                header::COOKIE,
+                format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+            )
+            .body(Body::from(body.clone()))
+            .unwrap()
+    };
+    let response =
+        tokio::time::timeout(std::time::Duration::from_secs(5), c.request(request())).await;
+    gate.rollback().await.unwrap();
+    let r = response.expect("busy upload did not obey its lock timeout");
+    assert_eq!(r.status, 422, "{}", r.body);
+    assert!(r.body.contains("upload is in progress"));
+    assert_eq!(tmp_files(&t), 0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    let r = c.request(request()).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+}
+
+#[tokio::test]
+async fn uploads_larger_than_total_quota_are_rejected_during_streaming() {
+    let t = test_app!();
+    sqlx::query(
+        "UPDATE usergroups SET perms = perms || '{\"attachquota\":1}'::jsonb WHERE gid = 2",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let uid = t.create_user("smallquota", "Passw0rd-quota").await;
+    let c = t.login_as(uid).await;
+    let csrf = c.csrf();
+    let (ct, body) = multipart(
+        &[("my_post_key", &csrf), ("posthash", "0123456789abcdef")],
+        Some(("large.txt", &vec![b'x'; 2048])),
+    );
+    let mut gate = t.db.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE attachments IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        c.request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        ),
+    )
+    .await;
+    gate.rollback().await.unwrap();
+    let r = response.expect("oversized upload reached the database quota check");
+    assert_eq!(r.status, 422);
+    assert!(r.body.contains("too large"), "{}", r.body);
+    assert_eq!(tmp_files(&t), 0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn concurrent_uploads_cannot_exceed_account_quota() {
+    let t = test_app!();
+    sqlx::query(
+        "UPDATE usergroups SET perms = perms || '{\"attachquota\":1}'::jsonb WHERE gid = 2",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let uid = t.create_user("quotaowner", "Passw0rd-quota").await;
+    let c = t.login_as(uid).await;
+    let responses = race_uploads(
+        &t,
+        &c,
+        &[("0123456789abcdef", 0), ("fedcba9876543210", 0)],
+        &vec![b'x'; 700],
+    )
+    .await;
+    assert_eq!(
+        responses.iter().filter(|r| r.status == 200).count(),
+        1,
+        "{:?}",
+        responses
+            .iter()
+            .map(|r| (&r.status, &r.body))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(responses.iter().filter(|r| r.status == 422).count(), 1);
+    let (count, used): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), COALESCE(SUM(filesize), 0)::bigint FROM attachments WHERE uid = $1",
+    )
+    .bind(uid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    assert_eq!((count, used), (1, 700));
+    assert_eq!(tmp_files(&t), 0);
+}
+
+#[tokio::test]
+async fn concurrent_uploads_cannot_exceed_post_attachment_limit() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('maxattachments', '1') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+        .execute(&t.db.pool).await.unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let uid = t.create_user("countowner", "Passw0rd-count").await;
+    let c = t.login_as(uid).await;
+    for pid in [0, {
+        let tid: i32 = sqlx::query_scalar("INSERT INTO threads (fid, subject, uid, dateline, lastpost) VALUES (3, 'Attachment race', $1, $2, $2) RETURNING tid")
+            .bind(uid).bind(rbb::util::now()).fetch_one(&t.db.pool).await.unwrap();
+        sqlx::query_scalar("INSERT INTO posts (tid, fid, uid, message, dateline) VALUES ($1, 3, $2, 'Post', $3) RETURNING pid")
+            .bind(tid).bind(uid).bind(rbb::util::now()).fetch_one(&t.db.pool).await.unwrap()
+    }] {
+        let hash = if pid == 0 { "0123456789abcdef" } else { "" };
+        let responses = race_uploads(&t, &c, &[(hash, pid), (hash, pid)], b"attachment").await;
+        assert_eq!(responses.iter().filter(|r| r.status == 200).count(), 1);
+        assert_eq!(responses.iter().filter(|r| r.status == 422).count(), 1);
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE uid = $1 AND pid = $2")
+                .bind(uid)
+                .bind(pid)
+                .fetch_one(&t.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(tmp_files(&t), 0);
+    }
+}
+
 #[tokio::test]
 async fn existing_post_uploads_enforce_edit_and_forum_access_rules() {
     let t = test_app!();
