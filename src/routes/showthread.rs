@@ -20,19 +20,27 @@ pub struct StQuery {
     pub highlight: Option<String>,
 }
 
-
 /// Flag chips for the authors on a page, for staff only (see `member_file`): restrictions,
 /// warnings and the like, plus "New".
-async fn staff_flags(ctx: &Ctx, posts: &[PostView]) -> AppResult<Option<std::collections::HashMap<i32, Vec<crate::member_file::Flag>>>> {
+async fn staff_flags(
+    ctx: &Ctx,
+    posts: &[PostView],
+) -> AppResult<Option<std::collections::HashMap<i32, Vec<crate::member_file::Flag>>>> {
     if !ctx.can(crate::domain::staff::Cap::ModCp) {
         return Ok(None);
     }
     let mut uids: Vec<i32> = posts.iter().map(|p| p.uid).filter(|u| *u > 0).collect();
     uids.sort_unstable();
     uids.dedup();
-    let mut flags = crate::member_file::flags_for(ctx, &uids, crate::member_file::View::of(ctx)).await?;
+    let mut flags =
+        crate::member_file::flags_for(ctx, &uids, crate::member_file::View::of(ctx)).await?;
     for v in flags.values_mut() {
-        v.retain(|f| matches!(f.level, crate::member_file::Level::Red | crate::member_file::Level::Orange) || f.key == "new");
+        v.retain(|f| {
+            matches!(
+                f.level,
+                crate::member_file::Level::Red | crate::member_file::Level::Orange
+            ) || f.key == "new"
+        });
     }
     flags.retain(|_, v| !v.is_empty());
     Ok(Some(flags))

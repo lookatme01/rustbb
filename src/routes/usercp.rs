@@ -156,9 +156,21 @@ async fn account_checks(
     .fetch_one(db)
     .await?;
     v.push(if unconfirmed {
-        Signal { group: "self", level: Level::Orange, text: "Confirm your email address".into(), detail: format!("We sent a link to {}.", me.email), link: Some("/usercp/email".into()) }
+        Signal {
+            group: "self",
+            level: Level::Orange,
+            text: "Confirm your email address".into(),
+            detail: format!("We sent a link to {}.", me.email),
+            link: Some("/usercp/email".into()),
+        }
     } else {
-        Signal { group: "self", level: Level::Green, text: "Email confirmed".into(), detail: me.email.clone(), link: Some("/usercp/email".into()) }
+        Signal {
+            group: "self",
+            level: Level::Green,
+            text: "Email confirmed".into(),
+            detail: me.email.clone(),
+            link: Some("/usercp/email".into()),
+        }
     });
     let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
         .bind(me.uid)
@@ -176,7 +188,8 @@ async fn account_checks(
         Signal { group: "self", level: Level::Orange, text: "No passkey or two-factor yet".into(), detail: "A passkey lets you sign in with your fingerprint or face, and stops a stolen password from working.".into(), link: Some("/usercp/security".into()) }
     });
     if ctx.settings().bool("enablewarningsystem") && me.warningpoints > 0 {
-        let pct = crate::member_file::warn_pct(me.warningpoints, ctx.settings().int("maxwarningpoints"));
+        let pct =
+            crate::member_file::warn_pct(me.warningpoints, ctx.settings().int("maxwarningpoints"));
         let next: Option<(String, i64)> = sqlx::query_as(
             "SELECT title, expires FROM warnings WHERE uid = $1 AND expired = FALSE AND daterevoked = 0 AND expires > 0 ORDER BY expires LIMIT 1",
         )
@@ -186,7 +199,13 @@ async fn account_checks(
         let detail = next
             .map(|(t, e)| format!("\u{201c}{t}\u{201d} expires {}", ctx.fmt_date(e, "date")))
             .unwrap_or_default();
-        v.push(Signal { group: "self", level: Level::Orange, text: format!("Warning level {pct}%"), detail, link: Some(format!("/warnings/{}", me.uid)) });
+        v.push(Signal {
+            group: "self",
+            level: Level::Orange,
+            text: format!("Warning level {pct}%"),
+            detail,
+            link: Some(format!("/warnings/{}", me.uid)),
+        });
     }
     let uas: Vec<String> = sqlx::query_scalar(
         "SELECT useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC",
@@ -206,12 +225,19 @@ async fn account_checks(
         v.push(Signal {
             group: "self",
             level: Level::Grey,
-            text: format!("Signed in on {} {}", uas.len(), if uas.len() == 1 { "device" } else { "devices" }),
+            text: format!(
+                "Signed in on {} {}",
+                uas.len(),
+                if uas.len() == 1 { "device" } else { "devices" }
+            ),
             detail: labels.join(" \u{b7} "),
             link: Some("/usercp/security".into()),
         });
     }
-    let attention = v.iter().filter(|s| matches!(s.level, Level::Orange | Level::Red)).count();
+    let attention = v
+        .iter()
+        .filter(|s| matches!(s.level, Level::Orange | Level::Red))
+        .count();
     Ok((v, attention))
 }
 

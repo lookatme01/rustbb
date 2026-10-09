@@ -188,13 +188,25 @@ pub fn flags(f: &Facts, view: View, t: i64, maxwarn: i64, role: Option<&str>) ->
         );
     }
     if f.suspendposting {
-        add("restricted", Level::Red, format!("Posting suspended{}", left(f.suspensiontime, t)));
+        add(
+            "restricted",
+            Level::Red,
+            format!("Posting suspended{}", left(f.suspensiontime, t)),
+        );
     }
     if f.moderateposts {
-        add("restricted", Level::Red, format!("Posts moderated{}", left(f.moderationtime, t)));
+        add(
+            "restricted",
+            Level::Red,
+            format!("Posts moderated{}", left(f.moderationtime, t)),
+        );
     }
     if f.suspendsignature {
-        add("restricted", Level::Red, format!("Signature suspended{}", left(f.suspendsigtime, t)));
+        add(
+            "restricted",
+            Level::Red,
+            format!("Signature suspended{}", left(f.suspendsigtime, t)),
+        );
     }
     if f.loginlockoutexpiry > t {
         add("lockedout", Level::Red, "Locked out".into());
@@ -215,7 +227,11 @@ pub fn flags(f: &Facts, view: View, t: i64, maxwarn: i64, role: Option<&str>) ->
         add(
             "reports",
             Level::Orange,
-            format!("{} open report{}", f.open_reports, if f.open_reports == 1 { "" } else { "s" }),
+            format!(
+                "{} open report{}",
+                f.open_reports,
+                if f.open_reports == 1 { "" } else { "s" }
+            ),
         );
     }
     let pct = warn_pct(f.warningpoints, maxwarn);
@@ -236,7 +252,15 @@ pub fn flags(f: &Facts, view: View, t: i64, maxwarn: i64, role: Option<&str>) ->
             add("2fa", Level::Grey, "2FA".into());
         }
         if f.passkeys > 0 {
-            add("passkey", Level::Grey, if f.passkeys == 1 { "Passkey".into() } else { format!("{} passkeys", f.passkeys) });
+            add(
+                "passkey",
+                Level::Grey,
+                if f.passkeys == 1 {
+                    "Passkey".into()
+                } else {
+                    format!("{} passkeys", f.passkeys)
+                },
+            );
         }
         if f.invisible {
             add("invisible", Level::Grey, "Invisible".into());
@@ -310,13 +334,25 @@ pub struct Restriction {
 pub fn restrictions(u: &User) -> Vec<Restriction> {
     let mut v = vec![];
     if u.moderateposts {
-        v.push(Restriction { kind: "moderate", label: "Posts moderated".into(), until: u.moderationtime });
+        v.push(Restriction {
+            kind: "moderate",
+            label: "Posts moderated".into(),
+            until: u.moderationtime,
+        });
     }
     if u.suspendposting {
-        v.push(Restriction { kind: "posting", label: "Posting suspended".into(), until: u.suspensiontime });
+        v.push(Restriction {
+            kind: "posting",
+            label: "Posting suspended".into(),
+            until: u.suspensiontime,
+        });
     }
     if u.suspendsignature {
-        v.push(Restriction { kind: "signature", label: "Signature suspended".into(), until: u.suspendsigtime });
+        v.push(Restriction {
+            kind: "signature",
+            label: "Signature suspended".into(),
+            until: u.suspendsigtime,
+        });
     }
     v
 }
@@ -382,11 +418,20 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
     let db = &ctx.app.db;
     let t = now();
     let maxwarn = ctx.settings().int("maxwarningpoints").max(1);
-    let f = facts_for(db, &[u.uid]).await?.remove(&u.uid).unwrap_or_default();
+    let f = facts_for(db, &[u.uid])
+        .await?
+        .remove(&u.uid)
+        .unwrap_or_default();
     let mut flags = flags(&f, view, t, maxwarn, role_of(ctx, u.usergroup));
     let mut signals: Vec<Signal> = vec![];
     let mut sig = |group, level, text: String, detail: String, link: Option<String>| {
-        signals.push(Signal { group, level, text, detail, link })
+        signals.push(Signal {
+            group,
+            level,
+            text,
+            detail,
+            link,
+        })
     };
 
     // Identity
@@ -416,14 +461,31 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
             format!(
                 "Shares an IP address with {n} other account{}{}",
                 if n == 1 { "" } else { "s" },
-                if banned > 0 { format!(", {banned} of them banned") } else { String::new() }
+                if banned > 0 {
+                    format!(", {banned} of them banned")
+                } else {
+                    String::new()
+                }
             ),
             others
                 .iter()
-                .map(|o| if o.banned { format!("{} (banned)", o.username) } else { o.username.clone() })
+                .map(|o| {
+                    if o.banned {
+                        format!("{} (banned)", o.username)
+                    } else {
+                        o.username.clone()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(" · "),
-            Some(format!("/modcp/ipsearch?ip={}", util_enc(non_empty(&u.lastip).or(non_empty(&u.regip)).unwrap_or_default()))),
+            Some(format!(
+                "/modcp/ipsearch?ip={}",
+                util_enc(
+                    non_empty(&u.lastip)
+                        .or(non_empty(&u.regip))
+                        .unwrap_or_default()
+                )
+            )),
         );
     }
     if view.admin {
@@ -435,12 +497,19 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         .fetch_one(db)
         .await?;
         if let Some(when) = spam {
-            flags.push(Flag { key: "spam", level: Level::Orange, label: "Spam log match".into() });
+            flags.push(Flag {
+                key: "spam",
+                level: Level::Orange,
+                label: "Spam log match".into(),
+            });
             sig(
                 "identity",
                 Level::Orange,
                 "Matched the spam log".into(),
-                format!("A sign-up with the same email or IP address was blocked on {}", ctx.fmt_date(when, "date")),
+                format!(
+                    "A sign-up with the same email or IP address was blocked on {}",
+                    ctx.fmt_date(when, "date")
+                ),
                 Some("/admin/tools/spamlog".into()),
             );
         }
@@ -449,7 +518,11 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         "identity",
         Level::Grey,
         format!("Joined {}", ctx.fmt_date(u.regdate, "date")),
-        if view.ip && !u.regip.is_empty() { format!("from {}", u.regip) } else { String::new() },
+        if view.ip && !u.regip.is_empty() {
+            format!("from {}", u.regip)
+        } else {
+            String::new()
+        },
         None,
     );
 
@@ -457,9 +530,17 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
     if view.admin && !u.is_system {
         sig(
             "email",
-            if f.unconfirmed { Level::Orange } else { Level::Green },
+            if f.unconfirmed {
+                Level::Orange
+            } else {
+                Level::Green
+            },
             u.email.clone(),
-            if f.unconfirmed { "Not confirmed yet".into() } else { "Confirmed".into() },
+            if f.unconfirmed {
+                "Not confirmed yet".into()
+            } else {
+                "Confirmed".into()
+            },
             None,
         );
         let pending: Option<String> = sqlx::query_scalar("SELECT misc FROM awaitingactivation WHERE uid = $1 AND type = 'e' ORDER BY aid DESC LIMIT 1")
@@ -467,7 +548,13 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
             .fetch_optional(db)
             .await?;
         if let Some(to) = pending {
-            sig("email", Level::Grey, "Email change waiting for confirmation".into(), to, None);
+            sig(
+                "email",
+                Level::Grey,
+                "Email change waiting for confirmation".into(),
+                to,
+                None,
+            );
         }
         let failing: Option<(i32, String)> = sqlx::query_as(
             "SELECT attempts, lasterror FROM mailqueue WHERE lower(mailto) = lower($1) AND attempts > 0 ORDER BY attempts DESC LIMIT 1",
@@ -480,7 +567,15 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
                 "email",
                 Level::Red,
                 "Mail to this address is failing".into(),
-                format!("{attempts} attempt{}{}", if attempts == 1 { "" } else { "s" }, if err.is_empty() { String::new() } else { format!(" · last error: {err}") }),
+                format!(
+                    "{attempts} attempt{}{}",
+                    if attempts == 1 { "" } else { "s" },
+                    if err.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · last error: {err}")
+                    }
+                ),
                 Some("/admin/tools/mailerrors".into()),
             );
         }
@@ -493,38 +588,61 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
             sig(
                 "security",
                 Level::Red,
-                format!("Locked out until {}", ctx.fmt_date(u.loginlockoutexpiry, "datetime")),
-                format!("{} failed sign-in{}", u.loginattempts, if u.loginattempts == 1 { "" } else { "s" }),
+                format!(
+                    "Locked out until {}",
+                    ctx.fmt_date(u.loginlockoutexpiry, "datetime")
+                ),
+                format!(
+                    "{} failed sign-in{}",
+                    u.loginattempts,
+                    if u.loginattempts == 1 { "" } else { "s" }
+                ),
                 None,
             );
         }
         let has2fa = !u.totp_secret.is_empty();
         sig(
             "security",
-            if has2fa || f.passkeys > 0 { Level::Green } else { Level::Grey },
+            if has2fa || f.passkeys > 0 {
+                Level::Green
+            } else {
+                Level::Grey
+            },
             match (has2fa, f.passkeys) {
                 (true, 0) => "Two-factor on".into(),
-                (true, n) => format!("Two-factor on · {n} passkey{}", if n == 1 { "" } else { "s" }),
+                (true, n) => format!(
+                    "Two-factor on · {n} passkey{}",
+                    if n == 1 { "" } else { "s" }
+                ),
                 (false, 0) => "No two-factor or passkey".into(),
                 (false, n) => format!("{n} passkey{}", if n == 1 { "" } else { "s" }),
             },
             String::new(),
             None,
         );
-        let logins: Vec<(String,)> = sqlx::query_as("SELECT useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC")
-            .bind(u.uid)
-            .bind(t)
-            .fetch_all(db)
-            .await?;
+        let logins: Vec<(String,)> = sqlx::query_as(
+            "SELECT useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC",
+        )
+        .bind(u.uid)
+        .bind(t)
+        .fetch_all(db)
+        .await?;
         if let Some((ua,)) = logins.first() {
             device = crate::audit::device_label(ua);
         }
-        let mut devices: Vec<String> = logins.iter().map(|(ua,)| crate::audit::device_label(ua)).collect();
+        let mut devices: Vec<String> = logins
+            .iter()
+            .map(|(ua,)| crate::audit::device_label(ua))
+            .collect();
         devices.dedup();
         sig(
             "security",
             Level::Grey,
-            format!("{} active login{}", logins.len(), if logins.len() == 1 { "" } else { "s" }),
+            format!(
+                "{} active login{}",
+                logins.len(),
+                if logins.len() == 1 { "" } else { "s" }
+            ),
             devices.join(" · "),
             None,
         );
@@ -533,21 +651,39 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
             .fetch_one(db)
             .await?;
         if tokens > 0 {
-            flags.push(Flag { key: "api", level: Level::Grey, label: "API tokens".into() });
-            sig("security", Level::Grey, format!("{tokens} active API token{}", if tokens == 1 { "" } else { "s" }), String::new(), None);
+            flags.push(Flag {
+                key: "api",
+                level: Level::Grey,
+                label: "API tokens".into(),
+            });
+            sig(
+                "security",
+                Level::Grey,
+                format!(
+                    "{tokens} active API token{}",
+                    if tokens == 1 { "" } else { "s" }
+                ),
+                String::new(),
+                None,
+            );
         }
     }
 
     // Standing: what staff did to the account and what is still in force.
-    let ban: Option<(String, i64)> = sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
-        .bind(u.uid)
-        .fetch_optional(db)
-        .await?;
+    let ban: Option<(String, i64)> =
+        sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
+            .bind(u.uid)
+            .fetch_optional(db)
+            .await?;
     if let Some((reason, lifted)) = &ban {
         sig(
             "standing",
             Level::Red,
-            if *lifted > 0 { format!("Banned until {}", ctx.fmt_date(*lifted, "date")) } else { "Banned permanently".into() },
+            if *lifted > 0 {
+                format!("Banned until {}", ctx.fmt_date(*lifted, "date"))
+            } else {
+                "Banned permanently".into()
+            },
             reason.clone(),
             None,
         );
@@ -557,7 +693,11 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         sig(
             "standing",
             Level::Red,
-            if r.until > 0 { format!("{} until {}", r.label, ctx.fmt_date(r.until, "date")) } else { format!("{} until lifted", r.label) },
+            if r.until > 0 {
+                format!("{} until {}", r.label, ctx.fmt_date(r.until, "date"))
+            } else {
+                format!("{} until lifted", r.label)
+            },
             String::new(),
             None,
         );
@@ -566,7 +706,11 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         sig(
             "standing",
             Level::Orange,
-            format!("{} open report{} on their content", f.open_reports, if f.open_reports == 1 { "" } else { "s" }),
+            format!(
+                "{} open report{} on their content",
+                f.open_reports,
+                if f.open_reports == 1 { "" } else { "s" }
+            ),
             String::new(),
             Some(format!("/modcp/member/{}?type=reports", u.uid)),
         );
@@ -583,8 +727,14 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
             "standing",
             Level::Orange,
             format!("Warning level {pct}%"),
-            next.map(|(title, exp)| if exp > 0 { format!("“{title}” expires {}", ctx.fmt_date(exp, "date")) } else { format!("“{title}” never expires") })
-                .unwrap_or_default(),
+            next.map(|(title, exp)| {
+                if exp > 0 {
+                    format!("“{title}” expires {}", ctx.fmt_date(exp, "date"))
+                } else {
+                    format!("“{title}” never expires")
+                }
+            })
+            .unwrap_or_default(),
             Some(format!("/warnings/{}", u.uid)),
         );
     }
@@ -606,12 +756,22 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
     Ok(MemberFile {
         uid: u.uid,
         username: u.username.clone(),
-        formatted: ctx.cache.format_name(&u.username, u.usergroup, u.displaygroup),
+        formatted: ctx
+            .cache
+            .format_name(&u.username, u.usergroup, u.displaygroup),
         avatar: u.avatar.clone(),
-        group: ctx.cache.group(u.usergroup).map(|g| g.title.clone()).unwrap_or_default(),
+        group: ctx
+            .cache
+            .group(u.usergroup)
+            .map(|g| g.title.clone())
+            .unwrap_or_default(),
         regdate: u.regdate,
         lastactive: u.lastactive,
-        lastip: if view.ip { u.lastip.to_string() } else { String::new() },
+        lastip: if view.ip {
+            u.lastip.to_string()
+        } else {
+            String::new()
+        },
         device,
         stats: Stats {
             posts: u.postnum,
@@ -628,11 +788,13 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
         others,
         pinned,
         is_system: u.is_system,
-        active_logins: sqlx::query_scalar("SELECT COUNT(*) FROM logins WHERE uid = $1 AND expires > $2")
-            .bind(u.uid)
-            .bind(t)
-            .fetch_one(db)
-            .await?,
+        active_logins: sqlx::query_scalar(
+            "SELECT COUNT(*) FROM logins WHERE uid = $1 AND expires > $2",
+        )
+        .bind(u.uid)
+        .bind(t)
+        .fetch_one(db)
+        .await?,
     })
 }
 
@@ -670,7 +832,13 @@ mod tests {
     const DAY: i64 = 86_400;
 
     fn admin() -> View {
-        View { admin: true, ip: true, warnings: true, reports: true, notes: true }
+        View {
+            admin: true,
+            ip: true,
+            warnings: true,
+            reports: true,
+            notes: true,
+        }
     }
 
     fn keys(v: &[Flag]) -> Vec<&str> {
@@ -679,14 +847,23 @@ mod tests {
 
     #[test]
     fn a_quiet_old_account_has_no_flags() {
-        let f = Facts { regdate: 0, ..Default::default() };
+        let f = Facts {
+            regdate: 0,
+            ..Default::default()
+        };
         assert!(flags(&f, admin(), 100 * DAY, 100, None).is_empty());
     }
 
     #[test]
     fn restrictions_come_first_and_show_time_left() {
         let t = 100 * DAY;
-        let f = Facts { regdate: t - DAY, moderateposts: true, moderationtime: t + 3 * DAY, away: true, ..Default::default() };
+        let f = Facts {
+            regdate: t - DAY,
+            moderateposts: true,
+            moderationtime: t + 3 * DAY,
+            away: true,
+            ..Default::default()
+        };
         let v = flags(&f, admin(), t, 100, None);
         assert_eq!(keys(&v), ["restricted", "new", "away"]);
         assert_eq!(v[0].label, "Posts moderated · 3d left");
@@ -695,14 +872,34 @@ mod tests {
 
     #[test]
     fn a_permanent_ban_says_so() {
-        let f = Facts { ban_lifted: Some(0), ..Default::default() };
-        assert_eq!(flags(&f, admin(), 100 * DAY, 100, None)[0].label, "Banned · permanent");
+        let f = Facts {
+            ban_lifted: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(
+            flags(&f, admin(), 100 * DAY, 100, None)[0].label,
+            "Banned · permanent"
+        );
     }
 
     #[test]
     fn moderators_do_not_see_admin_only_flags() {
-        let f = Facts { mail_failing: true, has2fa: true, passkeys: 2, invisible: true, shared_banned: 1, shared_ip: 1, ..Default::default() };
-        let modv = View { ip: false, warnings: true, reports: true, notes: true, admin: false };
+        let f = Facts {
+            mail_failing: true,
+            has2fa: true,
+            passkeys: 2,
+            invisible: true,
+            shared_banned: 1,
+            shared_ip: 1,
+            ..Default::default()
+        };
+        let modv = View {
+            ip: false,
+            warnings: true,
+            reports: true,
+            notes: true,
+            admin: false,
+        };
         assert!(flags(&f, modv, 100 * DAY, 100, None).is_empty());
         let all = flags(&f, admin(), 100 * DAY, 100, None);
         assert_eq!(keys(&all), ["ip", "mail", "2fa", "passkey", "invisible"]);
@@ -710,15 +907,32 @@ mod tests {
 
     #[test]
     fn sharing_an_ip_with_a_banned_account_is_orange_otherwise_grey() {
-        let banned = Facts { shared_ip: 2, shared_banned: 1, ..Default::default() };
-        assert_eq!(flags(&banned, admin(), 100 * DAY, 100, None)[0].level, Level::Orange);
-        let plain = Facts { shared_ip: 2, ..Default::default() };
-        assert_eq!(flags(&plain, admin(), 100 * DAY, 100, None)[0].level, Level::Grey);
+        let banned = Facts {
+            shared_ip: 2,
+            shared_banned: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            flags(&banned, admin(), 100 * DAY, 100, None)[0].level,
+            Level::Orange
+        );
+        let plain = Facts {
+            shared_ip: 2,
+            ..Default::default()
+        };
+        assert_eq!(
+            flags(&plain, admin(), 100 * DAY, 100, None)[0].level,
+            Level::Grey
+        );
     }
 
     #[test]
     fn the_system_account_is_only_system() {
-        let f = Facts { is_system: true, moderateposts: true, ..Default::default() };
+        let f = Facts {
+            is_system: true,
+            moderateposts: true,
+            ..Default::default()
+        };
         assert_eq!(keys(&flags(&f, admin(), 0, 100, None)), ["system"]);
     }
 

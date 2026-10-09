@@ -96,7 +96,24 @@ fn plain_excerpt(src: &str, max: usize) -> String {
     }
 }
 
-type ReportRow = (i32, String, i32, i32, i32, String, i32, i64, i32, Option<String>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>);
+type ReportRow = (
+    i32,
+    String,
+    i32,
+    i32,
+    i32,
+    String,
+    i32,
+    i64,
+    i32,
+    Option<String>,
+    Option<i32>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i32>,
+    Option<String>,
+);
 
 pub async fn home(ctx: Ctx) -> AppResult<Response> {
     require_modcp(&ctx)?;
@@ -145,8 +162,32 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
         .bind(rs.pms)
         .fetch_all(db)
         .await?;
-        for (rid, kind, id, id2, n, reason, reasonid, dl, claimed_by, claimer, puid, puser, subject, msg, tuid, tuser) in rows {
-            let reason_title = ctx.cache.reportreasons.iter().find(|r| r.rid == reasonid).map(|r| r.title.clone()).unwrap_or_default();
+        for (
+            rid,
+            kind,
+            id,
+            id2,
+            n,
+            reason,
+            reasonid,
+            dl,
+            claimed_by,
+            claimer,
+            puid,
+            puser,
+            subject,
+            msg,
+            tuid,
+            tuser,
+        ) in rows
+        {
+            let reason_title = ctx
+                .cache
+                .reportreasons
+                .iter()
+                .find(|r| r.rid == reasonid)
+                .map(|r| r.title.clone())
+                .unwrap_or_default();
             let reason = if reason_title.is_empty() {
                 reason
             } else if reason.is_empty() {
@@ -155,10 +196,33 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
                 format!("{reason_title}: {reason}")
             };
             let (subj, url, uid, uname) = match kind.as_str() {
-                "post" => (subject.unwrap_or_else(|| "Post".into()), format!("/post/{id}"), puid.unwrap_or(0), puser.unwrap_or_default()),
-                "profile" => (format!("Profile of {}", tuser.clone().unwrap_or_else(|| "a deleted member".into())), format!("/user/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
-                "reputation" => ("Reputation comment".to_string(), format!("/reputation/{id2}"), tuid.unwrap_or(0), tuser.unwrap_or_default()),
-                _ => ("Private message".to_string(), format!("/modcp/reports/{rid}"), 0, String::new()),
+                "post" => (
+                    subject.unwrap_or_else(|| "Post".into()),
+                    format!("/post/{id}"),
+                    puid.unwrap_or(0),
+                    puser.unwrap_or_default(),
+                ),
+                "profile" => (
+                    format!(
+                        "Profile of {}",
+                        tuser.clone().unwrap_or_else(|| "a deleted member".into())
+                    ),
+                    format!("/user/{id2}"),
+                    tuid.unwrap_or(0),
+                    tuser.unwrap_or_default(),
+                ),
+                "reputation" => (
+                    "Reputation comment".to_string(),
+                    format!("/reputation/{id2}"),
+                    tuid.unwrap_or(0),
+                    tuser.unwrap_or_default(),
+                ),
+                _ => (
+                    "Private message".to_string(),
+                    format!("/modcp/reports/{rid}"),
+                    0,
+                    String::new(),
+                ),
             };
             if uid > 0 {
                 uids.push(uid);
@@ -264,10 +328,12 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     }
 
     // Scheduled actions (the scheduled-actions page needs only Mod CP access too).
-    let (sched_n, sched_due): (i64, i64) = sqlx::query_as("SELECT COUNT(*), COUNT(*) FILTER (WHERE delaydateline < $1) FROM delayedmoderation")
-        .bind(t + 86_400)
-        .fetch_one(db)
-        .await?;
+    let (sched_n, sched_due): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE delaydateline < $1) FROM delayedmoderation",
+    )
+    .bind(t + 86_400)
+    .fetch_one(db)
+    .await?;
 
     items.sort_by_key(|(ts, _)| *ts);
     items.truncate(10);
@@ -278,14 +344,23 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     let items: Vec<minijinja::Value> = items
         .into_iter()
         .map(|(_, v)| {
-            let uid = v.get_attr("uid").ok().and_then(|u| i32::try_from(u).ok()).unwrap_or(0);
+            let uid = v
+                .get_attr("uid")
+                .ok()
+                .and_then(|u| i32::try_from(u).ok())
+                .unwrap_or(0);
             let fl = flags.get(&uid).cloned().unwrap_or_default();
             minijinja::context! { item => v, flags => fl }
         })
         .collect();
 
-    let watch = crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
-    let logs = if ctx.can(Cap::ModLog) { load_logs(&ctx, 0, 0, 6, 0).await? } else { vec![] };
+    let watch =
+        crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
+    let logs = if ctx.can(Cap::ModLog) {
+        load_logs(&ctx, 0, 0, 6, 0).await?
+    } else {
+        vec![]
+    };
     page(
         &ctx,
         "modcp/home.html",
@@ -426,7 +501,11 @@ pub async fn reports_action(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResu
         .await?;
     }
     ctx.app.mod_counts.invalidate_all();
-    let to = if f.back == "/modcp" { "/modcp" } else { "/modcp/reports" };
+    let to = if f.back == "/modcp" {
+        "/modcp"
+    } else {
+        "/modcp/reports"
+    };
     Ok(ctx.redirect(to, "The selected reports have been updated."))
 }
 
@@ -623,7 +702,11 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
     .await?;
     uow.commit(&ctx.app).await?;
     ctx.app.mod_counts.invalidate_all();
-    let to = if f.back == "/modcp" { "/modcp".to_string() } else { format!("/modcp/modqueue?kind={}", f.kind) };
+    let to = if f.back == "/modcp" {
+        "/modcp".to_string()
+    } else {
+        format!("/modcp/modqueue?kind={}", f.kind)
+    };
     Ok(ctx.redirect(&to, "The moderation queue has been updated."))
 }
 
@@ -1285,7 +1368,12 @@ pub async fn ban_save(ctx: Ctx, CsrfForm(f): CsrfForm<BanForm>) -> AppResult<Res
     let msg = format!("{} has been banned.", user.username);
     match member_back(&f.back, uid) {
         // Deleted content can't come back, so only a plain ban offers an undo.
-        Some(back) if !f.deleteposts => Ok(ctx.redirect_undo(&back, &msg, "/modcp/liftban", &[("uid", uid.to_string()), ("back", back.clone())])),
+        Some(back) if !f.deleteposts => Ok(ctx.redirect_undo(
+            &back,
+            &msg,
+            "/modcp/liftban",
+            &[("uid", uid.to_string()), ("back", back.clone())],
+        )),
         Some(back) => Ok(ctx.redirect(&back, &msg)),
         None => Ok(ctx.redirect("/modcp/banning", &msg)),
     }
@@ -1301,7 +1389,8 @@ pub struct LiftForm {
 
 /// A "back" form field naming a member page about `uid`, if that is what it is.
 pub(crate) fn member_back(back: &str, uid: i32) -> Option<String> {
-    let ok = back.starts_with(&format!("/admin/users/{uid}")) || back.starts_with(&format!("/modcp/member/{uid}"));
+    let ok = back.starts_with(&format!("/admin/users/{uid}"))
+        || back.starts_with(&format!("/modcp/member/{uid}"));
     (ok && !back.contains("//")).then(|| back.to_string())
 }
 

@@ -29,11 +29,14 @@ fn back_to(back: &str, uid: i32) -> String {
 }
 
 async fn load(ctx: &Ctx, uid: i32) -> AppResult<User> {
-    sqlx::query_as(&format!("SELECT {} FROM users WHERE uid = $1", crate::models::USER_COLUMNS))
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("member"))
+    sqlx::query_as(&format!(
+        "SELECT {} FROM users WHERE uid = $1",
+        crate::models::USER_COLUMNS
+    ))
+    .bind(uid)
+    .fetch_optional(&ctx.app.db)
+    .await?
+    .ok_or_else(|| AppError::not_found("member"))
 }
 
 /// Admins, and moderators who may edit profiles, may restrict members they outrank.
@@ -55,9 +58,21 @@ fn may_restrict(ctx: &Ctx, target: &User) -> AppResult<()> {
 /// The columns behind each kind of restriction: (flag, until, label).
 fn columns(kind: &str) -> Option<(&'static str, &'static str, &'static str)> {
     match kind {
-        "moderate" => Some(("moderateposts", "moderationtime", "Their posts now wait for approval")),
-        "posting" => Some(("suspendposting", "suspensiontime", "Their posting is suspended")),
-        "signature" => Some(("suspendsignature", "suspendsigtime", "Their signature is suspended")),
+        "moderate" => Some((
+            "moderateposts",
+            "moderationtime",
+            "Their posts now wait for approval",
+        )),
+        "posting" => Some((
+            "suspendposting",
+            "suspensiontime",
+            "Their posting is suspended",
+        )),
+        "signature" => Some((
+            "suspendsignature",
+            "suspendsigtime",
+            "Their signature is suspended",
+        )),
         _ => None,
     }
 }
@@ -74,17 +89,24 @@ pub struct RestrictForm {
     pub back: String,
 }
 
-pub async fn restrict(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<RestrictForm>) -> AppResult<Response> {
+pub async fn restrict(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    CsrfForm(f): CsrfForm<RestrictForm>,
+) -> AppResult<Response> {
     let user = load(&ctx, uid).await?;
     may_restrict(&ctx, &user)?;
-    let (flag, until_col, done) = columns(&f.kind).ok_or_else(|| AppError::user("Choose a restriction."))?;
+    let (flag, until_col, done) =
+        columns(&f.kind).ok_or_else(|| AppError::user("Choose a restriction."))?;
     let days = f.days.clamp(0, 3650);
     let until = if days > 0 { now() + days * 86_400 } else { 0 };
-    sqlx::query(&format!("UPDATE users SET {flag} = TRUE, {until_col} = $2 WHERE uid = $1"))
-        .bind(uid)
-        .bind(until)
-        .execute(&ctx.app.db)
-        .await?;
+    sqlx::query(&format!(
+        "UPDATE users SET {flag} = TRUE, {until_col} = $2 WHERE uid = $1"
+    ))
+    .bind(uid)
+    .bind(until)
+    .execute(&ctx.app.db)
+    .await?;
     let reason: String = f.reason.trim().chars().take(300).collect();
     crate::ops::log_moderator_action(
         &ctx.app,
@@ -97,7 +119,13 @@ pub async fn restrict(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<Rest
         serde_json::json!({"uid": uid, "username": user.username, "kind": f.kind, "days": days, "reason": reason}),
     )
     .await;
-    crate::audit::log(&ctx, uid, "restricted", serde_json::json!({"kind": f.kind, "days": days, "until": until, "reason": reason})).await;
+    crate::audit::log(
+        &ctx,
+        uid,
+        "restricted",
+        serde_json::json!({"kind": f.kind, "days": days, "until": until, "reason": reason}),
+    )
+    .await;
     let back = back_to(&f.back, uid);
     let msg = if days > 0 {
         format!("{done} for {days} day{}.", if days == 1 { "" } else { "s" })
@@ -108,7 +136,11 @@ pub async fn restrict(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<Rest
         &back,
         &msg,
         &format!("/modcp/member/{uid}/lift"),
-        &[("kind", f.kind.clone()), ("back", back.clone()), ("undo", "1".into())],
+        &[
+            ("kind", f.kind.clone()),
+            ("back", back.clone()),
+            ("undo", "1".into()),
+        ],
     ))
 }
 
@@ -122,14 +154,21 @@ pub struct LiftForm {
     pub undo: bool,
 }
 
-pub async fn lift(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<LiftForm>) -> AppResult<Response> {
+pub async fn lift(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    CsrfForm(f): CsrfForm<LiftForm>,
+) -> AppResult<Response> {
     let user = load(&ctx, uid).await?;
     may_restrict(&ctx, &user)?;
-    let (flag, until_col, _) = columns(&f.kind).ok_or_else(|| AppError::user("Choose a restriction."))?;
-    sqlx::query(&format!("UPDATE users SET {flag} = FALSE, {until_col} = 0 WHERE uid = $1"))
-        .bind(uid)
-        .execute(&ctx.app.db)
-        .await?;
+    let (flag, until_col, _) =
+        columns(&f.kind).ok_or_else(|| AppError::user("Choose a restriction."))?;
+    sqlx::query(&format!(
+        "UPDATE users SET {flag} = FALSE, {until_col} = 0 WHERE uid = $1"
+    ))
+    .bind(uid)
+    .execute(&ctx.app.db)
+    .await?;
     crate::ops::log_moderator_action(
         &ctx.app,
         ctx.uid(),
@@ -137,12 +176,29 @@ pub async fn lift(ctx: Ctx, Path(uid): Path<i32>, CsrfForm(f): CsrfForm<LiftForm
         0,
         0,
         0,
-        if f.undo { "Undid a restriction" } else { "Lifted restriction" },
+        if f.undo {
+            "Undid a restriction"
+        } else {
+            "Lifted restriction"
+        },
         serde_json::json!({"uid": uid, "username": user.username, "kind": f.kind}),
     )
     .await;
-    crate::audit::log(&ctx, uid, "restriction_lifted", serde_json::json!({"kind": f.kind, "undo": f.undo})).await;
-    Ok(ctx.redirect(&back_to(&f.back, uid), if f.undo { "Undone." } else { "The restriction has been lifted." }))
+    crate::audit::log(
+        &ctx,
+        uid,
+        "restriction_lifted",
+        serde_json::json!({"kind": f.kind, "undo": f.undo}),
+    )
+    .await;
+    Ok(ctx.redirect(
+        &back_to(&f.back, uid),
+        if f.undo {
+            "Undone."
+        } else {
+            "The restriction has been lifted."
+        },
+    ))
 }
 
 #[derive(Deserialize, Default)]
@@ -152,27 +208,45 @@ pub struct PinForm {
 }
 
 /// Pin a note to the top of the member file (or unpin it). One note per member is pinned.
-pub async fn pin(ctx: Ctx, Path(id): Path<i64>, CsrfForm(f): CsrfForm<PinForm>) -> AppResult<Response> {
+pub async fn pin(
+    ctx: Ctx,
+    Path(id): Path<i64>,
+    CsrfForm(f): CsrfForm<PinForm>,
+) -> AppResult<Response> {
     ctx.require_login()?;
     if !ctx.can(Cap::WriteModNotes) {
         return Err(AppError::no_perm());
     }
-    let note: (i32, bool, i64) = sqlx::query_as("SELECT uid, pinned, retracted_at FROM moderator_notes WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&ctx.app.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("note"))?;
+    let note: (i32, bool, i64) =
+        sqlx::query_as("SELECT uid, pinned, retracted_at FROM moderator_notes WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&ctx.app.db)
+            .await?
+            .ok_or_else(|| AppError::not_found("note"))?;
     let (uid, pinned, retracted) = note;
     if retracted > 0 {
         return Err(AppError::user("A retracted note can't be pinned."));
     }
     let mut tx = ctx.app.db.begin().await?;
-    sqlx::query("UPDATE moderator_notes SET pinned = FALSE WHERE uid = $1 AND pinned").bind(uid).execute(&mut *tx).await?;
+    sqlx::query("UPDATE moderator_notes SET pinned = FALSE WHERE uid = $1 AND pinned")
+        .bind(uid)
+        .execute(&mut *tx)
+        .await?;
     if !pinned {
-        sqlx::query("UPDATE moderator_notes SET pinned = TRUE WHERE id = $1").bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE moderator_notes SET pinned = TRUE WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
     }
     tx.commit().await?;
-    Ok(ctx.redirect(&back_to(&f.back, uid), if pinned { "The note has been unpinned." } else { "The note is pinned to the top of the member file." }))
+    Ok(ctx.redirect(
+        &back_to(&f.back, uid),
+        if pinned {
+            "The note has been unpinned."
+        } else {
+            "The note is pinned to the top of the member file."
+        },
+    ))
 }
 
 /// The hover card: a small member file, as an HTML fragment for the panels' script.
@@ -183,5 +257,6 @@ pub async fn card(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     }
     let user = load(&ctx, uid).await?;
     let mf = member_file::load(&ctx, &user, View::of(&ctx)).await?;
-    ctx.render("member_card.html", minijinja::context! { mf => mf }).await
+    ctx.render("member_card.html", minijinja::context! { mf => mf })
+        .await
 }
