@@ -16,7 +16,7 @@
 {% block head %}{% endblock %}
 <script src="{{ asset('js/rbb.js') }}" defer></script>
 </head>
-<body class="{% block bodyclass %}{% endblock %}" data-uid="{{ me.uid if me else 0 }}" style="{% block line %}{% endblock %}">
+<body class="{% block bodyclass %}{% endblock %}" data-uid="{{ me.uid if me else 0 }}" data-copy="{{ t('Copy') }}" data-copied="{{ t('Copied') }}" data-copy-failed="{{ t('Copy failed') }}" style="{% block line %}{% endblock %}">
 <a class="sr-only" href="#content">{{ t("Skip to content") }}</a>
 {% macro tab(href, label, on) %}<a href="{{ href }}"{% if on %} aria-current="page"{% endif %}>{{ label }}</a>{% endmacro %}
 <header class="site-header">
@@ -41,7 +41,7 @@
       {% if bb.enablepms == '1' and perms.canusepms %}<a class="icon-btn" href="/pm" title="{{ t('Messages') }}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm.5 2.1v7.4h13V6.6L10 11 3.5 6.6zM4.7 6 10 9.6 15.3 6z" fill="currentColor"/></svg><span class="sr-only">{{ t("Messages") }}</span>{% if me.unreadpms %}<span class="badge">{{ me.unreadpms }}</span>{% endif %}</a>{% endif %}
       <details class="usermenu">
         <summary aria-label="{{ me.username }}: account menu">{% if me.avatar and me.showavatars %}<img src="{{ me.avatar|img }}" alt="" width="30" height="30">{% else %}<span class="avatar-mini" aria-hidden="true">{{ me.username[:1]|upper }}</span>{% endif %}<span class="uname">{{ me.username }}</span>{% if (modqueue_count or report_count) and can_modcp %}<span class="badge">{{ modqueue_count + report_count }}</span>{% endif %}</summary>
-        <div class="menu" role="menu">
+        <div class="menu">
           <a href="{{ url_user(me.uid, me.username) }}">{{ t("Your profile") }}</a>
           <a href="/usercp">{{ t("User CP") }}</a>
           <a href="/usercp/activity">{{ t("Account activity") }}</a>
@@ -66,15 +66,15 @@
     {% if title and title != bb.bbname and not (breadcrumb and breadcrumb[-1][0] == title) %}<span class="sep">/</span><span class="current">{{ title }}</span>{% endif %}
   </nav>
   {% endif %}
-  {% if flash %}<div class="notice ok{% if undo %} has-undo{% endif %}" role="status"><span>{{ flash }}</span>{% if undo %}<form method="post" action="{{ undo.action }}" class="js-undo"><input type="hidden" name="my_post_key" value="{{ csrf }}">{% for f in undo.fields %}<input type="hidden" name="{{ f[0] }}" value="{{ f[1] }}">{% endfor %}<button class="btn secondary small">Undo</button></form>{% endif %}</div>{% endif %}
-  {% if bb.boardclosed == '1' and perms.canviewboardclosed %}<div class="notice warn">The board is currently closed. Only staff can see it.</div>{% endif %}
-  {% if me and me.usergroup == 5 %}<div class="notice warn">Your account is awaiting activation. <a href="/member/resendactivation">Resend the activation email</a></div>{% endif %}
+  {% if flash %}<div class="notice ok{% if undo %} has-undo{% endif %}" role="status"><span>{{ flash }}</span>{% if undo %}<form method="post" action="{{ undo.action }}" class="js-undo"><input type="hidden" name="my_post_key" value="{{ csrf }}">{% for f in undo.fields %}<input type="hidden" name="{{ f[0] }}" value="{{ f[1] }}">{% endfor %}<button class="btn secondary small">{{ t("Undo") }}</button></form>{% endif %}</div>{% endif %}
+  {% if bb.boardclosed == '1' and perms.canviewboardclosed %}<div class="notice warn">{{ t("The board is currently closed. Only staff can see it.") }}</div>{% endif %}
+  {% if me and me.usergroup == 5 %}<div class="notice warn">{{ t("Your account is awaiting activation.") }} <a href="/member/resendactivation">{{ t("Resend the activation email") }}</a></div>{% endif %}
   {% block content %}{% endblock %}
 </main>
 {% set on_thread = thread is defined and posts is defined %}
 {% if on_thread %}<div class="ao-progress" aria-hidden="true"></div>{% endif %}
 <nav class="ao-dock" aria-label="{{ t('Quick navigation') }}">
-  <a class="ao-home" href="/" aria-label="{{ bb.bbname }} home"><span class="ao-mark" aria-hidden="true"></span></a>
+  <a class="ao-home" href="/" aria-label="{{ t('{name} home', name=bb.bbname) }}"><span class="ao-mark" aria-hidden="true"></span></a>
   <span class="ao-sep" aria-hidden="true"></span>
   <a href="/">{{ t("Forums") }}</a>
   {% if perms.cansearch %}{% if me %}<a href="/search/unread">{{ t("Unread") }}</a>{% else %}<a href="/search/today">{{ t("Latest") }}</a>{% endif %}{% endif %}
@@ -97,22 +97,22 @@
     {% if bb.enablesyndication == '1' %}<a href="/syndication">RSS</a>{% endif %}
     {% if bb.statsenabled == '1' %}<a href="/stats">{{ t("Statistics") }}</a>{% endif %}
     {% if bb.enableshowteam == '1' %}<a href="/team">{{ t("Forum Team") }}</a>{% endif %}
-    <span class="spacer" style="flex:1"></span>
+    <span class="spacer"></span>
     {% if themes|length > 1 %}
     <form method="post" action="/theme/0" class="js-theme-form"><input type="hidden" name="my_post_key" value="{{ csrf }}">
-      <label class="sr-only" for="theme-select">Theme</label>
+      <label class="sr-only" for="theme-select">{{ t("Theme") }}</label>
       <select id="theme-select" name="tid" class="js-autosubmit">{% for t_ in themes %}<option value="{{ t_[0] }}"{% if theme and theme.tid == t_[0] %} selected{% endif %}>{{ t_[1] }}</option>{% endfor %}</select>
     </form>
     {% endif %}
     <form method="post" action="/colormode"><input type="hidden" name="my_post_key" value="{{ csrf }}">
-      <label class="sr-only" for="mode-select">Color mode</label>
+      <label class="sr-only" for="mode-select">{{ t("Color mode") }}</label>
       <select id="mode-select" name="mode" class="js-autosubmit">
-        {% for m in [('auto','Auto'),('light','Light'),('dark','Dark')] %}<option value="{{ m[0] }}"{% if colormode == m[0] %} selected{% endif %}>{{ m[1] }}</option>{% endfor %}
+        {% for m in [('auto',t('Auto')),('light',t('Light')),('dark',t('Dark'))] %}<option value="{{ m[0] }}"{% if colormode == m[0] %} selected{% endif %}>{{ m[1] }}</option>{% endfor %}
       </select>
     </form>
     {% if languages|length > 1 %}
     <form method="post" action="/lang/x" class="js-lang-form"><input type="hidden" name="my_post_key" value="{{ csrf }}">
-      <label class="sr-only" for="lang-select">Language</label>
+      <label class="sr-only" for="lang-select">{{ t("Language") }}</label>
       <select id="lang-select" name="code" class="js-autosubmit">{% for l in languages %}<option value="{{ l[0] }}"{% if (_lang or 'en') == l[0] %} selected{% endif %}>{{ l[1] }}</option>{% endfor %}</select>
     </form>
     {% endif %}

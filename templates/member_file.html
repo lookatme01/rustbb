@@ -9,7 +9,7 @@
 <section class="box mf-card" aria-label="Member">
   <div class="mf-id">
     {{ m.face(mf.avatar, mf.username, mf.uid, 60) }}
-    <div style="min-width:0">
+    <div class="mf-title">
       <h1>{{ mf.formatted|safe }}</h1>
       <div class="mf-sub">{{ mf.group }}{% if uid_line %} · uid {{ mf.uid }}{% endif %} · <a href="{{ url_user(mf.uid, mf.username) }}">Profile</a></div>
     </div>
@@ -35,7 +35,7 @@
 {% macro hovercard(mf) %}
 <div class="mf-id">
   {{ m.face(mf.avatar, mf.username, mf.uid, 40) }}
-  <div style="min-width:0"><h1>{{ mf.formatted|safe }}</h1><div class="mf-sub">{{ mf.group }} · {{ mf.stats.posts|num }} {{ mf.stats.posts|plural("post","posts") }} · {% if mf.stats.age == "today" %}joined today{% else %}joined {{ mf.stats.age }} ago{% endif %}</div></div>
+  <div class="mf-title"><h1>{{ mf.formatted|safe }}</h1><div class="mf-sub">{{ mf.group }} · {{ mf.stats.posts|num }} {{ mf.stats.posts|plural("post","posts") }} · {% if mf.stats.age == "today" %}joined today{% else %}joined {{ mf.stats.age }} ago{% endif %}</div></div>
 </div>
 {{ flags(mf.flags, true) }}
 {% if mf.pinned %}<div class="mf-pinned">{{ mf.pinned.note }}<span class="mf-sub">{{ mf.pinned.author }}</span></div>{% endif %}

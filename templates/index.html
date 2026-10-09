@@ -4,14 +4,16 @@
 {% set props = theme.props if theme else {} %}
 {% set ns = namespace(fresh=[]) %}
 {% for cat in forums %}{% for f in (cat.children if cat.is_category else [cat]) %}{% if f.unread %}{% set ns.fresh = ns.fresh + [f.name] %}{% endif %}{% endfor %}{% endfor %}
+{% set fr = ns.fresh %}
+{% if fr|length == 1 %}{% set fresh_list = fr[0] %}{% elif fr|length == 2 %}{% set fresh_list = t("{a} and {b}", a=fr[0], b=fr[1]) %}{% elif fr|length > 2 %}{% set fresh_list = t("{a}, {b} and {n} more", a=fr[0], b=fr[1], n=fr|length - 2) %}{% endif %}
 <header class="ao-board-head">
   <div class="grow">
     {% if me %}
-      <span class="ao-eyebrow">Welcome back, {{ me.username }}</span>
-      <h1>{% if ns.fresh %}New in {{ ns.fresh[:2]|join(" and ") if ns.fresh|length <= 2 else ns.fresh[:2]|join(", ") ~ " and " ~ (ns.fresh|length - 2) ~ " more" }}{% else %}You're all caught up{% endif %}</h1>
+      <span class="ao-eyebrow">{{ t("Welcome back, {name}.", name=me.username) }}</span>
+      <h1>{% if fr %}{{ t("New in {forums}", forums=fresh_list) }}{% else %}{{ t("You're all caught up") }}{% endif %}</h1>
     {% else %}
       <h1>{{ props.hero_title or bb.bbname }}</h1>
-      <p class="lede">{{ props.hero_text or "A community built for good conversations. Join in." }}</p>
+      <p class="lede">{{ props.hero_text or t("A community built for good conversations. Join in.") }}</p>
     {% endif %}
   </div>
   <div class="actions">
@@ -24,56 +26,56 @@
 
 {% for cat in forums %}
   {% if cat.is_category %}
-  <section class="cat" data-collapse="cat{{ cat.fid }}" style="--line: var(--line-{{ cat.fid % 6 }})">
+  <section class="cat line-{{ cat.fid % 6 }}" data-collapse="cat{{ cat.fid }}">
     <header class="cat-head">
       <div class="ao-cat-title"><h2><a href="{{ cat.url }}">{{ cat.name }}</a></h2>{% if cat.description %}<span class="desc">{{ cat.description|safe }}</span>{% endif %}</div>
-      <span class="ao-col">Threads</span>
-      <span class="ao-col">Posts</span>
-      <span class="ao-col ao-col-last">Last post{% if bb.collapsecategories == '1' %}<button class="collapse-toggle" type="button" aria-expanded="true" aria-label="Collapse {{ cat.name }}">{{ m.icon('chevron') }}</button>{% endif %}</span>
+      <span class="ao-col">{{ t("Threads") }}</span>
+      <span class="ao-col">{{ t("Posts") }}</span>
+      <span class="ao-col ao-col-last">{{ t("Last post") }}{% if bb.collapsecategories == '1' %}<button class="collapse-toggle" type="button" aria-expanded="true" aria-label="{{ t('Collapse {name}', name=cat.name) }}">{{ m.icon('chevron') }}</button>{% endif %}</span>
     </header>
     <div class="forum-list">
-      {% for f in cat.children %}{{ m.forum_row(f) }}{% else %}<div class="empty">No forums in this category yet.</div>{% endfor %}
+      {% for f in cat.children %}{{ m.forum_row(f) }}{% else %}<div class="empty">{{ t("No forums in this category yet.") }}</div>{% endfor %}
     </div>
   </section>
   {% else %}
-  <section class="cat" style="--line: var(--line-{{ cat.fid % 6 }})"><div class="forum-list">{{ m.forum_row(cat) }}</div></section>
+  <section class="cat line-{{ cat.fid % 6 }}"><div class="forum-list">{{ m.forum_row(cat) }}</div></section>
   {% endif %}
 {% else %}
-  <div class="box"><div class="empty">There are no forums to show yet.{% if is_admin %} <a href="/admin/forums">Create one in the Admin CP.</a>{% endif %}</div></div>
+  <div class="box"><div class="empty">{{ t("There are no forums to show yet.") }}{% if is_admin %} <a href="/admin/forums">{{ t("Create one in the Admin CP.") }}</a>{% endif %}</div></div>
 {% endfor %}
 {% if online or stats %}
-<section class="cat ao-community" aria-label="{{ t('At a glance') }}" style="--line: var(--live)">
+<section class="cat ao-community line-live" aria-label="{{ t('At a glance') }}">
   <header class="cat-head">
-    <div class="ao-cat-title"><h2>{{ t("At a glance") }}</h2><span class="desc">Who's around and how the board is growing</span></div>
-    <span class="ao-col">Threads</span>
-    <span class="ao-col">Posts</span>
-    <span class="ao-col ao-col-last">Members</span>
+    <div class="ao-cat-title"><h2>{{ t("At a glance") }}</h2><span class="desc">{{ t("Who's around and how the board is growing") }}</span></div>
+    <span class="ao-col">{{ t("Threads") }}</span>
+    <span class="ao-col">{{ t("Posts") }}</span>
+    <span class="ao-col ao-col-last">{{ t("Members") }}</span>
   </header>
   {% if online %}
   <div class="forum-row ao-online{% if online.num_members %} unread{% endif %}">
     <span class="forum-icon ao-live-icon" aria-hidden="true"></span>
     <div>
       {% if online.num_members %}
-        <div class="forum-name"><a href="/online">{{ online.total|num }} online now</a></div>
+        <div class="forum-name"><a href="/online">{{ t("{n} online now", n=online.total|num) }}</a></div>
         <div class="ao-people">
           <span class="ao-faces" aria-hidden="true">{% for u in online.members[:5] %}{{ m.face(u.avatar, u.username, u.uid, 26) }}{% endfor %}</span>
-          <span>{% for u in online.members[:4] %}<a href="{{ url_user(u.uid) }}"{% if u.invisible %} title="Invisible"{% endif %}>{{ u.formatted|safe }}{% if u.invisible %}*{% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% set rest = online.total - ([online.members|length, 4]|min) %}{% if rest > 0 %} and {{ rest }} {{ rest|plural("other","others") }}{% endif %}</span>
+          <span>{% for u in online.members[:4] %}<a href="{{ url_user(u.uid) }}"{% if u.invisible %} title="{{ t('Invisible') }}"{% endif %}>{{ u.formatted|safe }}{% if u.invisible %}*{% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% set rest = online.total - ([online.members|length, 4]|min) %}{% if rest > 0 %} {{ t("and 1 other") if rest == 1 else t("and {n} others", n=rest) }}{% endif %}</span>
         </div>
       {% else %}
-        <div class="forum-name"><a href="/online">Quiet right now</a></div>
-        <div class="forum-desc">{% if online.num_guests %}{{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }} reading{% else %}Nobody's around this minute{% endif %}{% if stats and stats.mostonline %} · the record is {{ stats.mostonline|num }} at once{% if stats.mostonlinetime %}, on {{ stats.mostonlinetime|date('date') }}{% endif %}{% endif %}. Start a thread and they'll find it.</div>
+        <div class="forum-name"><a href="/online">{{ t("Quiet right now") }}</a></div>
+        <div class="forum-desc">{% if online.num_guests %}{{ t("1 guest reading") if online.num_guests == 1 else t("{n} guests reading", n=online.num_guests) }}{% else %}{{ t("Nobody's around this minute") }}{% endif %}{% if stats and stats.mostonline %} · {% if stats.mostonlinetime %}{{ t("the record is {n} at once, on {date}", n=stats.mostonline|num, date=stats.mostonlinetime|date('date')) }}{% else %}{{ t("the record is {n} at once", n=stats.mostonline|num) }}{% endif %}{% endif %}. {{ t("Start a thread and they'll find it.") }}</div>
       {% endif %}
     </div>
     <span></span><span></span>
-    <div class="lastpost"><a class="ao-more-link" href="/online">Who's online</a></div>
+    <div class="lastpost"><a class="ao-more-link" href="/online">{{ t("Who's online") }}</a></div>
   </div>
   {% endif %}
   {% if stats %}
   <div class="forum-row ao-totals">
     <span class="forum-icon ao-totals-icon" aria-hidden="true"></span>
     <div>
-      <div class="forum-name">{% if stats.lastuid %}Welcome our newest member, <a href="{{ url_user(stats.lastuid, stats.lastusername) }}">{{ stats.lastusername }}</a>{% else %}Board totals{% endif %}</div>
-      <div class="forum-desc">{% if birthdays %}Birthdays today: {% for b in birthdays %}<a href="{{ url_user(b.uid) }}">{{ b.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}All-time totals for the board{% endif %}<span class="ao-totals-line"> · {{ stats.threads|num }} {{ stats.threads|plural("thread","threads") }} · {{ stats.posts|num }} {{ stats.posts|plural("post","posts") }} · {{ stats.users|num }} {{ stats.users|plural("member","members") }}</span></div>
+      <div class="forum-name">{% if stats.lastuid %}{{ t("Welcome our newest member,") }} <a href="{{ url_user(stats.lastuid, stats.lastusername) }}">{{ stats.lastusername }}</a>{% else %}{{ t("Board totals") }}{% endif %}</div>
+      <div class="forum-desc">{% if birthdays %}{{ t("Birthdays today:") }} {% for b in birthdays %}<a href="{{ url_user(b.uid) }}">{{ b.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}{{ t("All-time totals for the board") }}{% endif %}<span class="ao-totals-line"> · {{ t("1 thread") if stats.threads == 1 else t("{n} threads", n=stats.threads|num) }} · {{ t("1 post") if stats.posts == 1 else t("{n} posts", n=stats.posts|num) }} · {{ t("1 member") if stats.users == 1 else t("{n} members", n=stats.users|num) }}</span></div>
     </div>
     <span class="ao-num">{{ stats.threads|num }}</span>
     <span class="ao-num">{{ stats.posts|num }}</span>

@@ -20,7 +20,7 @@
   <div class="form-row"><label for="hero_title">Banner title</label><div><input id="hero_title" type="text" name="hero_title" value="{{ pr.hero_title or '' }}" maxlength="80" placeholder="{{ bb.bbname }}"><span class="help">Shown in the banner at the top of the board index. Leave empty to use the board name.</span></div></div>
   <div class="form-row"><label for="hero_text">Banner text</label><div><input id="hero_text" type="text" name="hero_text" value="{{ pr.hero_text or '' }}" maxlength="240" placeholder="A community built for good conversations. Join in."></div></div>
   <div class="form-row"><label for="banner">Banner image</label><div><input id="banner" type="text" name="banner" value="{{ pr.banner or '' }}" placeholder="/uploads/banners/… or https://…"><span class="help">Leave empty for a gradient made from the brand colour.{% if t %} Or upload an image below.{% endif %}</span>
-    {% if pr.banner %}<div class="banner-thumb" style="background-image:url('{{ pr.banner }}')"></div>{% endif %}</div></div>
+    {% if pr.banner %}<img class="banner-thumb" src="{{ pr.banner }}" alt="">{% endif %}</div></div>
   <div class="form-row"><label for="logo">Logo</label><div><input id="logo" type="text" name="logo" value="{{ pr.logo or '' }}" placeholder="/static/images/logo.svg"></div></div>
   <div class="box-sub">Advanced</div>
   <div class="form-row"><label for="properties">Properties (JSON)</label><div><textarea id="properties" name="properties" rows="5" style="font-family:var(--font-code);font-size:.85rem">{{ props }}</textarea><span class="help">Any extra properties. The Branding fields above take precedence.</span></div></div>
