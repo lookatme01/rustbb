@@ -277,3 +277,205 @@ async fn passkeys_are_hidden_where_browsers_cannot_use_them() {
     let page = t.client().get("/member/login").await;
     assert!(!page.body.contains("Sign in with a passkey"));
 }
+
+async fn admin_account(t: &TestApp, name: &str) -> (i32, Client, Device) {
+    let uid = t.create_user(name, PASSWORD).await;
+    sqlx::query("UPDATE users SET usergroup = 4 WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    let mut dev = device();
+    assert_eq!(add(&c, &mut dev, BOARD).await.status, 200);
+    (uid, c, dev)
+}
+
+async fn assertion(c: &Client, dev: &mut Device, endpoint: &str) -> String {
+    let r = c.post_form(endpoint, &[]).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    let options: CredentialRequestOptions =
+        serde_json::from_value(serde_json::json!({"publicKey": json(&r)})).unwrap();
+    let signed = dev
+        .authenticate(&origin(BOARD), options, DefaultClientData)
+        .await
+        .unwrap();
+    serde_json::to_string(&signed).unwrap()
+}
+
+async fn verified(t: &TestApp, uid: i32) -> i64 {
+    sqlx::query_scalar("SELECT COALESCE(MAX(acp_verified), 0) FROM logins WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn administrators_can_confirm_with_a_passkey_and_replay_is_rejected() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (uid, c, mut dev) = admin_account(&t, "passkeyadmin").await;
+    // Keep the board's TOTP-enrollment policy while allowing user-verified passkey confirmation.
+    sqlx::query("UPDATE users SET totp_secret = 'JBSWY3DPEHPK3PXP' WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    set(&t, &[("acp2fa", "1")]).await;
+    let page = c.get("/admin/verify").await;
+    assert!(page.body.contains("Continue with a passkey"));
+    assert!(page.body.contains("Confirm your password"));
+    let old_cookie = c.cookie(rbb::ctx::AUTH_COOKIE);
+    let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
+    let r = c
+        .post_form(
+            "/admin/verify/passkey/finish",
+            &[("credential", &signed), ("return_to", "/admin/users")],
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(json(&r)["redirect"], "/admin/users");
+    assert!(verified(&t, uid).await > 0);
+    assert_ne!(
+        c.cookie(rbb::ctx::AUTH_COOKIE),
+        old_cookie,
+        "session rotated"
+    );
+    assert_eq!(c.get("/admin").await.status, 200);
+    let r = c
+        .post_form("/admin/verify/passkey/finish", &[("credential", &signed)])
+        .await;
+    assert_eq!(r.status, 422, "{}", r.body);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM adminlog WHERE uid = $1 AND action = 'Admin CP login' AND data->>'passkey' = 'true'")
+        .bind(uid).fetch_one(&t.db.pool).await.unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn admin_passkeys_must_match_the_account_session_and_purpose() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (uid, c, mut dev) = admin_account(&t, "firstadmin").await;
+    let (other_uid, other, mut other_dev) = admin_account(&t, "otheradmin").await;
+    // A valid passkey for a different administrator must not elevate this session.
+    let wrong_account = assertion(&c, &mut other_dev, "/admin/verify/passkey/begin").await;
+    let r = c
+        .post_form(
+            "/admin/verify/passkey/finish",
+            &[("credential", &wrong_account)],
+        )
+        .await;
+    assert_eq!(r.status, 422, "{}", r.body);
+    assert_eq!(verified(&t, uid).await, 0);
+    // Even another session for the same account cannot finish the ceremony.
+    let same_account = t.login_as(uid).await;
+    let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
+    let r = same_account
+        .post_form("/admin/verify/passkey/finish", &[("credential", &signed)])
+        .await;
+    assert_eq!(r.status, 422);
+    assert_eq!(verified(&t, uid).await, 0);
+    // An Admin CP challenge cannot be exchanged at the normal member login endpoint.
+    let guest = t.client();
+    let page = guest.get("/member/login").await;
+    let key = common::form_key(&page.body);
+    let r = guest
+        .post_form(
+            "/member/login/passkey/finish",
+            &[("my_post_key", &key), ("credential", &signed)],
+        )
+        .await;
+    assert_eq!(r.status, 422);
+    // A normal login assertion cannot be exchanged for Admin CP verification either.
+    let r = guest
+        .post_form("/member/login/passkey/begin", &[("my_post_key", &key)])
+        .await;
+    let options: CredentialRequestOptions =
+        serde_json::from_value(serde_json::json!({"publicKey": json(&r)})).unwrap();
+    let signed = dev
+        .authenticate(&origin(BOARD), options, DefaultClientData)
+        .await
+        .unwrap();
+    let signed = serde_json::to_string(&signed).unwrap();
+    let r = c
+        .post_form("/admin/verify/passkey/finish", &[("credential", &signed)])
+        .await;
+    assert_eq!(r.status, 422);
+    assert_eq!(verified(&t, uid).await, 0);
+    assert_eq!(verified(&t, other_uid).await, 0);
+    assert_eq!(other.get("/admin/verify").await.status, 200);
+}
+
+#[tokio::test]
+async fn admin_passkey_endpoints_keep_permission_csrf_expiry_and_setting_gates() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (uid, c, mut dev) = admin_account(&t, "gatedadmin").await;
+    let r = t
+        .client()
+        .post_form("/admin/verify/passkey/begin", &[])
+        .await;
+    assert_ne!(r.status, 200);
+    let member_uid = t.create_user("regularmember", PASSWORD).await;
+    let member = t.login_as(member_uid).await;
+    assert_eq!(
+        member
+            .post_form("/admin/verify/passkey/begin", &[])
+            .await
+            .status,
+        403
+    );
+    assert_eq!(
+        c.post_form("/admin/verify/passkey/begin", &[("my_post_key", "wrong")])
+            .await
+            .status,
+        403
+    );
+    let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
+    sqlx::query("UPDATE webauthn_ceremonies SET expires_at = now() - interval '1 second'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        c.post_form("/admin/verify/passkey/finish", &[("credential", &signed)])
+            .await
+            .status,
+        422
+    );
+    assert_eq!(verified(&t, uid).await, 0);
+    let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
+    set(&t, &[("enablepasskeys", "0")]).await;
+    assert!(
+        !c.get("/admin/verify")
+            .await
+            .body
+            .contains("Continue with a passkey")
+    );
+    assert_eq!(
+        c.post_form("/admin/verify/passkey/finish", &[("credential", &signed)])
+            .await
+            .status,
+        422
+    );
+    assert_eq!(verified(&t, uid).await, 0);
+}
+
+#[tokio::test]
+async fn admin_passkey_redirects_stay_in_the_admin_cp() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (_, c, mut dev) = admin_account(&t, "redirectadmin").await;
+    let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
+    let r = c
+        .post_form(
+            "/admin/verify/passkey/finish",
+            &[
+                ("credential", &signed),
+                ("return_to", "//evil.example/admin"),
+            ],
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(json(&r)["redirect"], "/admin");
+}

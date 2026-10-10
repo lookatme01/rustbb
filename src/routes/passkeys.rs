@@ -14,6 +14,8 @@ use serde::Deserialize;
 
 pub fn router() -> Router<App> {
     Router::new()
+        .route("/admin/verify/passkey/begin", post(admin_begin))
+        .route("/admin/verify/passkey/finish", post(admin_finish))
         .route("/usercp/passkeys/begin", post(add_begin))
         .route("/usercp/passkeys/finish", post(add_finish))
         .route("/usercp/passkeys/remove", post(remove))
@@ -229,4 +231,47 @@ pub async fn sign_in_finish(ctx: Ctx, CsrfForm(f): CsrfForm<FinishSignInForm>) -
         }
         .await,
     )
+}
+
+fn administrator(ctx: &Ctx) -> AppResult<(i32, &str)> {
+    let me = ctx.require_login()?;
+    if !ctx.perms.cancp {
+        return Err(AppError::no_perm());
+    }
+    let session = ctx.token_hash.as_deref().ok_or_else(AppError::no_perm)?;
+    Ok((me.uid, session))
+}
+
+pub async fn admin_begin(ctx: Ctx, CsrfForm(_): CsrfForm<Empty>) -> Response {
+    json(
+        async {
+            let (uid, session) = administrator(&ctx)?;
+            if !ctx.app.throttle(&format!("acpverify:{uid}"), 10, 600).await {
+                return Err(AppError::RateLimited);
+            }
+            crate::passkeys::begin_admin_verification(&ctx.app, session).await
+        }
+        .await,
+    )
+}
+
+pub async fn admin_finish(ctx: Ctx, CsrfForm(f): CsrfForm<FinishSignInForm>) -> Response {
+    json(async {
+        let (uid, session) = administrator(&ctx)?;
+        if !ctx.app.throttle(&format!("acpverify-finish:{uid}"), 10, 600).await {
+            return Err(AppError::RateLimited);
+        }
+        if let Err(e) = crate::passkeys::finish_admin_verification(&ctx.app, session, uid, &f.credential).await {
+            crate::admin::log(&ctx, "home", "Failed Admin CP login", serde_json::json!({"passkey": true})).await;
+            return Err(e);
+        }
+        let updated = sqlx::query("UPDATE logins SET acp_verified = $2 WHERE token_hash = $1 AND uid = $3 AND expires > $2")
+            .bind(session).bind(crate::util::now()).bind(uid).execute(&ctx.app.db).await?;
+        if updated.rows_affected() != 1 {
+            return Err(AppError::no_perm());
+        }
+        auth::rotate_login(&ctx).await?;
+        crate::admin::log(&ctx, "home", "Admin CP login", serde_json::json!({"passkey": true})).await;
+        Ok(serde_json::json!({"redirect": crate::admin::verification_redirect(&f.return_to)}))
+    }.await)
 }

@@ -166,7 +166,7 @@ pub async fn verify_form(ctx: Ctx, Query(q): Query<ReturnQ>) -> AppResult<Respon
     if !ctx.perms.cancp {
         return Err(AppError::no_perm());
     }
-    ctx.render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => q.return_to, needs_2fa => !me.totp_secret.is_empty(), error => "" }).await
+    ctx.render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => q.return_to, needs_2fa => !me.totp_secret.is_empty(), passkeys => crate::passkeys::available(&ctx.app).is_ok(), error => "" }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -199,7 +199,7 @@ pub async fn verify_submit(ctx: Ctx, CsrfForm(f): CsrfForm<VerifyForm>) -> AppRe
     if !pw_ok || !code_ok {
         log(&ctx, "home", "Failed Admin CP login", serde_json::json!({})).await;
         return ctx
-            .render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => f.return_to, needs_2fa => !me.totp_secret.is_empty(), error => "The details you entered are incorrect." })
+            .render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => f.return_to, needs_2fa => !me.totp_secret.is_empty(), passkeys => crate::passkeys::available(&ctx.app).is_ok(), error => "The details you entered are incorrect." })
             .await;
     }
     if let Some(h) = &ctx.token_hash {
@@ -210,12 +210,17 @@ pub async fn verify_submit(ctx: Ctx, CsrfForm(f): CsrfForm<VerifyForm>) -> AppRe
             .await?;
         crate::auth::rotate_login(&ctx).await?;
     }
-    let to = if f.return_to.starts_with("/admin") {
-        f.return_to.clone()
+    Ok(ctx.redirect(verification_redirect(&f.return_to), ""))
+}
+
+/// Both verification methods accept only local Admin CP destinations.
+pub(crate) fn verification_redirect(return_to: &str) -> &str {
+    let safe = crate::ctx::safe_redirect(return_to);
+    if safe == "/admin" || safe.starts_with("/admin/") || safe.starts_with("/admin?") {
+        safe
     } else {
-        "/admin".into()
-    };
-    Ok(ctx.redirect(&to, ""))
+        "/admin"
+    }
 }
 
 pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {

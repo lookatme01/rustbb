@@ -94,24 +94,32 @@ async fn save_ceremony(
     uid: Option<i32>,
     state: Vec<u8>,
     expires: std::time::SystemTime,
+    context: &str,
 ) -> AppResult<()> {
-    sqlx::query("INSERT INTO webauthn_ceremonies (challenge, uid, state, expires_at) VALUES ($1, $2, $3, $4)")
+    sqlx::query("INSERT INTO webauthn_ceremonies (challenge, uid, state, expires_at, context) VALUES ($1, $2, $3, $4, $5)")
         .bind(challenge)
         .bind(uid)
         .bind(state)
         .bind(chrono::DateTime::<chrono::Utc>::from(expires))
+        .bind(context)
         .execute(&app.db)
         .await?;
     Ok(())
 }
 
 /// Consume a ceremony: it works once, only before it expires, and only for whoever started it.
-async fn take_ceremony(app: &App, challenge: Vec<u8>, uid: Option<i32>) -> AppResult<Vec<u8>> {
+async fn take_ceremony(
+    app: &App,
+    challenge: Vec<u8>,
+    uid: Option<i32>,
+    context: &str,
+) -> AppResult<Vec<u8>> {
     let state: Option<Vec<u8>> = sqlx::query_scalar(
-        "DELETE FROM webauthn_ceremonies WHERE challenge = $1 AND uid IS NOT DISTINCT FROM $2 AND expires_at > now() RETURNING state",
+        "DELETE FROM webauthn_ceremonies WHERE challenge = $1 AND uid IS NOT DISTINCT FROM $2 AND expires_at > now() AND context = $3 RETURNING state",
     )
     .bind(challenge)
     .bind(uid)
+    .bind(context)
     .fetch_optional(&app.db)
     .await?;
     state.ok_or_else(|| bad("That passkey request expired or was already used."))
@@ -222,6 +230,7 @@ pub async fn begin_registration(
         Some(uid),
         state,
         server.expiration(),
+        "",
     )
     .await?;
     Ok(json)
@@ -240,7 +249,7 @@ pub async fn finish_registration(
     let challenge = reg
         .challenge_relaxed()
         .map_err(|_| bad("Your browser sent a passkey we couldn't read."))?;
-    let state = take_ceremony(app, challenge_key(challenge), Some(uid)).await?;
+    let state = take_ceremony(app, challenge_key(challenge), Some(uid), "").await?;
     let server = RegistrationServerState::<64>::decode(state.as_slice())
         .map_err(|_| internal("passkey state"))?;
     let origins = [rp.origin.as_str()];
@@ -297,6 +306,18 @@ pub async fn finish_registration(
 
 /// Start signing in: the options for `navigator.credentials.get()`.
 pub async fn begin_sign_in(app: &App) -> AppResult<serde_json::Value> {
+    begin_authentication(app, "").await
+}
+
+/// Admin CP assertions belong to one browser session and cannot be used for member login.
+pub async fn begin_admin_verification(
+    app: &App,
+    session_hash: &str,
+) -> AppResult<serde_json::Value> {
+    begin_authentication(app, &format!("admin:{session_hash}")).await
+}
+
+async fn begin_authentication(app: &App, context: &str) -> AppResult<serde_json::Value> {
     let rp = available(app).map_err(unavailable)?;
     let (server, client) = DiscoverableCredentialRequestOptions::passkey(&rp.id)
         .start_ceremony()
@@ -312,6 +333,7 @@ pub async fn begin_sign_in(app: &App) -> AppResult<serde_json::Value> {
         None,
         state,
         server.expiration(),
+        context,
     )
     .await?;
     Ok(json)
@@ -319,13 +341,33 @@ pub async fn begin_sign_in(app: &App) -> AppResult<serde_json::Value> {
 
 /// Finish signing in. Returns the member the passkey belongs to.
 pub async fn finish_sign_in(app: &App, credential: &str) -> AppResult<i32> {
+    finish_authentication(app, credential, "").await
+}
+
+/// Verify a fresh assertion for the current administrator, never switch accounts.
+pub async fn finish_admin_verification(
+    app: &App,
+    session_hash: &str,
+    expected_uid: i32,
+    credential: &str,
+) -> AppResult<()> {
+    let uid = finish_authentication(app, credential, &format!("admin:{session_hash}")).await?;
+    if uid != expected_uid {
+        return Err(AppError::user(
+            "Use a passkey belonging to your signed-in account.",
+        ));
+    }
+    Ok(())
+}
+
+async fn finish_authentication(app: &App, credential: &str, context: &str) -> AppResult<i32> {
     let rp = available(app).map_err(unavailable)?;
     let auth = DiscoverableAuthentication64::from_json_relaxed(credential.as_bytes())
         .map_err(|_| bad("Your browser sent a passkey we couldn't read."))?;
     let challenge = auth
         .challenge_relaxed()
         .map_err(|_| bad("Your browser sent a passkey we couldn't read."))?;
-    let state = take_ceremony(app, challenge_key(challenge), None).await?;
+    let state = take_ceremony(app, challenge_key(challenge), None, context).await?;
     let server = DiscoverableAuthenticationServerState::decode(state.as_slice())
         .map_err(|_| internal("passkey state"))?;
     let row: Option<(i32, i32, Vec<u8>, Vec<u8>, Option<Vec<u8>>, bool)> = sqlx::query_as(
