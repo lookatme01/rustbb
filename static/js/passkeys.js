@@ -99,6 +99,11 @@
       if (pw) pw.value = "";
       return post("/usercp/passkeys/finish", f, { credential: JSON.stringify(credentialJSON(cred)), password: "" });
     }));
+    document.querySelectorAll(".js-passkey-admin").forEach((form) => wire(form, async (f) => {
+      const options = await post("/admin/verify/passkey/begin", f);
+      const cred = await navigator.credentials.get({ publicKey: requestOptions(options) });
+      return post("/admin/verify/passkey/finish", f, { credential: JSON.stringify(credentialJSON(cred)) });
+    }));
     document.querySelectorAll(".js-passkey-login").forEach((form) => wire(form, async (f) => {
       const options = await post("/member/login/passkey/begin", f);
       const cred = await navigator.credentials.get({ publicKey: requestOptions(options) });

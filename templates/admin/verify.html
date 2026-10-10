@@ -1,6 +1,14 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
+{% block head %}{% if passkeys %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
+{% if passkeys %}
+<form class="box js-passkey-admin" style="max-width:520px" hidden>{{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+  <div class="box-head"><h2>Confirm with a passkey</h2></div>
+  <div class="box-body"><p>Use a passkey for your signed-in account to access the Admin CP for an hour.</p><div class="notice bad js-passkey-error" hidden role="alert"></div></div>
+  <div class="box-foot"><button class="btn" type="submit">Continue with a passkey</button><a href="/usercp/security">Manage passkeys</a></div>
+</form>
+{% endif %}
 <form method="post" action="/admin/verify" class="box" style="max-width:520px">{{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
   <div class="box-head"><h2>Confirm your password</h2></div>
   <div class="box-body"><p class="small muted">For security, please re-enter your password to access the Admin CP. You won't be asked again for an hour.</p>{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}</div>
