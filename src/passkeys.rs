@@ -319,6 +319,9 @@ pub async fn begin_admin_verification(
 
 async fn begin_authentication(app: &App, context: &str) -> AppResult<serde_json::Value> {
     let rp = available(app).map_err(unavailable)?;
+    // webauthn_rp 0.3's passkey options require UV. The server persists that requirement
+    // with the challenge and enforces it during verify(), including with default verification
+    // options. update_uv controls saved credential metadata, not whether UV is required.
     let (server, client) = DiscoverableCredentialRequestOptions::passkey(&rp.id)
         .start_ceremony()
         .map_err(|e| internal(format!("passkey options: {e}")))?;

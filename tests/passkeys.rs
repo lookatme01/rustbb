@@ -479,3 +479,126 @@ async fn admin_passkey_redirects_stay_in_the_admin_cp() {
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(json(&r)["redirect"], "/admin");
 }
+
+#[tokio::test]
+async fn admin_passkey_assertions_without_user_verification_are_rejected() {
+    use base64::Engine;
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (uid, c, mut dev) = admin_account(&t, "uvadmin").await;
+    let r = c.post_form("/admin/verify/passkey/begin", &[]).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    let mut options = json(&r);
+    assert_eq!(options["userVerification"], "required");
+    // An untrusted client can alter the options given to its authenticator. Produce a real,
+    // signed assertion with UV=false while the server retains its original UV requirement.
+    options["userVerification"] = serde_json::json!("discouraged");
+    let options: CredentialRequestOptions =
+        serde_json::from_value(serde_json::json!({"publicKey": options})).unwrap();
+    let signed = dev
+        .authenticate(&origin(BOARD), options, DefaultClientData)
+        .await
+        .unwrap();
+    let signed = serde_json::to_value(&signed).unwrap();
+    let auth_data = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(signed["response"]["authenticatorData"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(auth_data[32] & 0x04, 0, "the signed assertion has UV=false");
+    let old_cookie = c.cookie(rbb::ctx::AUTH_COOKIE);
+    let r = c
+        .post_form(
+            "/admin/verify/passkey/finish",
+            &[("credential", &signed.to_string())],
+        )
+        .await;
+    assert_eq!(r.status, 422, "{}", r.body);
+    assert!(
+        json(&r)["error"]
+            .as_str()
+            .unwrap()
+            .contains("couldn't be verified")
+    );
+    assert_eq!(verified(&t, uid).await, 0);
+    assert_eq!(c.cookie(rbb::ctx::AUTH_COOKIE), old_cookie);
+    assert_eq!(c.get("/admin").await.status, 303, "Admin CP remains locked");
+}
+
+#[tokio::test]
+async fn admins_without_passkeys_see_only_password_confirmation_even_after_errors() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let uid = t.create_user("passwordadmin", PASSWORD).await;
+    sqlx::query("UPDATE users SET usergroup = 4 WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    let page = c.get("/admin/verify").await;
+    assert!(page.body.contains("Confirm your password"));
+    assert!(!page.body.contains("Continue with a passkey"));
+    let r = c.post_form("/admin/verify", &[("password", "wrong")]).await;
+    assert!(r.body.contains("incorrect"));
+    assert!(!r.body.contains("Continue with a passkey"));
+    let mut dev = device();
+    assert_eq!(add(&c, &mut dev, BOARD).await.status, 200);
+    assert!(
+        c.get("/admin/verify")
+            .await
+            .body
+            .contains("Continue with a passkey")
+    );
+    let r = c.post_form("/admin/verify", &[("password", "wrong")]).await;
+    assert!(r.body.contains("Continue with a passkey"));
+}
+
+#[tokio::test]
+async fn passkey_clicks_do_not_lock_out_password_confirmation() {
+    let t = test_app!();
+    set(&t, &[("bburl", BOARD)]).await;
+    let (uid, c, _) = admin_account(&t, "throttleadmin").await;
+    for _ in 0..10 {
+        assert_eq!(
+            c.post_form("/admin/verify/passkey/begin", &[]).await.status,
+            200
+        );
+    }
+    assert_eq!(
+        c.post_form("/admin/verify/passkey/begin", &[]).await.status,
+        429
+    );
+    let r = c
+        .post_form("/admin/verify", &[("password", PASSWORD)])
+        .await;
+    assert_eq!(r.status, 303, "{}", r.body);
+    assert!(verified(&t, uid).await > 0);
+}
+
+#[tokio::test]
+async fn password_confirmation_redirects_stay_in_the_admin_cp() {
+    let t = test_app!();
+    let uid = t.create_user("passwordredirectadmin", PASSWORD).await;
+    sqlx::query("UPDATE users SET usergroup = 4 WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    for (requested, expected) in [
+        ("/admin/users", "/admin/users"),
+        ("/admin?tab=home", "/admin?tab=home"),
+        ("/admin#x", "/admin"),
+        ("/adminfoo", "/admin"),
+        ("//evil.example/admin", "/admin"),
+        ("/admin/\\evil.example", "/admin"),
+    ] {
+        let r = c
+            .post_form(
+                "/admin/verify",
+                &[("password", PASSWORD), ("return_to", requested)],
+            )
+            .await;
+        assert_eq!(r.status, 303, "{}", r.body);
+        assert_eq!(r.location(), expected, "redirect for {requested}");
+    }
+}

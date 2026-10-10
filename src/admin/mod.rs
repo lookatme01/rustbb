@@ -162,11 +162,28 @@ pub struct ReturnQ {
 }
 
 pub async fn verify_form(ctx: Ctx, Query(q): Query<ReturnQ>) -> AppResult<Response> {
-    let me = ctx.require_login()?;
+    ctx.require_login()?;
     if !ctx.perms.cancp {
         return Err(AppError::no_perm());
     }
-    ctx.render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => q.return_to, needs_2fa => !me.totp_secret.is_empty(), passkeys => crate::passkeys::available(&ctx.app).is_ok(), error => "" }).await
+    render_verification(&ctx, &q.return_to, "").await
+}
+
+async fn render_verification(ctx: &Ctx, return_to: &str, error: &str) -> AppResult<Response> {
+    let me = ctx.require_login()?;
+    let passkeys = crate::passkeys::available(&ctx.app).is_ok()
+        && sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM passkeys WHERE uid = $1)")
+            .bind(me.uid)
+            .fetch_one(&ctx.app.db)
+            .await?;
+    ctx.render(
+        "admin/verify.html",
+        minijinja::context! {
+            title => "Admin CP Login", return_to => return_to,
+            needs_2fa => !me.totp_secret.is_empty(), passkeys => passkeys, error => error,
+        },
+    )
+    .await
 }
 
 #[derive(Deserialize, Default)]
@@ -198,8 +215,7 @@ pub async fn verify_submit(ctx: Ctx, CsrfForm(f): CsrfForm<VerifyForm>) -> AppRe
                 .await?);
     if !pw_ok || !code_ok {
         log(&ctx, "home", "Failed Admin CP login", serde_json::json!({})).await;
-        return ctx
-            .render("admin/verify.html", minijinja::context! { title => "Admin CP Login", return_to => f.return_to, needs_2fa => !me.totp_secret.is_empty(), passkeys => crate::passkeys::available(&ctx.app).is_ok(), error => "The details you entered are incorrect." })
+        return render_verification(&ctx, &f.return_to, "The details you entered are incorrect.")
             .await;
     }
     if let Some(h) = &ctx.token_hash {

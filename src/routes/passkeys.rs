@@ -246,7 +246,11 @@ pub async fn admin_begin(ctx: Ctx, CsrfForm(_): CsrfForm<Empty>) -> Response {
     json(
         async {
             let (uid, session) = administrator(&ctx)?;
-            if !ctx.app.throttle(&format!("acpverify:{uid}"), 10, 600).await {
+            if !ctx
+                .app
+                .throttle(&format!("acpverify-passkey:{uid}"), 10, 600)
+                .await
+            {
                 return Err(AppError::RateLimited);
             }
             crate::passkeys::begin_admin_verification(&ctx.app, session).await
