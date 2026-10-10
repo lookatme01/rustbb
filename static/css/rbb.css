@@ -786,6 +786,7 @@ img.smilie { width: 20px; height: 20px; vertical-align: -4px; }
 .alert-item.unread { background: var(--signal-wash); }
 .alert-item.unread .alert-text::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--signal); vertical-align: 2px; }
 .alert-item .when { margin-left: auto; font-size: .8rem; color: var(--ink-faint); white-space: nowrap; }
+.alert-item.unread .when { color: var(--ink-soft); }
 .live-banner { position: sticky; bottom: 20px; z-index: 20; margin: 12px auto; width: max-content; max-width: 100%; }
 .live-banner button { box-shadow: var(--shadow-lg); animation: pop-in .25s var(--ease); }
 .empty { padding: 34px 20px; text-align: center; color: var(--ink-soft); }

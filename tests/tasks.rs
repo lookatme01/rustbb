@@ -33,11 +33,16 @@ async fn a_task_runs_once_when_two_schedulers_race() {
             .unwrap();
     assert!(!locked, "the lease is released");
     assert!(next > rbb::util::now(), "the next run is scheduled");
-    // No session-level advisory lock is left behind on any pooled connection.
-    let held: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory'")
-        .fetch_one(&t.db.pool)
-        .await
-        .unwrap();
+    // No session-level advisory lock is left behind on any pooled connection. pg_locks is
+    // cluster-wide, so only look at this test's database: tests running in parallel take their
+    // own (transaction-scoped) advisory locks.
+    let held: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory'
+           AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
+    )
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
     assert_eq!(held, 0);
 }
 

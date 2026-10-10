@@ -32,7 +32,7 @@ T=$(csrf /member/login)
 check "admin login" 303 -d "my_post_key=$T&username=admin&password=$PW&remember=1" "$BASE/member/login"
 T=$(csrf /)
 check "acp verify" 303 --data-urlencode "my_post_key=$T" --data-urlencode "password=$PW" --data-urlencode "return_to=/admin" "$BASE/admin/verify"
-check "edit form" 200 "$BASE/admin/users/$SYS"
+check "edit form" 200 "$BASE/admin/users/$SYS?tab=details"
 has "edit form explains System" 'built-in System account'
 grep -q 'name="email"' "$BODY" && bad "email field hidden" || ok "email field hidden"
 T=$(csrf /admin)
@@ -46,7 +46,7 @@ check "delete refused" 422 --data-urlencode "my_post_key=$T" "$BASE/admin/users/
 has "delete message" 'System account cannot be deleted'
 check "ban refused" 422 --data-urlencode "my_post_key=$T" --data-urlencode "reason=x" --data-urlencode "days=1" "$BASE/admin/users/$SYS/ban"
 check "merge refused" 422 --data-urlencode "my_post_key=$T" --data-urlencode "source=System" --data-urlencode "destination=admin" "$BASE/admin/users/merge"
-SGID=$(curl -s -b "$JAR" "$BASE/admin/users/$SYS" | grep -o '<option value="[0-9]*"[^>]*>System<' | head -1 | sed 's/[^0-9]//g')
+SGID=$(curl -s -b "$JAR" "$BASE/admin/users/$SYS?tab=details" | grep -o '<option value="[0-9]*"[^>]*>System<' | head -1 | sed 's/[^0-9]//g')
 [ -n "$SGID" ] && ok "System group found (gid $SGID)" || bad "System group not found"
 check "put member in System group refused" 422 --data-urlencode "my_post_key=$T" --data-urlencode "username=sysprobe$RANDOM" --data-urlencode "password=secret123" \
   --data-urlencode "email=probe$RANDOM@example.com" --data-urlencode "usergroup=${SGID:-x}" "$BASE/admin/users/new"

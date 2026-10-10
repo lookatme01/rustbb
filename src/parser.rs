@@ -1624,6 +1624,8 @@ mod tests {
     fn mention_after_multibyte_space_does_not_panic() {
         let h = p("hi\u{3000}@alice and\u{a0}@bob");
         assert!(h.contains("@alice</a>") && h.contains("@bob</a>"), "{h}");
+        // The nightly fuzzer's crash input: the mention starts the post.
+        assert!(p("\u{a0}@1BBBBBBBB").contains("@1BBBBBBBB</a>"));
     }
 
     #[test]
