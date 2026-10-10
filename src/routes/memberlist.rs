@@ -66,7 +66,7 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
         .unwrap_or_default();
     let where_sql = "NOT (usergroup = ANY($1)) AND ($2 = '' OR username ILIKE '%' || $2 || '%')
         AND ($3 = '' OR ($3 = '#' AND username !~ '^[A-Za-z]') OR lower(left(username, 1)) = lower($3))
-        AND ($4 = '' OR website ILIKE '%' || $4 || '%') AND ($5 = 0 OR usergroup = $5 OR $5 = ANY(additionalgroups))";
+        AND ($4 = '' OR website ILIKE '%' || $4 || '%') AND ($5 = 0 OR usergroup = $5 OR additionalgroups @> ARRAY[$5]::int[])";
     // The name and website filters are substring matches, not user-supplied patterns.
     let username_like = util::like_escape(q.username.trim());
     let website_like = util::like_escape(q.website.trim());
@@ -150,7 +150,7 @@ pub async fn showteam(ctx: Ctx) -> AppResult<Response> {
          FROM unnest($1::int[]) AS g(gid)
          CROSS JOIN LATERAL (
              SELECT uid, username, usergroup, displaygroup, lastactive, invisible FROM users
-             WHERE usergroup = g.gid OR g.gid = ANY(additionalgroups)
+             WHERE usergroup = g.gid OR additionalgroups @> ARRAY[g.gid]
              ORDER BY lower(username), uid LIMIT 200
          ) u ORDER BY g.gid, lower(u.username), u.uid",
     )

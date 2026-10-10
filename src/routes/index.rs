@@ -463,7 +463,7 @@ pub async fn todays_birthdays(ctx: &Ctx) -> AppResult<Vec<serde_json::Value>> {
         r
     } else {
         let rows: Vec<Row> = sqlx::query_as(
-        "SELECT uid, username, usergroup, displaygroup, birthday, birthdayprivacy FROM users WHERE birthday LIKE $1 || '%' AND birthdayprivacy <> 'none' LIMIT 200",
+        "SELECT uid, username, usergroup, displaygroup, birthday, birthdayprivacy FROM users WHERE birthday <> '' AND birthday LIKE $1 || '%' AND birthdayprivacy <> 'none' LIMIT 200",
     )
     .bind(&key)
     .fetch_all(&ctx.app.db)

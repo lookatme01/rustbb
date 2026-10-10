@@ -427,17 +427,33 @@ pub async fn edit_form(
         Vec<(String, i64, String, String)>,
     ) = if tab == "ips" {
         let rows: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
-        let mut ips = vec![];
-        for (ip, when) in rows {
-            let others: Vec<(i32, String, bool)> = sqlx::query_as(
-                "SELECT o.uid, o.username, EXISTS (SELECT 1 FROM banned b WHERE b.uid = o.uid) FROM users o WHERE o.uid <> $1 AND (o.lastip = $2::inet OR o.regip = $2::inet) ORDER BY 3 DESC LIMIT 5",
-            )
-            .bind(uid)
-            .bind(&ip)
-            .fetch_all(&ctx.app.db)
-            .await?;
-            ips.push((ip, when, others));
+        let mut addresses: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+        addresses.sort();
+        addresses.dedup();
+        let shared: Vec<(String, i32, String, bool)> = sqlx::query_as(
+            "SELECT ips.ip, o.uid, o.username, o.banned
+             FROM unnest($2::text[]) ips(ip) CROSS JOIN LATERAL (
+                 SELECT o.uid, o.username, EXISTS (SELECT 1 FROM banned b WHERE b.uid = o.uid) AS banned
+                 FROM users o WHERE o.uid <> $1 AND (o.lastip = ips.ip::inet OR o.regip = ips.ip::inet)
+                 ORDER BY banned DESC LIMIT 5
+             ) o",
+        )
+        .bind(uid)
+        .bind(&addresses)
+        .fetch_all(&ctx.app.db)
+        .await?;
+        let mut by_ip: std::collections::HashMap<String, Vec<(i32, String, bool)>> =
+            std::collections::HashMap::new();
+        for (ip, uid, name, banned) in shared {
+            by_ip.entry(ip).or_default().push((uid, name, banned));
         }
+        let ips = rows
+            .into_iter()
+            .map(|(ip, when)| {
+                let others = by_ip.get(&ip).cloned().unwrap_or_default();
+                (ip, when, others)
+            })
+            .collect();
         let logins: Vec<(String, i64, String, String)> = sqlx::query_as(
             "SELECT token_hash, lastused, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC LIMIT 20",
         )

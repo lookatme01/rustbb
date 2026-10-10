@@ -264,7 +264,9 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .await
             .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
         let mut tx = ctx.app.db.begin().await?;
-        sqlx::query("SET LOCAL statement_timeout = '5s'")
+        // Optional filters and skewed keywords need a plan for these bind values even
+        // after SQLx has reused the prepared statement enough to consider a generic plan.
+        sqlx::query("SELECT set_config('statement_timeout', '5s', true), set_config('plan_cache_mode', 'force_custom_plan', true)")
             .execute(&mut *tx)
             .await?;
         let thread_sql = format!(
@@ -320,7 +322,9 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .await
             .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
         let mut tx = ctx.app.db.begin().await?;
-        sqlx::query("SET LOCAL statement_timeout = '5s'")
+        // Optional filters and skewed keywords need a plan for these bind values even
+        // after SQLx has reused the prepared statement enough to consider a generic plan.
+        sqlx::query("SELECT set_config('statement_timeout', '5s', true), set_config('plan_cache_mode', 'force_custom_plan', true)")
             .execute(&mut *tx)
             .await?;
         let res: Result<Vec<i32>, sqlx::Error> = if threads_mode {

@@ -1171,8 +1171,10 @@ pub struct ActionForm {
 
 async fn recount_pms(conn: &mut sqlx::PgConnection, uid: i32) -> AppResult<()> {
     sqlx::query(
-        "UPDATE users SET unreadpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND status = 0 AND folder <> 2 AND folder <> 3),
-            totalpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1) WHERE uid = $1",
+        "UPDATE users SET unreadpms = n.unread, totalpms = n.total FROM (
+             SELECT COUNT(*) FILTER (WHERE status = 0 AND folder NOT IN (2, 3))::int AS unread,
+                    COUNT(*)::int AS total FROM privatemessages WHERE uid = $1
+         ) n WHERE uid = $1",
     )
     .bind(uid)
     .execute(conn)

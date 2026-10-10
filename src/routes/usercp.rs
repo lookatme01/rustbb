@@ -1864,7 +1864,7 @@ pub async fn usergroups(ctx: Ctx) -> AppResult<Response> {
     .await?;
     let mut leading = vec![];
     for (gid, can_members, can_requests) in led {
-        let members: Vec<(i32, String)> = sqlx::query_as("SELECT uid, username FROM users WHERE usergroup = $1 OR $1 = ANY(additionalgroups) ORDER BY lower(username) LIMIT 500")
+        let members: Vec<(i32, String)> = sqlx::query_as("SELECT uid, username FROM users WHERE usergroup = $1 OR additionalgroups @> ARRAY[$1]::int[] ORDER BY lower(username) LIMIT 500")
             .bind(gid)
             .fetch_all(&ctx.app.db)
             .await?;

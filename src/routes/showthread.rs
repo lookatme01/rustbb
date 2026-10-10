@@ -714,7 +714,7 @@ pub async fn goto_post(ctx: Ctx, Path(pid): Path<i32>) -> AppResult<Response> {
     let states = ctx.listed_states(thread.fid);
     let before: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM posts WHERE tid = $1 AND (visible = ANY($2) OR ($5 AND visible = 0 AND uid = $6))
-         AND (dateline < $3 OR (dateline = $3 AND pid < $4))",
+         AND (dateline, pid) < ($3, $4)",
     )
     .bind(tid)
     .bind(&states)
@@ -811,7 +811,7 @@ pub async fn posts_since(ctx: Ctx, Path((tid, pid)): Path<(i32, i32)>) -> AppRes
             .await?;
     let after_ts = after.map(|a| a.0).unwrap_or(0);
     let before: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM posts WHERE tid = $1 AND visible = ANY($2) AND (dateline < $3 OR (dateline = $3 AND pid <= $4))",
+        "SELECT COUNT(*) FROM posts WHERE tid = $1 AND visible = ANY($2) AND (dateline, pid) <= ($3, $4)",
     )
     .bind(tid)
     .bind(&states)
@@ -820,7 +820,7 @@ pub async fn posts_since(ctx: Ctx, Path((tid, pid)): Path<(i32, i32)>) -> AppRes
     .fetch_one(&ctx.app.db)
     .await?;
     let posts: Vec<Post> = sqlx::query_as(&format!(
-        "SELECT {POST_COLUMNS} FROM posts WHERE tid = $1 AND visible = ANY($2) AND (dateline > $3 OR (dateline = $3 AND pid > $4))
+        "SELECT {POST_COLUMNS} FROM posts WHERE tid = $1 AND visible = ANY($2) AND (dateline, pid) > ($3, $4)
          ORDER BY dateline, pid LIMIT 50"
     ))
     .bind(tid)
