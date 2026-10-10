@@ -1,11 +1,23 @@
 {% extends "layout.html" %}
 {% block content %}
-<section class="box" style="max-width:640px">
-  <div class="box-head"><h2>{{ bb.bbname }}</h2></div>
-  <div class="box-body">
-    <p>{{ message }}</p>
-    {% if show_login and not me %}<p><a class="btn" href="/member/login?return_to={{ return_to|urlenc }}">Log in</a> {% if bb.disableregs != '1' %}<a class="btn secondary" href="/member/register">Register</a>{% endif %}</p>{% endif %}
-    <p class="small"><a href="/">Return to the board index</a></p>
+<div class="auth">
+  <div class="auth-card auth-card-wide error-card">
+    <p class="error-code" aria-hidden="true">{{ status }}</p>
+    <h1>{% if status == 404 %}Page not found{% elif status == 401 %}Please log in to continue{% elif status == 403 %}You don't have permission to view this{% elif status == 429 %}Slow down a little{% else %}Something went wrong{% endif %}</h1>
+    {% if status != 401 %}<p class="muted">{{ message }}</p>{% endif %}
+    {% if show_login and not me %}
+    <p class="error-actions"><a class="btn" href="/member/login?return_to={{ return_to|urlenc }}">Log in</a>{% if bb.disableregs != '1' %} <a class="btn secondary" href="/member/register">Register</a>{% endif %}</p>
+    {% endif %}
+    {% if perms.cansearch %}
+    <form class="quicksearch error-search" action="/search/quick" method="get" role="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
+      <input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}">
+    </form>
+    {% endif %}
+    <p class="error-actions">
+      <a class="btn{% if show_login and not me %} secondary{% endif %}" href="/">Board index</a>
+      {% if perms.cansearch %}<a class="btn secondary" href="{{ '/search/new' if me else '/search/today' }}">What's new</a>{% endif %}
+    </p>
   </div>
-</section>
+</div>
 {% endblock %}

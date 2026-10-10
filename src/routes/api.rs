@@ -487,7 +487,18 @@ pub async fn search(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
         return Err(AppError::RateLimited);
     }
     let (fids, own) = crate::routes::search::searchable_forums(&ctx);
-    let rows: Vec<(i32, i32, String, String, i64, f32)> = sqlx::query_as(
+    // Use the same budget as browser searches: API traffic must not monopolize the pool.
+    let _permit = ctx
+        .app
+        .search_sem
+        .acquire()
+        .await
+        .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
+    let mut tx = ctx.app.db.begin().await?;
+    sqlx::query("SET LOCAL statement_timeout = '5s'")
+        .execute(&mut *tx)
+        .await?;
+    let rows: Result<Vec<(i32, i32, String, String, i64, f32)>, sqlx::Error> = sqlx::query_as(
         "SELECT p.pid, p.tid, t.subject, p.username, p.dateline, ts_rank(p.search_tsv, websearch_to_tsquery('english', $1)) AS r
          FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.search_tsv @@ websearch_to_tsquery('english', $1) AND (p.fid = ANY($2) OR (p.fid = ANY($4) AND t.uid = $5 AND $5 > 0)) AND p.visible = 1 AND t.visible = 1
          ORDER BY r DESC, p.dateline DESC LIMIT $3",
@@ -497,8 +508,20 @@ pub async fn search(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
     .bind(if q.limit > 0 { q.limit.min(100) } else { 25 })
     .bind(&own)
     .bind(ctx.uid())
-    .fetch_all(&ctx.app.db)
-    .await?;
+    .fetch_all(&mut *tx)
+    .await;
+    let rows = match rows {
+        Ok(rows) => {
+            tx.commit().await?;
+            rows
+        }
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("57014") => {
+            return Err(AppError::user(
+                "Your search took too long. Please use more specific search terms.",
+            ));
+        }
+        Err(e) => return Err(e.into()),
+    };
     ok(
         serde_json::json!({ "results": rows.iter().map(|r| serde_json::json!({"pid": r.0, "tid": r.1, "subject": r.2, "username": r.3, "dateline": r.4, "rank": r.5})).collect::<Vec<_>>() }),
     )

@@ -1,38 +1,42 @@
 {% extends "modcp/base.html" %}
 {% import "macros.html" as m %}
+{% import "member_file.html" as mfm %}
+{% import "member_actions.html" as act %}
 {% block mcp %}
-<section class="box">
-  <div class="box-head"><h2>{{ member.username }}</h2><a class="right small" href="{{ url_user(member.uid, member.username) }}">Profile</a></div>
-  <div class="kv">
-    <div>Group</div><div>{{ member.group }}</div>
-    <div>Joined</div><div>{{ member.regdate|date('date') }} · {{ member.postnum|num }} posts</div>
-    {% if ban %}<div>Status</div><div><strong>Banned</strong>{% if ban.reason %}: {{ ban.reason }}{% endif %} · {% if ban.lifted %}until {{ ban.lifted|date }}{% else %}permanent{% endif %}</div>{% endif %}
-    {% if member.warnings_visible %}<div>Warning level</div><div>{{ member.warn_pct }}%</div>{% endif %}
-    {% if member.suspendposting or member.moderateposts or member.suspendsignature %}<div>Restrictions</div><div>{% if member.suspendposting %}Posting suspended. {% endif %}{% if member.moderateposts %}Posts moderated. {% endif %}{% if member.suspendsignature %}Signature suspended.{% endif %}</div>{% endif %}
-  </div>
-  <div class="box-foot actions" style="margin:0">
-    {% if can_warn %}<a class="btn secondary small" href="/warnings/{{ member.uid }}/warn">Warn</a>{% endif %}
-    {% if can_ban and not ban %}<a class="btn secondary small" href="/modcp/ban?uid={{ member.uid }}">Ban</a>{% endif %}
-  </div>
-</section>
+{% set back = "/modcp/member/" ~ mf.uid %}
+{{ act.reasons_list(reasons) }}
+<div class="actions" style="justify-content:space-between">
+  <span class="small muted"><a href="/modcp/finduser">Members</a> › {{ mf.username }}</span>
+  <span class="actions" style="margin:0">{% if can_edit %}<a class="btn secondary small" href="/modcp/editprofile/{{ mf.uid }}">Edit profile</a>{% endif %}{% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ mf.uid }}">Admin CP</a>{% endif %}</span>
+</div>
 
-{% if can_write_notes %}<form method="post" action="/modcp/member/{{ member.uid }}/notes" class="box">{{ m.csrf_field() }}
-  <div class="box-head"><h2>Add a note</h2><span class="right small muted">Only staff can see notes. They can't be edited afterwards.</span></div>
-  <div class="box-body"><textarea name="note" rows="3" maxlength="2000" required aria-label="Note"></textarea></div>
-  <div class="box-foot actions" style="margin:0"><button class="btn small" type="submit">Add note</button></div>
-</form>{% endif %}
+<div class="mf-hero two">
+  <div class="mf-col">
+    {{ mfm.card(mf, false) }}
+    {% if can_warn or can_restrict or can_ban %}
+    <section class="box">
+      <div class="mf-actions">
+        {% if can_warn %}<a class="btn secondary" href="/warnings/{{ mf.uid }}/warn">Warn</a>{% endif %}
+        {% if can_restrict %}{{ act.restrict(mf, back) }}{% endif %}
+        {% if can_ban %}{% if mf.ban %}<form method="post" action="/modcp/liftban">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ mf.uid }}"><input type="hidden" name="back" value="{{ back }}"><button class="btn secondary">Lift ban</button></form>{% else %}{{ act.ban(mf, "/modcp/ban", back, true) }}{% endif %}{% endif %}
+      </div>
+      {{ act.active(mf, back, can_restrict) }}
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="mf-col">
+    {% set know = (mf.signals|selectattr("group", "equalto", "standing")|list) + (mf.signals|selectattr("group", "equalto", "identity")|list) %}
+    <section class="box">
+      <div class="box-head"><h2 class="mf-head">What to know</h2>{% if not is_admin %}<span class="right">Email and sign-in details are for admins</span>{% endif %}</div>
+      {{ mfm.checks(know) }}
+    </section>
+    {{ act.notes(mf, notes or events, back, can_write_notes) }}
+  </div>
+</div>
 
 <section class="box">
-  <div class="box-head"><h2>History</h2>
-    <span class="right small"><a href="/modcp/member/{{ member.uid }}"{% if not filter %} aria-current="page"{% endif %}>All</a>{% for k in kinds %} · <a href="/modcp/member/{{ member.uid }}?type={{ k.key }}"{% if filter == k.key %} aria-current="page"{% endif %}>{{ k.label }}</a>{% endfor %}</span></div>
-  <table class="grid"><thead><tr><th>When</th><th>What</th><th>By</th><th>Details</th></tr></thead><tbody>
-  {% for e in events %}<tr class="history-{{ e.kind }}{% if e.retracted_by %} muted{% endif %}">
-    <td class="small">{{ e.when|date }}</td>
-    <td>{% if e.link %}<a href="{{ e.link }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</td>
-    <td class="small">{{ e.actor or '' }}</td>
-    <td class="small">{% if e.retracted_by %}<s>{{ e.detail }}</s> <em>(retracted by {{ e.retracted_by }})</em>{% else %}{{ e.detail }}{% endif %}
-      {% if e.can_retract %}<form method="post" action="/modcp/notes/{{ e.note_id }}/retract" style="display:inline">{{ m.csrf_field() }}<button class="btn ghost small" type="submit">Retract</button></form>{% endif %}</td>
-  </tr>{% else %}<tr><td colspan="4" class="empty">Nothing recorded yet.</td></tr>{% endfor %}
-  </tbody></table>
+  <div class="box-head"><h2>Timeline</h2></div>
+  {{ act.timeline(events, kinds, filter, "/modcp/member/" ~ mf.uid) }}
 </section>
 {% endblock %}

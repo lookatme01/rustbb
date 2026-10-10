@@ -1248,6 +1248,13 @@ pub async fn email_submit(
     if f.subject.trim().is_empty() || f.message.trim().is_empty() {
         return Err(AppError::user("Please enter both a subject and a message."));
     }
+    // Imported or half-registered accounts can have no address; don't spend the sender's
+    // daily allowance on mail that can't go anywhere.
+    if email.trim().is_empty() {
+        return Err(AppError::user(
+            "This user has no email address on file, so they can't be emailed.",
+        ));
+    }
     // Enforced in memory too: the maillogs count below only works when mail logging is on.
     let daily = if ctx.perms.maxemails > 0 {
         ctx.perms.maxemails as u32

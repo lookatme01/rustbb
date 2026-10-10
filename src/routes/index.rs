@@ -82,13 +82,29 @@ pub async fn build_tree(ctx: &Ctx, root: i32, depth_limit: usize) -> AppResult<V
     let counters = load_counters(ctx).await?;
     let read = forums_read(ctx).await?;
     let viewers: HashMap<i32, i64> = if ctx.settings().bool("showforumviewing") {
-        let cutoff = now() - ctx.settings().int("wolcutoffmins").max(1) * 60;
-        sqlx::query_as::<_, (i32, i64)>("SELECT location1, COUNT(*) FROM sessions WHERE time > $1 AND location1 > 0 GROUP BY location1")
-            .bind(cutoff)
-            .fetch_all(&ctx.app.db)
-            .await?
-            .into_iter()
-            .collect()
+        // Same on every page for everyone, so a 30 s old count is shared instead of grouping
+        // the sessions table on each index/forum view.
+        let key = "forumviewers";
+        let cached: Option<Vec<(i32, i64)>> = ctx
+            .app
+            .short_cache
+            .get(key)
+            .and_then(|v| serde_json::from_value(v).ok());
+        let rows = match cached {
+            Some(rows) => rows,
+            None => {
+                let cutoff = now() - ctx.settings().int("wolcutoffmins").max(1) * 60;
+                let rows: Vec<(i32, i64)> = sqlx::query_as("SELECT location1, COUNT(*) FROM sessions WHERE time > $1 AND location1 > 0 GROUP BY location1")
+                    .bind(cutoff)
+                    .fetch_all(&ctx.app.db)
+                    .await?;
+                ctx.app
+                    .short_cache
+                    .insert(key.to_string(), serde_json::json!(rows));
+                rows
+            }
+        };
+        rows.into_iter().collect()
     } else {
         HashMap::new()
     };
@@ -235,7 +251,10 @@ fn build_level(
                     fid: s.fid,
                     name: s.name.clone(),
                     url: url_forum(s.fid as i64, Some(&s.name)),
+                    // Same gate as the totals above: no activity hints from forums whose
+                    // threads the viewer cannot read in full.
                     unread: ctx.uid() > 0
+                        && counted(s.fid)
                         && counters
                             .get(&s.fid)
                             .map(|c| {
@@ -444,7 +463,7 @@ pub async fn todays_birthdays(ctx: &Ctx) -> AppResult<Vec<serde_json::Value>> {
         r
     } else {
         let rows: Vec<Row> = sqlx::query_as(
-        "SELECT uid, username, usergroup, displaygroup, birthday, birthdayprivacy FROM users WHERE birthday LIKE $1 || '%' AND birthdayprivacy <> 'none' LIMIT 200",
+        "SELECT uid, username, usergroup, displaygroup, birthday, birthdayprivacy FROM users WHERE birthday <> '' AND birthday LIKE $1 || '%' AND birthdayprivacy <> 'none' LIMIT 200",
     )
     .bind(&key)
     .fetch_all(&ctx.app.db)

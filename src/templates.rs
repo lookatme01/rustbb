@@ -91,6 +91,9 @@ pub fn build_env(cache: Arc<ArcSwap<Cache>>, dev_dir: Option<String>) -> Environ
         // safe for embedding inside <script>
         Ok(Value::from_safe_string(s.replace("</", "<\\/")))
     });
+    env.add_filter("ua_summary", |v: String, n: Option<usize>| -> String {
+        crate::audit::ua_summary(&v, n.unwrap_or(60))
+    });
     env.add_filter("plural", |n: Value, one: String, many: String| -> String {
         if n.as_i64().unwrap_or(0) == 1 {
             one

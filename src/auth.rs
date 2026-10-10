@@ -27,11 +27,13 @@ static HASHING: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLoc
 
 pub async fn hash_password(pw: &str) -> AppResult<String> {
     let pw = pw.to_string();
-    let _permit = HASHING
+    let permit = HASHING
         .acquire()
         .await
         .map_err(|e| AppError::Other(e.into()))?;
     tokio::task::spawn_blocking(move || {
+        // Blocking jobs survive request cancellation; keep the slot until the job finishes.
+        let _permit = permit;
         let salt = SaltString::generate(&mut OsRng);
         argon()
             .hash_password(pw.as_bytes(), &salt)
@@ -54,12 +56,15 @@ pub async fn verify_password(pw: &str, stored: &str) -> bool {
         return util::ct_eq(&calc, hash);
     }
     let (pw, stored) = (pw.to_string(), stored.to_string());
-    let Ok(_permit) = HASHING.acquire().await else {
+    let Ok(permit) = HASHING.acquire().await else {
         return false;
     };
-    tokio::task::spawn_blocking(move || match PasswordHash::new(&stored) {
-        Ok(h) => argon().verify_password(pw.as_bytes(), &h).is_ok(),
-        Err(_) => false,
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        match PasswordHash::new(&stored) {
+            Ok(h) => argon().verify_password(pw.as_bytes(), &h).is_ok(),
+            Err(_) => false,
+        }
     })
     .await
     .unwrap_or(false)

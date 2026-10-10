@@ -1,7 +1,7 @@
 {% if forumjump %}
 <form class="jump js-forumjump" method="get" action="/forum/0">
-  <label for="forumjump" class="small muted">Forum jump:</label>
+  <label for="forumjump" class="small faint">{{ t("Forum jump:") }}</label>
   <select id="forumjump" name="fid">{% for f in forumjump %}<option value="{{ f[0] }}"{% if forum and forum.fid == f[0] %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select>
-  <button class="btn secondary small" type="submit">Go</button>
+  <button class="btn secondary small js-jump-go" type="submit">{{ t("Go") }}</button>
 </form>
 {% endif %}

@@ -105,6 +105,64 @@ pub fn validate(ctx: &CtxInner, input: &PostInput, need_subject: bool) -> AppRes
     Ok(())
 }
 
+fn flood_error(wait: i64) -> AppError {
+    AppError::user(format!(
+        "You are trying to post too fast. Please wait {wait} more second{}.",
+        if wait == 1 { "" } else { "s" }
+    ))
+}
+
+fn daily_limit_error(max: i32) -> AppError {
+    AppError::user(format!(
+        "You have reached your maximum of {max} posts per day. Please try again later."
+    ))
+}
+
+/// Re-check flood control and the daily limit under a lock on the author's user row.
+///
+/// `check_posting_allowed` runs on the request's user snapshot before anything is written, so
+/// parallel POSTs all pass it. Here the second request waits for the first to commit and then
+/// sees its `lastpost` and its post, so the limits cannot be dodged by racing requests. Call it
+/// after the new post has been inserted and just before the author's row is updated, which keeps
+/// the lock order (thread, forum, user) the moderation code uses. Returning an error rolls the
+/// whole unit of work back.
+async fn enforce_post_limits(tx: &mut sqlx::PgConnection, ctx: &CtxInner) -> AppResult<()> {
+    let Some(u) = &ctx.user else { return Ok(()) };
+    if ctx.can(crate::domain::staff::Cap::PostingExempt) {
+        return Ok(());
+    }
+    let s = ctx.settings();
+    let secs = s.int("postfloodsecs");
+    let flood = s.bool("postfloodcheck") && secs > 0;
+    let maxposts = ctx.perms.maxposts;
+    if !flood && maxposts <= 0 {
+        return Ok(());
+    }
+    let lastpost: i64 = sqlx::query_scalar("SELECT lastpost FROM users WHERE uid = $1 FOR UPDATE")
+        .bind(u.uid)
+        .fetch_one(&mut *tx)
+        .await?;
+    if flood {
+        let wait = lastpost + secs - now();
+        if wait > 0 {
+            return Err(flood_error(wait));
+        }
+    }
+    if maxposts > 0 {
+        // The post being created is already in the table, hence `>` rather than `>=`.
+        let n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE uid = $1 AND dateline > $2")
+                .bind(u.uid)
+                .bind(now() - 86400)
+                .fetch_one(&mut *tx)
+                .await?;
+        if n > maxposts as i64 {
+            return Err(daily_limit_error(maxposts));
+        }
+    }
+    Ok(())
+}
+
 /// Flood control + daily post limit + suspension checks.
 pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
     let s = ctx.settings();
@@ -119,10 +177,7 @@ pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
             let secs = s.int("postfloodsecs");
             let wait = u.lastpost + secs - now();
             if secs > 0 && wait > 0 {
-                return Err(AppError::user(format!(
-                    "You are trying to post too fast. Please wait {wait} more second{}.",
-                    if wait == 1 { "" } else { "s" }
-                )));
+                return Err(flood_error(wait));
             }
         }
         if !exempt && ctx.perms.maxposts > 0 {
@@ -133,10 +188,7 @@ pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
                     .fetch_one(&ctx.app.db)
                     .await?;
             if n >= ctx.perms.maxposts as i64 {
-                return Err(AppError::user(format!(
-                    "You have reached your maximum of {} posts per day. Please try again later.",
-                    ctx.perms.maxposts
-                )));
+                return Err(daily_limit_error(ctx.perms.maxposts));
             }
         }
     } else {
@@ -276,6 +328,7 @@ pub async fn create_thread(
         .bind(&subject)
         .execute(&mut *tx)
         .await?;
+        enforce_post_limits(&mut *tx, ctx).await?;
         if uid > 0 {
             let pc = forum.map(|f| f.usepostcounts).unwrap_or(true) as i32;
             let tc = forum.map(|f| f.usethreadcounts).unwrap_or(true) as i32;
@@ -292,6 +345,7 @@ pub async fn create_thread(
             .bind(fid)
             .execute(&mut *tx)
             .await?;
+        enforce_post_limits(&mut *tx, ctx).await?;
         if uid > 0 {
             sqlx::query("UPDATE users SET lastpost = $2 WHERE uid = $1")
                 .bind(uid)
@@ -377,13 +431,14 @@ pub async fn create_reply(
     guest_name: Option<&str>,
 ) -> AppResult<(i32, i16, bool)> {
     let mut uow = Uow::begin(&ctx.app).await?;
-    let r = create_reply_in(&mut uow, ctx, tid, fid, input, guest_name).await?;
+    let r = insert_reply(&mut uow, ctx, tid, fid, input, guest_name, true).await?;
     uow.commit(&ctx.app).await?;
     ctx.app.mod_counts.invalidate_all();
     Ok(r)
 }
 
-/// `create_reply` inside a caller's unit of work.
+/// `create_reply` inside a caller's unit of work. Flood control and the daily limit are not
+/// enforced here: this is for staff tools replying on a moderator's behalf.
 pub async fn create_reply_in(
     uow: &mut Uow,
     ctx: &CtxInner,
@@ -391,6 +446,19 @@ pub async fn create_reply_in(
     fid: i32,
     input: &PostInput,
     guest_name: Option<&str>,
+) -> AppResult<(i32, i16, bool)> {
+    insert_reply(uow, ctx, tid, fid, input, guest_name, false).await
+}
+
+/// `limits` re-checks flood control and the daily limit atomically (see `enforce_post_limits`).
+async fn insert_reply(
+    uow: &mut Uow,
+    ctx: &CtxInner,
+    tid: i32,
+    fid: i32,
+    input: &PostInput,
+    guest_name: Option<&str>,
+    limits: bool,
 ) -> AppResult<(i32, i16, bool)> {
     let actor = ctx.uid();
     let (uid, username) = if input.as_system {
@@ -456,6 +524,28 @@ pub async fn create_reply_in(
                 .bind(t)
                 .execute(uow.conn())
                 .await?;
+            // The merged text is new activity: bump the thread (and the forum's last post if
+            // the thread is listed there) so readers see it as unread, like a fresh reply.
+            sqlx::query("UPDATE threads SET lastpost = $2, lastposter = $3, lastposteruid = $4 WHERE tid = $1")
+                .bind(tid)
+                .bind(t)
+                .bind(&username)
+                .bind(uid)
+                .execute(uow.conn())
+                .await?;
+            if tvis == 1 {
+                sqlx::query(
+                    "UPDATE forums SET lastpost = $2, lastposter = $3, lastposteruid = $4, lastposttid = $5,
+                        lastpostsubject = (SELECT subject FROM threads WHERE tid = $5) WHERE fid = $1",
+                )
+                .bind(fid)
+                .bind(t)
+                .bind(&username)
+                .bind(uid)
+                .bind(tid)
+                .execute(uow.conn())
+                .await?;
+            }
             uow.live(LiveEvent {
                 kind: "editpost",
                 tid,
@@ -533,6 +623,9 @@ pub async fn create_reply_in(
             .execute(&mut *tx)
             .await?;
         }
+        if limits {
+            enforce_post_limits(&mut *tx, ctx).await?;
+        }
         if uid > 0 {
             let pc = ctx
                 .cache
@@ -556,6 +649,9 @@ pub async fn create_reply_in(
             .bind(fid)
             .execute(&mut *tx)
             .await?;
+        if limits {
+            enforce_post_limits(&mut *tx, ctx).await?;
+        }
         if uid > 0 {
             sqlx::query("UPDATE users SET lastpost = $2 WHERE uid = $1")
                 .bind(uid)

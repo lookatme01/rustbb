@@ -1,0 +1,43 @@
+{% extends "pm/base.html" %}
+{% import "macros.html" as m %}
+{% block head %}{% if pgp %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endif %}{% endblock %}
+{% block pm %}
+{% if pgp %}<script type="application/json" id="pgp-data">{{ pgp|tojson }}</script>{% endif %}
+{% set outgoing = pm.folder == 2 %}
+<article class="ao-convo-view"{% if pgp %} data-pgp-read data-pgp-board="{{ board }}"{% endif %}>
+  <header class="ao-convo-head">
+    <a class="ao-back" href="/pm?folder={{ pm.folder }}" aria-label="Back to the folder"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M10 3 5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    {% if author %}{{ m.face(author.avatar, author.username, author.uid, 40, '', author.online) }}{% else %}{{ m.face('', system_name, 0, 40) }}{% endif %}
+    <div class="ao-who">
+      {% if author %}<b><a href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a></b>{% else %}<b>{{ system_name }}</b>{% endif %}
+      <span>{% if author %}{{ author.usertitle }}{% else %}System message{% endif %}{% if to %}{% if author and author.usertitle %} · {% endif %}to {% for t_ in to %}<a href="{{ url_user(t_[0]) }}">{{ t_[1] }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</span>
+    </div>
+    {% if pgp %}<div class="pgp-msg-seal" aria-live="polite"><noscript><span class="pgp-seal is-pending"><span class="pgp-seal-text"><strong>{{ 'Encrypted message' if pgp.level == 2 else 'Signed message' }}</strong><small>Enable JavaScript to check the signature{{ ' and read it' if pgp.level == 2 else '' }}.</small></span></span></noscript></div>
+    {% elif sender_has_key and pm.folder != 2 %}<div class="pgp-msg-seal"><span class="pgp-seal is-off" title="{{ author.username if author else '' }} has an identity key but didn't sign this message"><span class="pgp-seal-text"><strong>Not signed</strong></span></span></div>{% endif %}
+  </header>
+  <div class="ao-thread{% if outgoing %} out{% endif %}">
+    {% if from_system and pm.folder != 2 %}<p class="notice small system-notice">This is an automated message from the System account, so replies aren't read.{% if can_contact %} If you need help, <a href="/contact">contact the staff</a>.{% endif %}</p>{% endif %}
+    <span class="ao-subject-line">{{ pm.subject }}</span>
+    <div class="ao-bubble post-body js-pm-body">{{ html|safe }}</div>
+    <span class="ao-stamp">{{ pm.dateline|date('datetime') }}</span>
+    {% if author and author.signature and pm.includesig and not pgp %}<div class="signature">{{ author.signature|safe }}</div>{% endif %}
+  </div>
+  <footer class="ao-reply-bar">
+    {% if pm.fromid and pm.folder != 2 and not from_system %}
+      <a class="ao-reply-pill" href="/pm/send?pmid={{ pm.pmid }}">Reply to {{ author.username if author else 'this message' }}…</a>
+      <a class="btn secondary small" href="/pm/send?pmid={{ pm.pmid }}&mode=replyall">Reply all</a>
+    {% else %}<span class="spacer"></span>{% endif %}
+    <a class="btn secondary small" href="/pm/send?pmid={{ pm.pmid }}&mode=forward">Forward</a>
+    <form method="post" action="/pm/action">{{ m.csrf_field() }}<input type="hidden" name="pmids" value="{{ pm.pmid }}"><input type="hidden" name="folder" value="{{ pm.folder }}"><button class="btn secondary small" name="action" value="delete">Delete</button></form>
+    {% if pm.fromid and pm.fromid != me.uid and not from_system %}
+    <details class="ao-more up">
+      <summary aria-label="More"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg></summary>
+      <div class="menu" role="menu">
+        <a href="/pm/verify/{{ pm.fromid }}">Verify identity</a>
+        {% if pm.folder != 2 %}<a href="/report?type=pm&id={{ pm.pmid }}">Report</a>{% endif %}
+      </div>
+    </details>
+    {% endif %}
+  </footer>
+</article>
+{% endblock %}

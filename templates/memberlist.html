@@ -1,19 +1,21 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<form method="get" action="/members" class="actions">
+<header class="page-head"><div class="grow"><h1>Members</h1><p class="lede">{{ total|num }} {{ total|plural("member","members") }}{% if letter or username or gid or website %} match{{ 'es' if total == 1 else '' }} your filters{% endif %}</p></div></header>
+<form method="get" action="/members" class="actions member-filters">
+  {% if website %}<input type="hidden" name="website" value="{{ website }}">{% endif %}
   <input type="search" name="username" value="{{ username }}" placeholder="Username contains…" aria-label="Username">
   <select name="gid" aria-label="Group"><option value="0">All groups</option>{% for g in groups %}<option value="{{ g[0] }}"{% if g[0] == gid %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
   <select name="sort" aria-label="Sort by">{% for s in [('regdate','Join date'),('username','Username'),('postnum','Posts'),('threadnum','Threads'),('lastvisit','Last visit'),('reputation','Reputation'),('referrals','Referrals')] %}<option value="{{ s[0] }}"{% if sort == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}</select>
   <select name="order" aria-label="Order"><option value="desc"{% if order == 'desc' %} selected{% endif %}>Descending</option><option value="asc"{% if order == 'asc' %} selected{% endif %}>Ascending</option></select>
   <button class="btn secondary small">Search</button>
 </form>
-<nav class="pagination" aria-label="Filter by letter" style="margin-bottom:10px">{% for l in ['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'] %}<a href="/members?letter={{ l|urlenc }}&sort={{ sort }}"{% if letter == l %} class="current"{% endif %}>{{ l }}</a>{% endfor %}{% if letter %}<a href="/members">All</a>{% endif %}</nav>
-<section class="box"><div class="box-head"><h2>Members</h2><span class="right">{{ total|num }} member{{ '' if total == 1 else 's' }}</span></div>
-<table class="grid"><thead><tr><th>Member</th><th>Joined</th><th>Last visit</th><th class="num">Posts</th><th class="num">Threads</th>{% if bb.enablereputation == '1' %}<th class="num">Reputation</th>{% endif %}</tr></thead><tbody>
+<nav class="pagination letter-strip" aria-label="Filter by letter">{% for l in ['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'] %}<a href="/members?letter={{ l|urlenc }}&sort={{ sort }}"{% if letter == l %} class="current"{% endif %}>{{ l }}</a>{% endfor %}{% if letter %}<a href="/members">All</a>{% endif %}</nav>
+<section class="box">
+<table class="grid member-table"><thead><tr><th>Member</th><th>Joined</th><th>Last visit</th><th class="num">Posts</th><th class="num">Threads</th>{% if bb.enablereputation == '1' %}<th class="num">Reputation</th>{% endif %}</tr></thead><tbody>
 {% for u in members %}<tr>
-<td><div style="display:flex;gap:10px;align-items:center">{% if u.avatar %}<img src="{{ u.avatar|img }}" alt="" width="32" height="32" style="border-radius:4px;object-fit:cover">{% else %}<span class="avatar-fallback" style="width:32px;height:32px;font-size:.9rem;margin:0">{{ u.username[:1]|upper }}</span>{% endif %}<div><a href="{{ url_user(u.uid, u.username) }}">{{ u.formatted|safe }}</a><br><span class="small muted">{{ u.usertitle }}</span></div></div></td>
-<td class="small">{{ u.regdate|date('date') }}</td><td class="small">{% if u.lastactive %}{{ u.lastactive|date }}{% else %}(Hidden){% endif %}</td><td class="num"><a href="/user/{{ u.uid }}/posts">{{ u.postnum|num }}</a></td><td class="num">{{ u.threadnum|num }}</td>{% if bb.enablereputation == '1' %}<td class="num"><a href="/reputation/{{ u.uid }}">{{ u.reputation }}</a></td>{% endif %}</tr>
+<td><div style="display:flex;gap:10px;align-items:center">{% if u.avatar %}<img src="{{ u.avatar|img }}" alt="" data-initial="{{ u.username[:1]|upper }}" data-fallback="member" width="32" height="32" style="border-radius:4px;object-fit:cover">{% else %}<span class="avatar-fallback" style="width:32px;height:32px;font-size:.9rem;margin:0">{{ u.username[:1]|upper }}</span>{% endif %}<div><a href="{{ url_user(u.uid, u.username) }}">{{ u.formatted|safe }}</a><br><span class="small muted">{{ u.usertitle }}</span></div></div></td>
+<td class="small">{{ u.regdate|date('date') }}</td><td class="small">{% if u.lastactive %}{{ u.lastactive|date }}{% else %}<span class="muted" title="Hidden" aria-hidden="true">—</span><span class="sr-only">Hidden</span>{% endif %}</td><td class="num"><a class="statlink" href="/user/{{ u.uid }}/posts">{{ u.postnum|num }}</a></td><td class="num"><a class="statlink" href="/user/{{ u.uid }}/threads">{{ u.threadnum|num }}</a></td>{% if bb.enablereputation == '1' %}<td class="num"><a class="statlink" href="/reputation/{{ u.uid }}">{{ u.reputation }}</a></td>{% endif %}</tr>
 {% else %}<tr><td colspan="6" class="empty">No members match your search.</td></tr>{% endfor %}
 </tbody></table></section>
 {{ m.pagination(pagination) }}

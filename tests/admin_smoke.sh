@@ -13,7 +13,7 @@ T=$(csrf /)
 check "verify" 303 --data-urlencode "my_post_key=$T" --data-urlencode "password=$PW" --data-urlencode "return_to=/admin" "$BASE/admin/verify"
 for p in /admin /admin/settings /admin/settings/general /admin/settings/posting "/admin/settings?q=flood" /admin/forums /admin/forums/edit "/admin/forums/edit?fid=3" /admin/forums/3/permissions /admin/forums/3/permissions/2 /admin/forums/3/moderators \
   /admin/users /admin/users/new /admin/users/1 /admin/users/awaiting /admin/users/merge /admin/adminperms /admin/groups /admin/groups/edit "/admin/groups/edit?gid=2" /admin/groups/2/leaders \
-  /admin/themes "/admin/themes/edit?tid=2" /admin/themes/1/templates "/admin/themes/2/template?name=index.html" /admin/themes/1/export \
+  /admin/themes "/admin/themes/edit?tid=1" /admin/themes/1/templates "/admin/themes/1/template?name=index.html" /admin/themes/1/export \
   /admin/tools /admin/tools/tasks /admin/tools/recount /admin/tools/cache /admin/tools/adminlog /admin/tools/maillogs /admin/tools/mailerrors /admin/tools/spamlog /admin/tools/stats /admin/tools/backup /admin/tools/plugins /admin/tools/attachments \
   /admin/massmail /admin/massmail/new /admin/promotions /admin/promotions/edit /admin/promotions/logs; do
   check "GET $p" 200 "$BASE$p"
@@ -29,9 +29,10 @@ check "bad regex rejected" 422 --data-urlencode "my_post_key=$T" --data-urlencod
 check "add forum" 303 --data-urlencode "my_post_key=$T" --data-urlencode "name=Test Forum" --data-urlencode "type=f" --data-urlencode "pid=5" --data-urlencode "disporder=5" --data-urlencode "active=1" --data-urlencode "open=1" --data-urlencode "allowmycode=1" --data-urlencode "allowsmilies=1" --data-urlencode "showinjump=1" "$BASE/admin/forums/edit"
 check "forum perms matrix save" 303 --data-urlencode "my_post_key=$T" --data-urlencode "custom_1=1" --data-urlencode "p_1_canview=1" "$BASE/admin/forums/3/permissions"
 check "add group" 303 --data-urlencode "my_post_key=$T" --data-urlencode "title=VIP" --data-urlencode "namestyle=<b>{username}</b>" --data-urlencode "type=3" --data-urlencode "canview=1" "$BASE/admin/groups/edit"
-check "template save" 303 --data-urlencode "my_post_key=$T" --data-urlencode "name=board_closed.html" --data-urlencode 'template={% extends "layout.html" %}{% block content %}<p>Closed!</p>{% endblock %}' "$BASE/admin/themes/2/template"
-check "template syntax error" 200 --data-urlencode "my_post_key=$T" --data-urlencode "name=board_closed.html" --data-urlencode 'template={% if %}' "$BASE/admin/themes/2/template"
+check "template save" 303 --data-urlencode "my_post_key=$T" --data-urlencode "name=board_closed.html" --data-urlencode 'template={% extends "layout.html" %}{% block content %}<p>Closed!</p>{% endblock %}' "$BASE/admin/themes/1/template"
+check "template syntax error" 200 --data-urlencode "my_post_key=$T" --data-urlencode "name=board_closed.html" --data-urlencode 'template={% if %}' "$BASE/admin/themes/1/template"
 grep -q "syntax error" /tmp/asmoke_body && ok "syntax error shown" || bad "syntax error not shown"
+check "template revert" 303 --data-urlencode "my_post_key=$T" --data-urlencode "name=board_closed.html" "$BASE/admin/themes/1/template/revert"
 check "run task" 303 --data-urlencode "my_post_key=$T" --data-urlencode "tid=1" --data-urlencode "action=run" "$BASE/admin/tools/tasks"
 check "recount forums" 303 --data-urlencode "my_post_key=$T" --data-urlencode "what=forums" "$BASE/admin/tools/recount"
 check "cache reload" 303 --data-urlencode "my_post_key=$T" --data-urlencode "part=all" "$BASE/admin/tools/cache"

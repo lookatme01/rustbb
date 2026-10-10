@@ -23,6 +23,7 @@ pub mod import;
 pub mod infra;
 pub mod install;
 pub mod mail;
+pub mod member_file;
 pub mod models;
 pub mod notify;
 pub mod ops;

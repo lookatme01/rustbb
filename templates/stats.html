@@ -19,12 +19,12 @@
 </div></section>
 <div class="two-col">
   <section class="box"><div class="box-head"><h2>Top posters</h2></div><table class="grid"><tbody>{% for u in data.top_posters %}<tr><td><a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a></td><td class="num">{{ u.postnum|num }}</td></tr>{% endfor %}</tbody></table></section>
-  <section class="box"><div class="box-head"><h2>Most popular forums</h2></div><table class="grid"><tbody>{% for f in data.top_forums %}<tr><td><a href="{{ f.url }}">{{ f.name }}</a></td><td class="num">{{ f.count|num }} posts</td></tr>{% endfor %}</tbody></table></section>
+  <section class="box"><div class="box-head"><h2>Most popular forums</h2></div><table class="grid"><tbody>{% for f in data.top_forums %}<tr><td><a href="{{ f.url }}">{{ f.name }}</a></td><td class="num">{{ f.count|num }} {{ f.count|plural("post","posts") }}</td></tr>{% endfor %}</tbody></table></section>
   <section class="box"><div class="box-head"><h2>Most replied threads</h2></div><table class="grid"><tbody>{% for t in data.top_replied %}<tr><td><a href="{{ t.url }}">{{ t.subject }}</a></td><td class="num">{{ t.count|num }}</td></tr>{% endfor %}</tbody></table></section>
   <section class="box"><div class="box-head"><h2>Most viewed threads</h2></div><table class="grid"><tbody>{% for t in data.top_viewed %}<tr><td><a href="{{ t.url }}">{{ t.subject }}</a></td><td class="num">{{ t.count|num }}</td></tr>{% endfor %}</tbody></table></section>
 </div>
 {% if data.history|length > 1 %}
-<section class="box"><div class="box-head"><h2>Growth (last {{ data.history|length }} days)</h2></div>
+<section class="box"><div class="box-head"><h2>Growth (last {{ data.history|length }} {{ data.history|length|plural("day","days") }})</h2></div>
 <table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in data.history|reverse %}<tr><td>{{ h.dateline|date('date') }}</td><td class="num">{{ h.users|num }}</td><td class="num">{{ h.threads|num }}</td><td class="num">{{ h.posts|num }}</td></tr>{% endfor %}</tbody></table></section>
 {% endif %}
 {% endblock %}

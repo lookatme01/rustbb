@@ -22,7 +22,8 @@ type Obj = Map<String, Value>;
 
 pub struct Importer {
     my: MySqlPool,
-    pg: PgPool,
+    /// The whole load is one transaction, so a failed import leaves the old board untouched.
+    tx: sqlx::Transaction<'static, sqlx::Postgres>,
     prefix: String,
     /// Column name → SQL type for each target table (generated columns excluded).
     columns: HashMap<String, Vec<(String, String)>>,
@@ -137,7 +138,7 @@ impl Importer {
             .context("connecting to the MyBB MySQL database")?;
         Ok(Self {
             my,
-            pg,
+            tx: pg.begin().await?,
             prefix: prefix.to_string(),
             columns: HashMap::new(),
         })
@@ -179,7 +180,7 @@ impl Importer {
              WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped AND attgenerated = '' ORDER BY attnum",
         )
         .bind(table)
-        .fetch_all(&self.pg)
+        .fetch_all(&mut *self.tx)
         .await?;
         self.columns.insert(table.to_string(), cols.clone());
         Ok(cols)
@@ -223,7 +224,7 @@ impl Importer {
         let data = Value::Array(rows.drain(..).map(Value::Object).collect());
         sqlx::query(&sql)
             .bind(sqlx::types::Json(data))
-            .execute(&self.pg)
+            .execute(&mut *self.tx)
             .await
             .with_context(|| format!("writing {table}"))?;
         Ok(())
@@ -268,7 +269,14 @@ impl Importer {
         Ok(n)
     }
 
-    pub async fn run(&mut self, uploads_prefix: &str) -> Result<()> {
+    /// Replaces the board's content with the MyBB data, all or nothing.
+    pub async fn run(mut self, uploads_prefix: &str) -> Result<()> {
+        self.load(uploads_prefix).await?;
+        self.tx.commit().await?;
+        Ok(())
+    }
+
+    async fn load(&mut self, uploads_prefix: &str) -> Result<()> {
         let version: Option<String> = sqlx::query_scalar(&format!(
             "SELECT CAST(value AS CHAR) FROM {} WHERE name = 'bbname'",
             self.t("settings")
@@ -287,7 +295,7 @@ impl Importer {
                       threadsubscriptions, forumsubscriptions, forumpermissions, moderators, threadprefixes, sessions, logins
              RESTART IDENTITY CASCADE",
         )
-        .execute(&self.pg)
+        .execute(&mut *self.tx)
         .await?;
 
         // Settings worth carrying over.
@@ -301,7 +309,7 @@ impl Importer {
             sqlx::query("UPDATE settings SET value = $2 WHERE name = $1")
                 .bind(k)
                 .bind(v)
-                .execute(&self.pg)
+                .execute(&mut *self.tx)
                 .await?;
         }
 
@@ -309,7 +317,7 @@ impl Importer {
         // Registered group's permissions.
         let existing: HashMap<i32, Value> =
             sqlx::query_as::<_, (i32, Value)>("SELECT gid, perms FROM usergroups")
-                .fetch_all(&self.pg)
+                .fetch_all(&mut *self.tx)
                 .await?
                 .into_iter()
                 .collect();
@@ -333,7 +341,7 @@ impl Importer {
             .unwrap_or(0);
         sqlx::query("UPDATE usergroups SET gid = (SELECT GREATEST(MAX(gid), $1) + 1 FROM usergroups) WHERE is_system AND gid <= $1")
             .bind(max_gid)
-            .execute(&self.pg)
+            .execute(&mut *self.tx)
             .await?;
         for r in &rows {
             let mut o = row_to_obj(r);
@@ -362,7 +370,7 @@ impl Importer {
             .bind(int(&o, "disporder") as i32)
             .bind(int(&o, "isbannedgroup") != 0)
             .bind(perms)
-            .execute(&self.pg)
+            .execute(&mut *self.tx)
             .await?;
         }
         println!("  usergroups: {}", rows.len());
@@ -433,7 +441,7 @@ impl Importer {
              SELECT u.uid, NULL, u.usernotes, EXTRACT(EPOCH FROM now())::bigint FROM users u
              WHERE btrim(u.usernotes) <> '' AND NOT EXISTS (SELECT 1 FROM moderator_notes n WHERE n.uid = u.uid AND n.author IS NULL)",
         )
-        .execute(&self.pg)
+        .execute(&mut *self.tx)
         .await
         .context("importing moderator notes")?;
 
@@ -701,17 +709,17 @@ impl Importer {
             "UPDATE users SET usergroup = 2 WHERE usergroup NOT IN (SELECT gid FROM usergroups)",
             "UPDATE users SET displaygroup = 0 WHERE displaygroup NOT IN (SELECT gid FROM usergroups)",
         ] {
-            sqlx::query(sql).execute(&self.pg).await?;
+            sqlx::query(sql).execute(&mut *self.tx).await?;
         }
         let serials: Vec<(String, String)> = sqlx::query_as(
             "SELECT c.relname::text, a.attname::text FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
              WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace AND pg_get_serial_sequence(c.relname::text, a.attname::text) IS NOT NULL",
         )
-        .fetch_all(&self.pg)
+        .fetch_all(&mut *self.tx)
         .await?;
         for (t, c) in serials {
             sqlx::query(&format!("SELECT setval(pg_get_serial_sequence('{t}', '{c}'), GREATEST(COALESCE((SELECT max(\"{c}\") FROM \"{t}\"), 0), 1))"))
-                .execute(&self.pg)
+                .execute(&mut *self.tx)
                 .await?;
         }
         Ok(())

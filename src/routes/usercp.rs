@@ -115,22 +115,130 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
     .fetch_all(&ctx.app.db)
     .await?;
     let latest = crate::routes::forumdisplay::thread_rows(&ctx, latest).await?;
-    let warnings: Vec<(String, i32, i64, i64)> = if ctx.settings().bool("canviewownwarning") {
-        sqlx::query_as("SELECT title, points, dateline, expires FROM warnings WHERE uid = $1 AND expired = FALSE AND daterevoked = 0 ORDER BY dateline DESC LIMIT 5")
-            .bind(me.uid)
-            .fetch_all(&ctx.app.db)
-            .await?
-    } else {
-        vec![]
-    };
+    let (checks, attention) = account_checks(&ctx, &me).await?;
+    let restricted: Vec<String> = crate::member_file::restrictions(&me)
+        .into_iter()
+        .map(|r| {
+            let until = if r.until > 0 {
+                format!("until {}", ctx.fmt_date(r.until, "date"))
+            } else {
+                "until a moderator lifts it".to_string()
+            };
+            match r.kind {
+                "moderate" => format!("A moderator checks your posts before they appear, {until}."),
+                "posting" => format!("You can't post {until}."),
+                _ => format!("Your signature is hidden {until}."),
+            }
+        })
+        .collect();
     page(
         &ctx,
         "usercp/home.html",
         "home",
         "User Control Panel",
-        minijinja::context! { user => &me, email => &me.email, subscribed => rows, latest => latest, warnings => warnings, warnlevel => me.warningpoints as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1) },
+        minijinja::context! { user => &me, subscribed => rows, latest => latest, checks => checks, attention => attention, restricted => restricted },
     )
     .await
+}
+
+/// The "Account check" rows on the overview, and how many of them want attention.
+async fn account_checks(
+    ctx: &Ctx,
+    me: &User,
+) -> AppResult<(Vec<crate::member_file::Signal>, usize)> {
+    use crate::member_file::{Level, Signal};
+    let db = &ctx.app.db;
+    let mut v = vec![];
+    let unconfirmed: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM awaitingactivation WHERE uid = $1 AND type = 'r')",
+    )
+    .bind(me.uid)
+    .fetch_one(db)
+    .await?;
+    v.push(if unconfirmed {
+        Signal {
+            group: "self",
+            level: Level::Orange,
+            text: "Confirm your email address".into(),
+            detail: format!("We sent a link to {}.", me.email),
+            link: Some("/usercp/email".into()),
+        }
+    } else {
+        Signal {
+            group: "self",
+            level: Level::Green,
+            text: "Email confirmed".into(),
+            detail: me.email.clone(),
+            link: Some("/usercp/email".into()),
+        }
+    });
+    let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
+        .bind(me.uid)
+        .fetch_one(db)
+        .await?;
+    let has_totp = !me.totp_secret.is_empty();
+    v.push(if has_totp || passkeys > 0 {
+        let text = match (has_totp, passkeys) {
+            (true, 0) => "Two-factor on".to_string(),
+            (true, n) => format!("Two-factor on, {n} {}", if n == 1 { "passkey" } else { "passkeys" }),
+            (false, n) => format!("{n} {}", if n == 1 { "passkey" } else { "passkeys" }),
+        };
+        Signal { group: "self", level: Level::Green, text, detail: String::new(), link: Some("/usercp/security".into()) }
+    } else {
+        Signal { group: "self", level: Level::Orange, text: "No passkey or two-factor yet".into(), detail: "A passkey lets you sign in with your fingerprint or face, and stops a stolen password from working.".into(), link: Some("/usercp/security".into()) }
+    });
+    if ctx.settings().bool("enablewarningsystem") && me.warningpoints > 0 {
+        let pct =
+            crate::member_file::warn_pct(me.warningpoints, ctx.settings().int("maxwarningpoints"));
+        let next: Option<(String, i64)> = sqlx::query_as(
+            "SELECT title, expires FROM warnings WHERE uid = $1 AND expired = FALSE AND daterevoked = 0 AND expires > 0 ORDER BY expires LIMIT 1",
+        )
+        .bind(me.uid)
+        .fetch_optional(db)
+        .await?;
+        let detail = next
+            .map(|(t, e)| format!("\u{201c}{t}\u{201d} expires {}", ctx.fmt_date(e, "date")))
+            .unwrap_or_default();
+        v.push(Signal {
+            group: "self",
+            level: Level::Orange,
+            text: format!("Warning level {pct}%"),
+            detail,
+            link: Some(format!("/warnings/{}", me.uid)),
+        });
+    }
+    let uas: Vec<String> = sqlx::query_scalar(
+        "SELECT useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC",
+    )
+    .bind(me.uid)
+    .bind(crate::util::now())
+    .fetch_all(db)
+    .await?;
+    if !uas.is_empty() {
+        let mut labels: Vec<String> = vec![];
+        for ua in &uas {
+            let l = crate::audit::device_label(ua);
+            if !labels.contains(&l) {
+                labels.push(l);
+            }
+        }
+        v.push(Signal {
+            group: "self",
+            level: Level::Grey,
+            text: format!(
+                "Signed in on {} {}",
+                uas.len(),
+                if uas.len() == 1 { "device" } else { "devices" }
+            ),
+            detail: labels.join(" \u{b7} "),
+            link: Some("/usercp/security".into()),
+        });
+    }
+    let attention = v
+        .iter()
+        .filter(|s| matches!(s.level, Level::Orange | Level::Red))
+        .count();
+    Ok((v, attention))
 }
 
 // ---------------------------------------------------------------- profile
@@ -435,6 +543,9 @@ pub async fn avatar_save(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     {
         let name = field.name().unwrap_or("").to_string();
         if name == "file" {
+            // Don't spool anything to disk for a forged request: the form puts the token before
+            // the file, so it has arrived by now (a header token works too).
+            ctx.check_csrf(fields.get("my_post_key").map(String::as_str).unwrap_or(""))?;
             // Streamed to disk and cut off at the avatar size limit.
             match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, max_kb * 1024).await
             {
@@ -720,11 +831,20 @@ pub struct NameChange {
 /// Rename a user everywhere their name is denormalized.
 pub async fn rename_user(app: &crate::app::App, uid: i32, old: &str, new: &str) -> AppResult<()> {
     let mut tx = app.db.begin().await?;
-    sqlx::query("UPDATE users SET username = $2 WHERE uid = $1")
+    // The unique index on lower(username) is what really guards against two people racing for a
+    // name; the callers' "taken" lookups are only the friendly early answer.
+    match sqlx::query("UPDATE users SET username = $2 WHERE uid = $1")
         .bind(uid)
         .bind(new)
         .execute(&mut *tx)
-        .await?;
+        .await
+    {
+        Ok(_) => {}
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            return Err(AppError::user("That username is already taken."));
+        }
+        Err(e) => return Err(e.into()),
+    }
     sqlx::query("UPDATE posts SET username = $2 WHERE uid = $1")
         .bind(uid)
         .bind(new)
@@ -956,10 +1076,13 @@ pub async fn subscriptions(
         .bind((pg.page - 1) * per)
         .fetch_all(&ctx.app.db)
         .await?;
+        // Only this page's threads, not every subscription the member has ever made.
+        let tids: Vec<i32> = threads.iter().map(|t| t.tid).collect();
         let notif: HashMap<i32, i16> = sqlx::query_as::<_, (i32, i16)>(
-            "SELECT tid, notification FROM threadsubscriptions WHERE uid = $1",
+            "SELECT tid, notification FROM threadsubscriptions WHERE uid = $1 AND tid = ANY($2)",
         )
         .bind(me.uid)
+        .bind(&tids)
         .fetch_all(&ctx.app.db)
         .await?
         .into_iter()
@@ -1205,6 +1328,9 @@ pub struct ListAdd {
     pub usernames: String,
 }
 
+/// Most usernames accepted in one "add to list" request.
+const MAX_LIST_NAMES: usize = 20;
+
 pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let mut uids: Vec<i32> = vec![];
@@ -1218,6 +1344,11 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
             .map(|s| s.trim().to_lowercase())
             .filter(|s| !s.is_empty())
             .collect();
+        if names.len() > MAX_LIST_NAMES {
+            return Err(AppError::user(format!(
+                "You can add at most {MAX_LIST_NAMES} names at a time."
+            )));
+        }
         uids.extend(
             sqlx::query_scalar::<_, i32>("SELECT uid FROM users WHERE lower(username) = ANY($1)")
                 .bind(&names)
@@ -1226,6 +1357,8 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
         );
     }
     uids.retain(|u| *u != me.uid);
+    uids.sort_unstable();
+    uids.dedup();
     let (col, add) = match f.list.as_str() {
         "buddy" => ("buddylist", true),
         "ignore" => ("ignorelist", true),
@@ -1234,6 +1367,12 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
         _ => return Err(AppError::user("Unknown list.")),
     };
     if add {
+        // `uid` comes straight from the form: keep only members that exist, so nobody
+        // is alerted for (or stored as) an id that is not an account.
+        uids = sqlx::query_scalar("SELECT uid FROM users WHERE uid = ANY($1)")
+            .bind(&uids)
+            .fetch_all(&ctx.app.db)
+            .await?;
         sqlx::query(&format!(
             "UPDATE users SET {col} = (SELECT ARRAY(SELECT DISTINCT unnest({col} || $2::int[]))) WHERE uid = $1"
         ))
@@ -1253,7 +1392,8 @@ pub async fn lists_add(ctx: Ctx, CsrfForm(f): CsrfForm<ListAdd>) -> AppResult<Re
             .execute(&ctx.app.db)
             .await?;
         if col == "buddylist" {
-            for u in &uids {
+            // Only people who weren't already friends: re-adding must not re-alert them.
+            for u in uids.iter().filter(|u| !me.buddylist.contains(u)) {
                 crate::notify::alert(
                     &ctx.app,
                     *u,
@@ -1572,7 +1712,7 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
             .await?;
     let sessions: Vec<_> = logins
         .into_iter()
-        .map(|(h, c, _l, ip, ua)| minijinja::context! { id => h[..16].to_string(), current => Some(&h) == ctx.token_hash.as_ref(), created => c, ip => ip, useragent => ua })
+        .map(|(h, c, _l, ip, ua)| minijinja::context! { id => h.get(..16).unwrap_or(&h).to_string(), current => Some(&h) == ctx.token_hash.as_ref(), created => c, ip => ip, useragent => ua })
         .collect();
     let tokens: Vec<(i64, String, Vec<String>, i64, Option<i64>, i64)> = sqlx::query_as(
         "SELECT id, name, scopes, EXTRACT(EPOCH FROM created_at)::bigint, EXTRACT(EPOCH FROM last_used_at)::bigint,
@@ -1724,7 +1864,7 @@ pub async fn usergroups(ctx: Ctx) -> AppResult<Response> {
     .await?;
     let mut leading = vec![];
     for (gid, can_members, can_requests) in led {
-        let members: Vec<(i32, String)> = sqlx::query_as("SELECT uid, username FROM users WHERE usergroup = $1 OR $1 = ANY(additionalgroups) ORDER BY lower(username) LIMIT 500")
+        let members: Vec<(i32, String)> = sqlx::query_as("SELECT uid, username FROM users WHERE usergroup = $1 OR additionalgroups @> ARRAY[$1]::int[] ORDER BY lower(username) LIMIT 500")
             .bind(gid)
             .fetch_all(&ctx.app.db)
             .await?;
@@ -1801,6 +1941,9 @@ pub async fn usergroups_action(
     .bind(f.gid)
     .fetch_optional(&ctx.app.db)
     .await?;
+    // Leaders run custom and public groups (kinds 2-4). The built-in groups (kind 1: staff,
+    // members, ...) are admin-assigned, so a leader row on one grants nothing here.
+    let leader = leader.filter(|_| group.as_ref().is_some_and(|g| g.kind != 1));
     let msg = match f.action.as_str() {
         "join" => {
             let g = group.ok_or_else(|| AppError::not_found("group"))?;
@@ -1869,7 +2012,7 @@ pub async fn usergroups_action(
                 return Err(AppError::no_perm());
             }
             let req: Option<(i32, i32)> = sqlx::query_as(
-                "DELETE FROM joinrequests WHERE rid = $1 AND gid = $2 RETURNING uid, gid",
+                "DELETE FROM joinrequests WHERE rid = $1 AND gid = $2 AND NOT invite RETURNING uid, gid",
             )
             .bind(f.rid)
             .bind(f.gid)
@@ -2175,14 +2318,17 @@ pub async fn export(ctx: Ctx) -> AppResult<Response> {
             .collect(),
     ));
 
-    // The account audit log, split into sign-ins and everything else.
-    let audit: Vec<(i64, String, Option<String>, String, Option<i32>, Option<String>, serde_json::Value)> = sqlx::query_as(
+    // The account audit log, split into sign-ins and everything else. Capped so a very old
+    // account can't make this one request build an unbounded zip in memory: the newest entries
+    // are kept, then put back in chronological order.
+    let mut audit: Vec<(i64, String, Option<String>, String, Option<i32>, Option<String>, serde_json::Value)> = sqlx::query_as(
         "SELECT a.dateline, a.action, host(a.ipaddress), a.useragent, a.actor_uid, u.username, a.details
-         FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid WHERE a.uid = $1 ORDER BY a.id",
+         FROM user_audit a LEFT JOIN users u ON u.uid = a.actor_uid WHERE a.uid = $1 ORDER BY a.id DESC LIMIT 50000",
     )
     .bind(me.uid)
     .fetch_all(db)
     .await?;
+    audit.reverse();
     let (mut sign_ins, mut activity) = (Vec::new(), Vec::new());
     for (dateline, action, ip, ua, actor, actor_name, details) in audit {
         let (label, category) = crate::audit::describe(&action);

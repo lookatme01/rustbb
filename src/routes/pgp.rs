@@ -471,6 +471,10 @@ async fn my_verification(ctx: &Ctx, me: i32, subject: i32) -> AppResult<Option<V
 
 async fn user_json(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let me = require(&ctx)?;
+    // Same gate as the key file download: a profile-less group must not read key history.
+    if !ctx.perms.canviewprofiles && uid != me.uid {
+        return Err(AppError::no_perm());
+    }
     let (username, _) = can_view_user(&ctx, uid).await?;
     let hist = history(&ctx, uid).await?;
     let active = hist

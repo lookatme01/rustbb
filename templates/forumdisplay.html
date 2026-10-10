@@ -60,7 +60,7 @@
 </div>
 
 <section class="thread-list">
-  <div class="box-head"><h2>Threads</h2><span class="right">{{ total|num }} thread{{ '' if total == 1 else 's' }}</span></div>
+  <div class="box-head"><h2>Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
   {% for a in announcements %}
   <div class="thread-row sticky">
     <span class="face" style="--size:40px">📣</span>
@@ -99,8 +99,8 @@
 {% endif %}
 {% endif %}
 
-{% if browsing %}
-<p class="small muted">Users browsing this forum: {% for u in browsing.users %}<a href="{{ url_user(u[0]) }}">{{ u[1]|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if browsing.users and browsing.guests %}, {% endif %}{% if browsing.guests %}{{ browsing.guests }} guest(s){% endif %}</p>
+{% if browsing and (browsing.users or browsing.guests) %}
+<p class="small muted">Users browsing this forum: {% for u in browsing.users %}<a href="{{ url_user(u[0]) }}">{{ u[1]|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if browsing.users and browsing.guests %}, {% endif %}{% if browsing.guests %}{{ browsing.guests }} {{ browsing.guests|plural("guest","guests") }}{% endif %}</p>
 {% endif %}
 {% include "forumjump.html" %}
 {% endblock %}

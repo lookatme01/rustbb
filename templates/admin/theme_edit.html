@@ -12,7 +12,7 @@
   <div class="box-sub">Branding</div>
   <div class="form-row"><label for="brand">Brand colour</label><div class="brand-pick">
     <label class="check"><input type="checkbox" name="use_brand" value="1"{% if pr.brand %} checked{% endif %}> Use a custom colour</label>
-    <input id="brand" type="color" name="brand" value="{{ pr.brand or '#5b5bf6' }}">
+    <input id="brand" type="color" name="brand" value="{{ pr.brand or '#1f45e0' }}">
     <span class="help">Buttons, links, highlights, unread markers and the banner gradient are all derived from this one colour, in light and dark mode.</span>
     <div class="brand-preview" aria-hidden="true"><span class="btn small">Button</span><span class="btn secondary small">Secondary</span><a href="#brand">A link</a><span class="flag sticky">Pinned</span><span class="badge">3</span></div>
   </div></div>
@@ -20,7 +20,7 @@
   <div class="form-row"><label for="hero_title">Banner title</label><div><input id="hero_title" type="text" name="hero_title" value="{{ pr.hero_title or '' }}" maxlength="80" placeholder="{{ bb.bbname }}"><span class="help">Shown in the banner at the top of the board index. Leave empty to use the board name.</span></div></div>
   <div class="form-row"><label for="hero_text">Banner text</label><div><input id="hero_text" type="text" name="hero_text" value="{{ pr.hero_text or '' }}" maxlength="240" placeholder="A community built for good conversations. Join in."></div></div>
   <div class="form-row"><label for="banner">Banner image</label><div><input id="banner" type="text" name="banner" value="{{ pr.banner or '' }}" placeholder="/uploads/banners/… or https://…"><span class="help">Leave empty for a gradient made from the brand colour.{% if t %} Or upload an image below.{% endif %}</span>
-    {% if pr.banner %}<div class="banner-thumb" style="background-image:url('{{ pr.banner }}')"></div>{% endif %}</div></div>
+    {% if pr.banner %}<img class="banner-thumb" src="{{ pr.banner }}" alt="">{% endif %}</div></div>
   <div class="form-row"><label for="logo">Logo</label><div><input id="logo" type="text" name="logo" value="{{ pr.logo or '' }}" placeholder="/static/images/logo.svg"></div></div>
   <div class="box-sub">Advanced</div>
   <div class="form-row"><label for="properties">Properties (JSON)</label><div><textarea id="properties" name="properties" rows="5" style="font-family:var(--font-code);font-size:.85rem">{{ props }}</textarea><span class="help">Any extra properties. The Branding fields above take precedence.</span></div></div>

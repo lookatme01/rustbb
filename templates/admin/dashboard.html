@@ -1,5 +1,6 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
+{% import "member_file.html" as mf %}
 {% block acp %}
 {% if image_proxy == 'builtin' %}
 <div class="notice warn" role="status"><p><strong>The built-in image proxy reveals this server's IP address.</strong> It fetches remote images from this server, so anyone who posts an image hosted on a server they control can read the board's real address from their logs. If the board is behind a DDoS-protection CDN (Cloudflare and the like), that address is what the CDN is hiding: run an external proxy (camo or go-camo) on a separate host instead. <a href="/admin/settings/images">Image proxy settings</a></p></div>
@@ -8,32 +9,43 @@
 {% elif image_proxy == 'off' %}
 <div class="notice" role="status"><p><strong>Tip:</strong> remote images in posts load straight from other sites, which shows readers' IP addresses to whoever hosts them. An image proxy on a separate host (camo or go-camo) prevents that without exposing this server. <a href="/admin/settings/images">Image proxy settings</a></p></div>
 {% endif %}
+<h2 class="acp-h">Needs attention</h2>
+<div class="mf-tiles">
+  <a class="mf-tile{% if reports %} hot{% else %} calm{% endif %}" href="/modcp/reports"><b>{{ reports|num }}</b><span>Open {{ reports|plural("report","reports") }}</span><small>{% if reports and oldest_report %}Oldest {{ oldest_report|date }}{% else %}Nothing waiting{% endif %}</small></a>
+  <a class="mf-tile{% if uthreads or uposts %} hot{% else %} calm{% endif %}" href="/modcp/modqueue"><b>{{ (uthreads + uposts)|num }}</b><span>Awaiting approval</span><small>{{ uthreads|num }} {{ uthreads|plural("thread","threads") }}, {{ uposts|num }} {{ uposts|plural("post","posts") }}</small></a>
+  <a class="mf-tile{% if appeals %} hot{% else %} calm{% endif %}" href="/modcp/appeals"><b>{{ appeals|num }}</b><span>Ban {{ appeals|plural("appeal","appeals") }}</span><small>{% if newest_appellant %}Newest from {{ newest_appellant }}{% else %}None pending{% endif %}</small></a>
+  <a class="mf-tile{% if awaiting %} hot{% else %} calm{% endif %}" href="/admin/users/awaiting"><b>{{ awaiting|num }}</b><span>Awaiting activation</span><small>{% if awaiting %}Members who have not confirmed{% else %}Nobody waiting{% endif %}</small></a>
+  <a class="mf-tile{% if failing_addrs %} hot{% else %} calm{% endif %}" href="/admin/tools/mailerrors"><b>{{ failing_addrs|num }}</b><span>{{ failing_addrs|plural("Address","Addresses") }} failing</span><small>Mail queue: {{ mailq|num }} pending</small></a>
+  <a class="mf-tile{% if failed_tasks %} hot{% else %} calm{% endif %}" href="/admin/tools/tasks"><b>{{ failed_tasks|num }}</b><span>Failed {{ failed_tasks|plural("task","tasks") }}</span><small>In the last 24 hours</small></a>
+</div>
 <div class="two-col">
-<section class="box"><div class="box-head"><h2>Board</h2></div><div class="kv">
-  <div>Members</div><div>{{ base.users|num }} (+{{ users_today }} today){% if awaiting %} · <a href="/admin/users/awaiting">{{ awaiting }} awaiting activation</a>{% endif %}</div>
-  <div>Threads</div><div>{{ base.threads|num }} (+{{ threads_today }} today)</div>
-  <div>Posts</div><div>{{ base.posts|num }} (+{{ posts_today }} today)</div>
-  <div>Online now</div><div>{{ online }}</div>
-  <div>Moderation</div><div><a href="/modcp/modqueue">{{ uthreads }} threads, {{ uposts }} posts awaiting approval</a> · <a href="/modcp/reports">{{ reports }} open reports</a></div>
-  <div>Mail queue</div><div><a href="/admin/tools/mailerrors">{{ mailq }} pending</a></div>
-</div></section>
+<section class="box"><div class="box-head"><h2>Members to watch</h2><a class="right" href="/admin/users?flag=restricted">All flagged</a></div>
+{% for w in watch %}<div class="acp-watch">{{ m.face(w.avatar, w.username, w.uid, 32) }}<div class="acp-watch-text"><a href="/admin/users/{{ w.uid }}">{{ w.formatted|safe }}</a><span class="small muted">active {{ w.lastactive|date }}</span></div>{{ mf.flags(w.flags, true) }}</div>
+{% else %}<p class="empty">Nobody needs a closer look right now.</p>{% endfor %}
+</section>
+<section class="box"><div class="box-head"><h2>Today</h2></div>
+<div class="acp-today">
+  <div class="acp-stat"><b>{{ base.users|num }}</b><span>Members</span><em>+{{ users_today|num }} today</em></div>
+  <div class="acp-stat"><b>{{ base.threads|num }}</b><span>Threads</span><em>+{{ threads_today|num }} today</em></div>
+  <div class="acp-stat"><b>{{ base.posts|num }}</b><span>Posts</span><em>+{{ posts_today|num }} today</em></div>
+  <div class="acp-stat"><b>{{ online|num }}</b><span>Online now</span></div>
+</div>
+{% if bars %}<div class="acp-bars-wrap"><div class="acp-bars-title">Posts per day, last {{ bars|length }} days</div>
+<div class="acp-bars" role="img" aria-label="Posts per day over the last {{ bars|length }} days: {{ bars_total|num }} in total, {{ bars[-1].n|num }} on the most recent day.">{% for b in bars %}<span{% if b.last %} class="now"{% endif %} style="height:{{ b.pct }}%"></span>{% endfor %}</div></div>{% endif %}
+</section>
+</div>
+<div class="two-col">
+<section class="box"><div class="box-head"><h2>Recent admin actions</h2><a class="right" href="/admin/tools/adminlog">All</a></div>
+<table class="grid"><tbody>{% for l in logs %}<tr><td class="small">{{ l[5] or 'system' }}</td><td class="small">{{ l[2] }}</td><td class="small muted">{{ l[4]|date }}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></section>
 <section class="box"><div class="box-head"><h2>Server</h2></div><div class="kv">
-  <div>rbb version</div><div>{{ version }}</div>
-  <div>PostgreSQL</div><div>{{ pgversion }}</div>
-  <div>Database size</div><div>{{ dbsize|bytes }}</div>
+  <div>rbb</div><div>{{ version }} <span class="muted small">up {{ uptime }}, node {{ node }}</span></div>
+  <div>PostgreSQL</div><div>{{ pgversion }} <span class="muted small">{{ dbsize|bytes }}</span></div>
   <div>Attachments</div><div>{{ attach_size|bytes }}</div>
-  <div>Uptime</div><div>{{ uptime }} (node {{ node }})</div>
   <div>Image proxy</div><div>{% if image_proxy == 'external' %}External{% elif image_proxy == 'builtin' %}Built-in <span class="muted small">(reveals this server's IP)</span>{% else %}Off{% endif %} · <a href="/admin/settings/images">change</a></div>
   <div>Board</div><div>{% if bb.boardclosed == '1' %}<span class="flag closed">Closed</span> <a href="/admin/settings/general">open it</a>{% else %}Open{% endif %}</div>
 </div></section>
 </div>
-{% if history|length > 1 %}
-<section class="box"><div class="box-head"><h2>Last {{ history|length }} days</h2></div>
-<table class="grid"><thead><tr><th>Day</th><th class="num">Members</th><th class="num">Threads</th><th class="num">Posts</th></tr></thead><tbody>{% for h in history|reverse %}<tr><td>{{ h[0]|date('date') }}</td><td class="num">{{ h[1]|num }}</td><td class="num">{{ h[2]|num }}</td><td class="num">{{ h[3]|num }}</td></tr>{% endfor %}</tbody></table></section>
-{% endif %}
 <div class="two-col">
 <form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6" aria-label="Your notes">{{ notes }}</textarea></div><div class="box-foot"><button class="btn small">Save notes</button></div></form>
-<section class="box"><div class="box-head"><h2>Recent admin actions</h2><a class="right" href="/admin/tools/adminlog">All</a></div>
-<table class="grid"><tbody>{% for l in logs %}<tr><td class="small">{{ l[5] or 'system' }}</td><td class="small">{{ l[2] }}</td><td class="small muted">{{ l[4]|date }}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></section>
 </div>
 {% endblock %}

@@ -108,59 +108,43 @@ pub async fn apply_forum_delta(c: &mut PgConnection, fid: i32, d: Contrib) -> Ap
 /// Note: `replies` counts visible posts minus the first post; when the first post is not
 /// visible the thread itself is not visible, so the counts still add up.
 pub async fn recount_thread(c: &mut PgConnection, tid: i32) -> AppResult<()> {
-    let counts: (i64, i64, i64) = sqlx::query_as(
-        "SELECT COUNT(*) FILTER (WHERE visible = 1), COUNT(*) FILTER (WHERE visible = 0), COUNT(*) FILTER (WHERE visible = -1)
-         FROM posts WHERE tid = $1",
-    )
-    .bind(tid)
-    .fetch_one(&mut *c)
-    .await?;
-    let first: Option<(i32, i32, String, i64, i16)> =
-        sqlx::query_as("SELECT pid, uid, username, dateline, visible FROM posts WHERE tid = $1 ORDER BY dateline, pid LIMIT 1")
-            .bind(tid)
-            .fetch_optional(&mut *c)
-            .await?;
-    let Some((fpid, fuid, fname, fdate, fvis)) = first else {
-        return Ok(());
-    };
-    let last: Option<(i64, String, i32)> = sqlx::query_as(
-        "SELECT dateline, username, uid FROM posts WHERE tid = $1 AND visible = 1 ORDER BY dateline DESC, pid DESC LIMIT 1",
-    )
-    .bind(tid)
-    .fetch_optional(&mut *c)
-    .await?;
-    let (lp, lpname, lpuid) = last.unwrap_or((fdate, fname.clone(), fuid));
-    // The first post's own state is represented by the thread's visibility.
-    let (mut vis, mut unap, mut del) = counts;
-    match fvis {
-        1 => vis -= 1,
-        0 => unap -= 1,
-        _ => del -= 1,
-    }
-    let attach: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM attachments a JOIN posts p ON p.pid = a.pid WHERE p.tid = $1 AND p.visible = 1 AND a.visible",
-    )
-    .bind(tid)
-    .fetch_one(&mut *c)
-    .await?;
+    recount_threads(c, &[tid]).await
+}
+
+/// Indexed aggregates per affected thread, sent in one statement for bulk rebuilds.
+async fn recount_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
     sqlx::query(
-        "UPDATE threads SET replies = $2, unapprovedposts = $3, deletedposts = $4, firstpost = $5, uid = $6, username = $7,
-            dateline = $8, lastpost = $9, lastposter = $10, lastposteruid = $11, attachmentcount = $12
-         WHERE tid = $1",
+        "UPDATE threads t SET
+            replies = GREATEST(n.public - CASE WHEN first.visible = 1 THEN 1 ELSE 0 END, 0),
+            unapprovedposts = GREATEST(n.pending - CASE WHEN first.visible = 0 THEN 1 ELSE 0 END, 0),
+            deletedposts = GREATEST(n.deleted - CASE WHEN first.visible = -1 THEN 1 ELSE 0 END, 0),
+            firstpost = first.pid, uid = first.uid, username = first.username, dateline = first.dateline,
+            lastpost = COALESCE(last.dateline, first.dateline),
+            lastposter = COALESCE(last.username, first.username),
+            lastposteruid = COALESCE(last.uid, first.uid), attachmentcount = a.n
+         FROM unnest($1::int[]) AS ids(tid)
+         CROSS JOIN LATERAL (
+             SELECT pid, uid, username, dateline, visible FROM posts
+             WHERE tid = ids.tid ORDER BY dateline, pid LIMIT 1
+         ) first
+         LEFT JOIN LATERAL (
+             SELECT dateline, username, uid FROM posts
+             WHERE tid = ids.tid AND visible = 1 ORDER BY dateline DESC, pid DESC LIMIT 1
+         ) last ON TRUE
+         CROSS JOIN LATERAL (
+             SELECT COUNT(*) FILTER (WHERE visible = 1)::int AS public,
+                    COUNT(*) FILTER (WHERE visible = 0)::int AS pending,
+                    COUNT(*) FILTER (WHERE visible = -1)::int AS deleted
+             FROM posts WHERE tid = ids.tid
+         ) n
+         CROSS JOIN LATERAL (
+             SELECT COUNT(*)::int AS n FROM attachments a JOIN posts p ON p.pid = a.pid
+             WHERE p.tid = ids.tid AND p.visible = 1 AND a.visible
+         ) a
+         WHERE t.tid = ids.tid",
     )
-    .bind(tid)
-    .bind(vis.max(0) as i32)
-    .bind(unap.max(0) as i32)
-    .bind(del.max(0) as i32)
-    .bind(fpid)
-    .bind(fuid)
-    .bind(&fname)
-    .bind(fdate)
-    .bind(lp)
-    .bind(&lpname)
-    .bind(lpuid)
-    .bind(attach.0 as i32)
-    .execute(&mut *c)
+    .bind(tids)
+    .execute(c)
     .await?;
     Ok(())
 }
@@ -273,19 +257,42 @@ pub async fn lock_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
 
 /// Lock the threads of these posts, then the posts (both in id order). Returns
 /// (pid, tid, firstpost of its thread) for the posts that exist.
+///
+/// The thread set is read before any lock is held, so a post moved by a concurrent split or
+/// merge could belong to a thread we did not lock. After locking, the posts are re-read and,
+/// if any now sits in an unlocked thread, we lock that set too and look again.
 pub async fn lock_posts(c: &mut PgConnection, pids: &[i32]) -> AppResult<Vec<(i32, i32, i32)>> {
-    let tids: Vec<i32> = sqlx::query_scalar("SELECT DISTINCT tid FROM posts WHERE pid = ANY($1)")
+    let mut tids: Vec<i32> =
+        sqlx::query_scalar("SELECT DISTINCT tid FROM posts WHERE pid = ANY($1) ORDER BY tid")
+            .bind(pids)
+            .fetch_all(&mut *c)
+            .await?;
+    let mut attempts = 0;
+    loop {
+        lock_threads(c, &tids).await?;
+        let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
+            "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid
+             WHERE p.pid = ANY($1) ORDER BY p.pid FOR UPDATE OF p",
+        )
         .bind(pids)
         .fetch_all(&mut *c)
         .await?;
-    lock_threads(c, &tids).await?;
-    Ok(sqlx::query_as(
-        "SELECT p.pid, p.tid, t.firstpost FROM posts p JOIN threads t ON t.tid = p.tid
-         WHERE p.pid = ANY($1) ORDER BY p.pid FOR UPDATE OF p",
-    )
-    .bind(pids)
-    .fetch_all(&mut *c)
-    .await?)
+        attempts += 1;
+        if rows.iter().all(|r| tids.contains(&r.1)) {
+            return Ok(rows);
+        }
+        if attempts >= 3 {
+            return Err(crate::error::AppError::user(
+                "Those posts are being changed by someone else; please try again.",
+            ));
+        }
+        for r in &rows {
+            if !tids.contains(&r.1) {
+                tids.push(r.1);
+            }
+        }
+        tids.sort_unstable();
+    }
 }
 
 /// Run `f` as its own unit of work.
@@ -640,9 +647,14 @@ pub async fn split_posts_in(
     subject: &str,
     to_fid: i32,
 ) -> AppResult<i32> {
+    let Some(&first_pid) = pids.first() else {
+        return Err(crate::error::AppError::user(
+            "Select at least one post to split.",
+        ));
+    };
     let tx = uow.conn();
     let old_tid: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
-        .bind(pids[0])
+        .bind(first_pid)
         .fetch_one(&mut *tx)
         .await?;
     lock_threads(tx, &[old_tid]).await?;
@@ -790,17 +802,21 @@ pub async fn prune_orphaned_attachments(app: &App) -> AppResult<usize> {
     Ok(n)
 }
 
-/// Recalculate everything from scratch (ACP "Recount & Rebuild"). Batched per forum.
+/// Recalculate everything from scratch (ACP "Recount & Rebuild"), 500 threads at a time.
 pub async fn rebuild_all_counters(app: &App) -> AppResult<()> {
-    let tids: Vec<i32> = sqlx::query_scalar("SELECT tid FROM threads ORDER BY tid")
+    let mut after: Option<i32> = None;
+    loop {
+        let tids: Vec<i32> = sqlx::query_scalar(
+            "SELECT tid FROM threads WHERE $1::int IS NULL OR tid > $1 ORDER BY tid LIMIT 500",
+        )
+        .bind(after)
         .fetch_all(&app.db)
         .await?;
-    for chunk in tids.chunks(500) {
+        let Some(&last) = tids.last() else { break };
         let mut tx = app.db.begin().await?;
-        for &t in chunk {
-            recount_thread(&mut tx, t).await?;
-        }
+        recount_threads(&mut tx, &tids).await?;
         tx.commit().await?;
+        after = Some(last);
     }
     rebuild_forum_counters(app).await?;
     rebuild_user_counters(app).await?;
@@ -826,26 +842,37 @@ pub async fn rebuild_forum_counters(app: &App) -> AppResult<()> {
     )
     .execute(&app.db)
     .await?;
-    let fids: Vec<i32> = sqlx::query_scalar("SELECT fid FROM forums")
-        .fetch_all(&app.db)
-        .await?;
-    let mut c = app.db.acquire().await?;
-    for f in fids {
-        update_forum_lastpost(&mut c, f).await?;
-    }
+    sqlx::query(
+        "UPDATE forums f SET lastpost = COALESCE(last.lastpost, 0),
+             lastposter = COALESCE(last.lastposter, ''), lastposteruid = COALESCE(last.lastposteruid, 0),
+             lastposttid = COALESCE(last.tid, 0), lastpostsubject = COALESCE(last.subject, '')
+         FROM forums fx LEFT JOIN LATERAL (
+             SELECT lastpost, lastposter, lastposteruid, tid, subject FROM threads
+             WHERE fid = fx.fid AND visible = 1 AND closed NOT LIKE 'moved|%'
+             ORDER BY lastpost DESC LIMIT 1
+         ) last ON TRUE WHERE f.fid = fx.fid",
+    )
+    .execute(&app.db)
+    .await?;
     Ok(())
 }
 
 pub async fn rebuild_user_counters(app: &App) -> AppResult<()> {
     sqlx::query(
-        "UPDATE users u SET postnum = COALESCE(s.c, 0) FROM (SELECT u2.uid, (SELECT COUNT(*) FROM posts p JOIN threads t ON t.tid = p.tid JOIN forums f ON f.fid = p.fid
-            WHERE p.uid = u2.uid AND p.visible = 1 AND t.visible = 1 AND f.usepostcounts) AS c FROM users u2) s WHERE u.uid = s.uid",
+        "UPDATE users u SET postnum = COALESCE(s.c, 0)
+         FROM users u2 LEFT JOIN (
+             SELECT p.uid, COUNT(*)::int AS c FROM posts p JOIN threads t ON t.tid = p.tid JOIN forums f ON f.fid = p.fid
+             WHERE p.visible = 1 AND t.visible = 1 AND f.usepostcounts GROUP BY p.uid
+         ) s ON s.uid = u2.uid WHERE u.uid = u2.uid",
     )
     .execute(&app.db)
     .await?;
     sqlx::query(
-        "UPDATE users u SET threadnum = COALESCE(s.c, 0) FROM (SELECT u2.uid, (SELECT COUNT(*) FROM threads t JOIN forums f ON f.fid = t.fid
-            WHERE t.uid = u2.uid AND t.visible = 1 AND f.usethreadcounts AND t.closed NOT LIKE 'moved|%') AS c FROM users u2) s WHERE u.uid = s.uid",
+        "UPDATE users u SET threadnum = COALESCE(s.c, 0)
+         FROM users u2 LEFT JOIN (
+             SELECT t.uid, COUNT(*)::int AS c FROM threads t JOIN forums f ON f.fid = t.fid
+             WHERE t.visible = 1 AND f.usethreadcounts AND t.closed NOT LIKE 'moved|%' GROUP BY t.uid
+         ) s ON s.uid = u2.uid WHERE u.uid = u2.uid",
     )
     .execute(&app.db)
     .await?;

@@ -35,6 +35,7 @@
     $$(".js-forumjump").forEach((f) => f.addEventListener("submit", (e) => { e.preventDefault(); location.href = "/forum/" + f.fid.value; }));
     $$(".js-calselect").forEach((s) => s.addEventListener("change", () => { location.href = "/calendar/" + s.value; }));
     $$(".js-forumjump select").forEach((s) => s.addEventListener("change", () => { location.href = "/forum/" + s.value; }));
+    $$(".js-jump-go").forEach((b) => { b.hidden = true; });
 
     // Keep the current tab in view when the main nav scrolls sideways (phones).
     const tabs = $(".tabs"), cur = $(".tabs a[aria-current]");
@@ -91,6 +92,27 @@
       });
     });
 
+    // Import a file by reading it into a form's textarea and submitting (theme import).
+    $$(".js-import-file").forEach((input) => {
+      const form = $(input.dataset.form);
+      if (!form) return;
+      input.closest(".js-import-pick").hidden = false;
+      input.addEventListener("change", async () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        $("textarea", form).value = await f.text();
+        form.requestSubmit();
+      });
+    });
+
+    // Tables that scroll sideways on phones must be reachable by keyboard.
+    const focusScrollers = () => $$("table.grid").forEach((t) => {
+      if (t.scrollWidth > t.clientWidth + 1) t.tabIndex = 0; else t.removeAttribute("tabindex");
+    });
+    focusScrollers();
+    let scrollRaf = 0;
+    addEventListener("resize", () => { cancelAnimationFrame(scrollRaf); scrollRaf = requestAnimationFrame(focusScrollers); });
+
     // Collapsible categories.
     $$("[data-collapse]").forEach((box) => {
       const key = "rbb.collapse." + box.dataset.collapse;
@@ -113,12 +135,18 @@
       const d = new Date(parseInt(t.dataset.ts, 10) * 1000);
       if (!isNaN(d)) { t.textContent = d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); t.dateTime = d.toISOString(); }
     });
-    // Copy code buttons.
+    // Copy code buttons. Labels come from the page (body data attributes) so they can be translated.
+    const copyLabel = (k, d) => document.body.dataset[k] || d;
+    const localizeCopy = () => $$(".copy_code").forEach((b) => { b.textContent = copyLabel("copy", b.textContent); b.title = copyLabel("copy", b.title); });
+    localizeCopy();
     document.addEventListener("click", (e) => {
       const b = e.target.closest(".copy_code");
       if (!b) return;
-      const code = b.closest(".codeblock").querySelector("code");
-      navigator.clipboard && navigator.clipboard.writeText(code.textContent).then(() => { b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); });
+      const code = b.closest(".codeblock") && b.closest(".codeblock").querySelector("code");
+      if (!code) return;
+      const flash = (text) => { clearTimeout(b.rbbTimer); b.textContent = text; b.rbbTimer = setTimeout(() => (b.textContent = copyLabel("copy", "Copy")), 1500); };
+      if (!navigator.clipboard || !navigator.clipboard.writeText) return flash(copyLabel("copyFailed", "Copy failed"));
+      navigator.clipboard.writeText(code.textContent).then(() => flash(copyLabel("copied", "Copied")), () => flash(copyLabel("copyFailed", "Copy failed")));
     });
 
     // Inline moderation selection.
@@ -161,7 +189,7 @@
           if (!r.ok) return;
           const j = await r.json();
           const s = $(".js-name-status");
-          if (nameInput.value.trim() !== v) return;
+          if (!s || nameInput.value.trim() !== v) return;
           s.textContent = j.available ? "That username is available." : (j.valid ? "That username is already taken." : "That username contains invalid characters.");
           s.classList.toggle("ok", !!j.available);
           s.classList.toggle("bad", !j.available);
@@ -183,10 +211,10 @@
     });
 
     initEditors();
-    initMultiquote();
+    const syncMultiquote = initMultiquote();
     initReactions();
     initAttachments();
-    initLive();
+    initLive(() => { syncMultiquote(); localizeCopy(); });
   });
 
   // ------------------------------------------------------------------ editor
@@ -253,13 +281,17 @@
       // Preview tab.
       const pv = $(".live-preview", ed);
       const tabW = $(".js-tab-write", ed), tabP = $(".js-tab-preview", ed);
+      const showTab = (preview) => {
+        ed.classList.toggle("previewing", preview);
+        [[tabP, preview], [tabW, !preview]].forEach(([t, on]) => { if (t) { t.classList.toggle("active", on); t.setAttribute("aria-pressed", String(on)); } });
+      };
       if (tabP) tabP.addEventListener("click", async () => {
-        ed.classList.add("previewing"); tabP.classList.add("active"); tabW.classList.remove("active");
+        showTab(true);
         pv.textContent = "Loading preview…";
         const r = await post("/preview", { message: ta.value, fid: (form && form.dataset.fid) || 0 });
         if (r.ok) { const j = await r.json(); pv.innerHTML = j.html; } else pv.textContent = "Preview failed.";
       });
-      if (tabW) tabW.addEventListener("click", () => { ed.classList.remove("previewing"); tabW.classList.add("active"); tabP.classList.remove("active"); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
+      if (tabW) tabW.addEventListener("click", () => { showTab(false); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
       // Character count.
       const cc = $(".js-charcount", ed);
       const count = () => { if (cc) cc.textContent = ta.value.length + " characters"; };
@@ -281,13 +313,17 @@
   function initMultiquote() {
     const selected = () => readCookie("multiquote").split(",").filter(Boolean);
     const sync = () => { const s = selected(); $$(".js-multiquote").forEach((b) => { const on = s.includes(b.dataset.pid); b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "✓ Multi-quote" : "Multi-quote"; }); };
-    $$(".js-multiquote").forEach((b) => b.addEventListener("click", () => {
+    // Delegated, so posts inserted later (live updates) work too.
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".js-multiquote");
+      if (!b) return;
       let s = selected();
       s = s.includes(b.dataset.pid) ? s.filter((x) => x !== b.dataset.pid) : s.concat([b.dataset.pid]);
       cookie("multiquote", s.join(","), s.length ? 3600 : 0);
       sync();
-    }));
+    });
     sync();
+    return sync;
     // Quote into the quick reply box without leaving the page.
     document.addEventListener("click", async (e) => {
       const q = e.target.closest(".js-quote");
@@ -363,11 +399,13 @@
       };
       if (ta) ta.rbbUpload = upload; // files pasted or dropped into the rich-text view
       const input = $(".js-file", wrapEl);
-      input.addEventListener("change", () => { upload(input.files); input.value = ""; });
+      if (input) input.addEventListener("change", () => { upload(input.files); input.value = ""; });
       const dz = $(".js-dropzone", wrapEl);
-      ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
-      ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
-      dz.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+      if (dz) {
+        ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
+        ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
+        dz.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+      }
       if (ta) ta.addEventListener("paste", (e) => {
         const files = [...(e.clipboardData || {}).files || []];
         if (files.length) { e.preventDefault(); upload(files); }
@@ -385,7 +423,7 @@
   }
 
   // ------------------------------------------------------------------ live updates (SSE)
-  function initLive() {
+  function initLive(onInsert) {
     if (!window.EventSource) return;
     const posts = $("#posts");
     const uid = document.body.dataset.uid;
@@ -412,6 +450,7 @@
       const arts = $$("article.post", doc);
       arts.forEach((a) => { if (!document.getElementById(a.id)) posts.appendChild(document.importNode(a, true)); });
       if (arts.length) posts.dataset.lastPid = arts[arts.length - 1].dataset.pid;
+      if (onInsert) onInsert();
       pending = 0;
       banner.hidden = true;
     });
@@ -464,4 +503,111 @@
   pick.addEventListener("input", () => { if (use) use.checked = true; apply(); });
   if (use) use.addEventListener("change", apply);
   apply();
+})();
+
+// Avatars that fail to load (dead remote URL, missing upload) fall back to the initial-letter markup.
+(function () {
+  function fallback(img) {
+    if (!img.matches("img[data-initial]") || !img.parentNode) return;
+    const letter = img.dataset.initial || "?";
+    if (img.parentElement.classList.contains("face")) {
+      img.replaceWith(document.createTextNode(letter));
+    } else if (img.dataset.fallback === "member") {
+      const s = document.createElement("span");
+      s.className = "avatar-fallback";
+      s.style.cssText = "width:32px;height:32px;font-size:.9rem;margin:0";
+      s.textContent = letter;
+      img.replaceWith(s);
+    } else {
+      const d = document.createElement("div");
+      d.className = "avatar-fallback";
+      d.setAttribute("aria-hidden", "true");
+      d.textContent = letter;
+      img.replaceWith(d);
+    }
+  }
+  document.addEventListener("error", (e) => { if (e.target instanceof HTMLImageElement) fallback(e.target); }, true);
+  const sweep = () => document.querySelectorAll("img[data-initial]").forEach((i) => { if (i.complete && i.naturalWidth === 0) fallback(i); });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", sweep); else sweep();
+})();
+
+// Show the chosen file's name next to a styled file picker.
+document.addEventListener("change", (e) => {
+  const i = e.target;
+  if (!(i instanceof HTMLInputElement) || i.type !== "file") return;
+  const n = i.closest(".file-pick")?.querySelector(".file-name");
+  if (n) n.textContent = i.files && i.files.length ? i.files[0].name : "No file chosen";
+});
+
+// Staff hover cards: in the Admin CP and Mod CP, resting on a member's name shows their flags,
+// pinned note and last visit, fetched from /modcp/member/{uid}/card. Links work as before.
+(function () {
+  "use strict";
+  const body = document.body;
+  if (!body || !(body.classList.contains("acp") || body.classList.contains("modcp"))) return;
+  const PATTERNS = [/^\/user\/(\d+)(?:-[^/]*)?$/, /^\/admin\/users\/(\d+)$/, /^\/modcp\/member\/(\d+)$/];
+  const cache = new Map();
+  let card = null, timer = 0, hideTimer = 0, current = null;
+  const uidOf = (a) => {
+    if (!(a instanceof HTMLAnchorElement) || a.closest(".mf-hovercard, .sidenav, .mf-card") || a.origin !== location.origin) return 0;
+    for (const re of PATTERNS) { const m = a.pathname.match(re); if (m) return +m[1]; }
+    return 0;
+  };
+  function hide() {
+    clearTimeout(timer);
+    if (card) { card.remove(); card = null; }
+    if (current) current.removeAttribute("aria-describedby");
+    current = null;
+  }
+  async function show(a, uid) {
+    let html = cache.get(uid);
+    if (html === undefined) {
+      try {
+        const r = await fetch("/modcp/member/" + uid + "/card", { credentials: "same-origin" });
+        html = r.ok ? await r.text() : "";
+      } catch (e) { html = ""; }
+      cache.set(uid, html);
+    }
+    if (!html || current !== a) return;
+    if (card) card.remove();
+    card = document.createElement("div");
+    card.className = "mf-hovercard";
+    card.id = "mf-hovercard";
+    card.setAttribute("role", "tooltip");
+    card.innerHTML = html;
+    card.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+    card.addEventListener("mouseleave", () => { hideTimer = setTimeout(hide, 200); });
+    document.body.appendChild(card);
+    const r = a.getBoundingClientRect();
+    const w = card.offsetWidth;
+    let left = r.left + window.scrollX;
+    left = Math.max(8, Math.min(left, window.scrollX + document.documentElement.clientWidth - w - 8));
+    let top = r.bottom + window.scrollY + 6;
+    if (r.bottom + card.offsetHeight + 12 > window.innerHeight) top = r.top + window.scrollY - card.offsetHeight - 6;
+    card.style.left = left + "px";
+    card.style.top = top + "px";
+    a.setAttribute("aria-describedby", "mf-hovercard");
+  }
+  function arm(e) {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    const uid = a ? uidOf(a) : 0;
+    if (!uid || a === current) return;
+    clearTimeout(hideTimer);
+    hide();
+    current = a;
+    timer = setTimeout(() => show(a, uid), e.type === "focusin" ? 0 : 350);
+  }
+  function disarm(e) {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    if (!a || a !== current) return;
+    if (e.relatedTarget instanceof Node && card && card.contains(e.relatedTarget)) return;
+    clearTimeout(timer);
+    hideTimer = setTimeout(hide, 200);
+  }
+  document.addEventListener("mouseover", arm);
+  document.addEventListener("mouseout", disarm);
+  document.addEventListener("focusin", arm);
+  document.addEventListener("focusout", disarm);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  window.addEventListener("scroll", () => { if (card && !card.matches(":hover")) hide(); }, { passive: true });
 })();

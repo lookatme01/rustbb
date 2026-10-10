@@ -1,0 +1,43 @@
+{# The member file: flag chips, check rows and the identity card (see src/member_file.rs). #}
+{% import "macros.html" as m %}
+
+{% macro flags(list, small=false) %}{% if list %}<div class="mf-flags{% if small %} small{% endif %}">{% for f in list %}<span class="mf-flag {{ f.level }}">{{ f.label }}</span>{% endfor %}</div>{% endif %}{% endmacro %}
+
+{% macro checks(list) %}<div class="mf-checks">{% for s in list %}{% if s.link %}<a class="mf-check" href="{{ s.link }}">{% else %}<div class="mf-check">{% endif %}<span class="mf-dot {{ s.level }}"></span><span class="mf-text">{{ s.text }}{% if s.detail %}<span class="mf-sub">{{ s.detail }}</span>{% endif %}</span>{% if s.link %}</a>{% else %}</div>{% endif %}{% endfor %}</div>{% endmacro %}
+
+{% macro card(mf, uid_line=true) %}
+<section class="box mf-card" aria-label="Member">
+  <div class="mf-id">
+    {{ m.face(mf.avatar, mf.username, mf.uid, 60) }}
+    <div class="mf-title">
+      <h1>{{ mf.formatted|safe }}</h1>
+      <div class="mf-sub">{{ mf.group }}{% if uid_line %} · uid {{ mf.uid }}{% endif %} · <a href="{{ url_user(mf.uid, mf.username) }}">Profile</a></div>
+    </div>
+  </div>
+  <div class="mf-stats">
+    <a class="mf-stat" href="/user/{{ mf.uid }}/posts"><b>{{ mf.stats.posts|num }}</b><span>{{ mf.stats.posts|plural("Post","Posts") }}</span></a>
+    <a class="mf-stat" href="/user/{{ mf.uid }}/threads"><b>{{ mf.stats.threads|num }}</b><span>{{ mf.stats.threads|plural("Thread","Threads") }}</span></a>
+    <div class="mf-stat"><b>{{ mf.stats.reputation }}</b><span>Reputation</span></div>
+    <a class="mf-stat{% if mf.stats.warn_pct %} warn{% endif %}" href="/warnings/{{ mf.uid }}"><b>{{ mf.stats.warn_pct }}%</b><span>Warning level</span></a>
+    <a class="mf-stat{% if mf.stats.open_reports %} warn{% endif %}" href="/modcp/member/{{ mf.uid }}?type=reports"><b>{{ mf.stats.open_reports }}</b><span>Open {{ mf.stats.open_reports|plural("report","reports") }}</span></a>
+    <div class="mf-stat"><b>{{ mf.stats.age }}</b><span>Account age</span></div>
+  </div>
+  {% if mf.flags %}<div class="mf-section">{{ flags(mf.flags) }}</div>{% endif %}
+  {% if mf.pinned %}<div class="mf-pinned"><strong>Pinned note:</strong> {{ mf.pinned.note }}<span class="mf-sub">{{ mf.pinned.author }} · {{ mf.pinned.created|date }}</span></div>{% endif %}
+  <div class="mf-section mf-seen">
+    Joined {{ mf.regdate|date('date') }}<br>
+    Last seen {{ mf.lastactive|date }}{% if mf.lastip %} from <a href="/modcp/ipsearch?ip={{ mf.lastip|urlenc }}">{{ mf.lastip }}</a>{% endif %}{% if mf.device %}<br>{{ mf.device }}{% endif %}
+  </div>
+</section>
+{% endmacro %}
+
+{# Hover card fragment: /modcp/member/{uid}/card #}
+{% macro hovercard(mf) %}
+<div class="mf-id">
+  {{ m.face(mf.avatar, mf.username, mf.uid, 40) }}
+  <div class="mf-title"><h1>{{ mf.formatted|safe }}</h1><div class="mf-sub">{{ mf.group }} · {{ mf.stats.posts|num }} {{ mf.stats.posts|plural("post","posts") }} · {% if mf.stats.age == "today" %}joined today{% else %}joined {{ mf.stats.age }} ago{% endif %}</div></div>
+</div>
+{{ flags(mf.flags, true) }}
+{% if mf.pinned %}<div class="mf-pinned">{{ mf.pinned.note }}<span class="mf-sub">{{ mf.pinned.author }}</span></div>{% endif %}
+<div class="mf-line">Last seen {{ mf.lastactive|date }} · <a href="/modcp/member/{{ mf.uid }}">Open file</a></div>
+{% endmacro %}

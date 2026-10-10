@@ -14,7 +14,7 @@
 </div>
 {% else %}
 {% if listing %}
-<header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} thread{{ '' if total == 1 else 's' }}</p></header>
+<header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} {{ total|plural("thread","threads") }}</p></header>
 {% else %}
 <div class="search-refine">
   <form class="search-bar" action="/search/quick" method="get" role="search">
@@ -24,7 +24,7 @@
   </form>
   <a class="pill-link" href="/search">Filters</a>
 </div>
-<p class="search-count">{{ total|num }} result{{ '' if total == 1 else 's' }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
+<p class="search-count">{{ total|num }} {{ total|plural("result","results") }}{% if keywords %} for “{{ keywords }}”{% endif %}</p>
 {% endif %}
 {{ m.pagination(pagination) }}
 {% if kind == 'threads' %}
@@ -34,7 +34,7 @@
 {% else %}
 {% for p in posts %}
 <section class="box">
-  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><a href="{{ p.forum_url }}">{{ p.forum_name }}</a><span>/</span><a href="{{ p.thread_url }}{{ p.hl }}"><strong>{{ p.thread_subject }}</strong></a><span class="spacer" style="flex:1"></span><span>{{ p.replies }} replies · {{ p.views }} views</span></div>
+  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><a href="{{ p.forum_url }}">{{ p.forum_name }}</a><span>/</span><a href="{{ p.thread_url }}{{ p.hl }}"><strong>{{ p.thread_subject }}</strong></a><span class="spacer" style="flex:1"></span><span>{{ p.replies }} {{ p.replies|plural("reply","replies") }} · {{ p.views }} {{ p.views|plural("view","views") }}</span></div>
   <div class="box-body"><div class="small muted" style="margin-bottom:6px">{{ m.userlink(p.uid, p.username) }} · <a href="/post/{{ p.pid }}">{{ p.dateline|date }}</a></div><div class="post-body" style="padding:0">{{ p.snippet|safe }}</div></div>
 </section>
 {% endfor %}

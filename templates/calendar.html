@@ -14,10 +14,10 @@
   <tbody>
   {% for w in weeks %}<tr>{% for d in w %}
     <td class="{% if d.other %}other{% endif %}{% if d.today %} today{% endif %}">
-      <a class="daynum" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">{{ d.day }}</a>{% if loop.first %} <a class="small faint wk" href="/calendar/{{ cal.cid }}/week/{{ d.date }}" title="Week view" aria-label="Week view">wk</a>{% endif %}
+      <a class="daynum" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">{{ d.day }}</a>{% if loop.first %} <a class="small faint wk" href="/calendar/{{ cal.cid }}/week/{{ d.date }}" title="Week view" aria-label="Week of {{ d.date }}">wk</a>{% endif %}
       {% for e in d.events %}<a class="event{% if not e.visible %} faint{% endif %}" href="/calendar/event/{{ e.eid }}">{{ e.name }}</a>{% endfor %}
       {% if d.more %}<a class="event faint" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">+{{ d.more }} more</a>{% endif %}
-      {% if d.birthdays %}<a class="event small muted" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">🎂 {{ d.birthdays }} birthday{{ '' if d.birthdays == 1 else 's' }}</a>{% endif %}
+      {% if d.birthdays %}<a class="event small muted" href="/calendar/{{ cal.cid }}/day/{{ d.date }}">🎂 {{ d.birthdays }} {{ d.birthdays|plural("birthday","birthdays") }}</a>{% endif %}
     </td>{% endfor %}</tr>{% endfor %}
   </tbody>
 </table>

@@ -21,6 +21,7 @@ pub fn router() -> Router<crate::app::App> {
         .route("/users/{uid}/delete", post(delete))
         .route("/users/{uid}/erase", post(erase))
         .route("/users/{uid}/ban", post(ban))
+        .route("/users/{uid}/security", post(security))
         .route("/users/{uid}/activity", get(activity))
         .route("/adminperms", get(adminperms))
         .route(
@@ -31,6 +32,11 @@ pub fn router() -> Router<crate::app::App> {
 
 #[derive(Deserialize, Default)]
 pub struct ListQ {
+    #[serde(default)]
+    pub q: String,
+    #[serde(default)]
+    pub flag: String,
+    // Old links used one box per field; they keep working.
     #[serde(default)]
     pub username: String,
     #[serde(default)]
@@ -44,6 +50,36 @@ pub struct ListQ {
     pub page: Option<i64>,
 }
 
+/// Quick filters: (query value, label, WHERE clause). `$7` is "a week ago".
+const FLAG_SQL: &[(&str, &str, &str)] = &[
+    (
+        "banned",
+        "Banned",
+        "EXISTS (SELECT 1 FROM banned b WHERE b.uid = users.uid)",
+    ),
+    (
+        "restricted",
+        "Restricted",
+        "(moderateposts OR suspendposting OR suspendsignature)",
+    ),
+    (
+        "unconfirmed",
+        "Unconfirmed",
+        "EXISTS (SELECT 1 FROM awaitingactivation a WHERE a.uid = users.uid AND a.type IN ('r','b'))",
+    ),
+    (
+        "mail",
+        "Mail failing",
+        "EXISTS (SELECT 1 FROM mailqueue m WHERE lower(m.mailto) = lower(users.email) AND m.attempts > 0)",
+    ),
+    (
+        "ip",
+        "Shares an IP",
+        "(lastip IS NOT NULL AND EXISTS (SELECT 1 FROM users o WHERE o.uid <> users.uid AND (o.lastip = users.lastip OR o.regip = users.lastip)))",
+    ),
+    ("new", "New this week", "regdate > $7"),
+];
+
 pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let col = match q.sort.as_str() {
@@ -53,48 +89,97 @@ pub async fn list(ctx: Ctx, Query(q): Query<ListQ>) -> AppResult<Response> {
         "reputation" => "reputation DESC",
         _ => "regdate DESC",
     };
-    let where_sql = "($1 = '' OR username ILIKE '%' || $1 || '%') AND ($2 = '' OR email ILIKE '%' || $2 || '%')
-        AND ($3 = '' OR host(regip) LIKE $3 || '%' OR host(lastip) LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))";
-    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
-        .bind(q.username.trim())
-        .bind(q.email.trim())
-        .bind(q.ip.trim())
-        .bind(q.gid)
-        .fetch_one(&ctx.app.db)
-        .await?;
-    let enc = |s: &str| {
-        percent_encoding::utf8_percent_encode(s.trim(), percent_encoding::NON_ALPHANUMERIC)
-            .to_string()
-    };
-    let pg = util::paginate(
-        total,
-        50,
-        util::clamp_page(q.page),
-        &format!(
-            "/admin/users?username={}&email={}&ip={}&gid={}&sort={}&page={{page}}",
-            enc(&q.username),
-            enc(&q.email),
-            enc(&q.ip),
-            q.gid,
-            q.sort
-        ),
-    );
-    let rows: Vec<(i32, String, String, i32, i32, i64, i64, i32, String)> = sqlx::query_as(&format!(
-        "SELECT uid, username, email, usergroup, displaygroup, regdate, lastactive, postnum, COALESCE(host(lastip), '') FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $5"
+    let found = FLAG_SQL.iter().find(|f| f.0 == q.flag);
+    let flag = found.map(|f| f.0).unwrap_or("");
+    let flag_sql = found.map(|f| f.2).unwrap_or("TRUE");
+    let week_ago = crate::util::now() - 7 * 86_400;
+    let where_sql = format!("($1 = '' OR username ILIKE '%' || $1 || '%') AND ($2 = '' OR email ILIKE '%' || $2 || '%')
+        AND ($3 = '' OR host(regip) LIKE $3 || '%' OR host(lastip) LIKE $3 || '%') AND ($4 = 0 OR usergroup = $4 OR $4 = ANY(additionalgroups))
+        AND ($5 = '' OR username ILIKE '%' || $5 || '%' OR email ILIKE '%' || $5 || '%' OR host(regip) LIKE $5 || '%' OR host(lastip) LIKE $5 || '%')
+        AND $7::bigint IS NOT NULL AND {flag_sql}");
+    // $6 (offset) is unused by the count; bind a dummy so $7 lines up.
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM users WHERE {where_sql} AND $6::bigint IS NOT NULL"
     ))
     .bind(q.username.trim())
     .bind(q.email.trim())
     .bind(q.ip.trim())
     .bind(q.gid)
+    .bind(q.q.trim())
+    .bind(0i64)
+    .bind(week_ago)
+    .fetch_one(&ctx.app.db)
+    .await?;
+    let enc = |s: &str| {
+        percent_encoding::utf8_percent_encode(s.trim(), percent_encoding::NON_ALPHANUMERIC)
+            .to_string()
+    };
+    let mut qs = format!("q={}&gid={}&sort={}", enc(&q.q), q.gid, enc(&q.sort));
+    for (k, v) in [
+        ("username", &q.username),
+        ("email", &q.email),
+        ("ip", &q.ip),
+    ] {
+        if !v.trim().is_empty() {
+            qs.push_str(&format!("&{k}={}", enc(v)));
+        }
+    }
+    let pg = util::paginate(
+        total,
+        50,
+        util::clamp_page(q.page),
+        &format!("/admin/users?{qs}&flag={flag}&page={{page}}"),
+    );
+    let rows: Vec<(i32, String, String, String, i32, i32, i64, i64, i32)> = sqlx::query_as(&format!(
+        "SELECT uid, username, email, avatar, usergroup, displaygroup, regdate, lastactive, postnum FROM users WHERE {where_sql} ORDER BY {col}, uid LIMIT 50 OFFSET $6"
+    ))
+    .bind(q.username.trim())
+    .bind(q.email.trim())
+    .bind(q.ip.trim())
+    .bind(q.gid)
+    .bind(q.q.trim())
     .bind((pg.page - 1) * 50)
+    .bind(week_ago)
     .fetch_all(&ctx.app.db)
     .await?;
+    let uids: Vec<i32> = rows.iter().map(|r| r.0).collect();
+    let mut flags =
+        crate::member_file::flags_for(&ctx, &uids, crate::member_file::View::of(&ctx)).await?;
     let users: Vec<_> = rows
         .into_iter()
-        .map(|(uid, n, e, g, d, reg, last, posts, ip)| minijinja::context! { uid => uid, username => &n, formatted => ctx.cache.format_name(&n, g, d), email => e, group => ctx.cache.group(g).map(|x| x.title.clone()), regdate => reg, lastactive => last, postnum => posts, lastip => ip })
+        .map(|(uid, n, e, av, g, d, reg, last, posts)| minijinja::context! { uid => uid, username => &n, avatar => av, formatted => ctx.cache.format_name(&n, g, d), email => e, group => ctx.cache.group(g).map(|x| x.title.clone()), regdate => reg, lastactive => last, postnum => posts, flags => flags.remove(&uid).unwrap_or_default() })
         .collect();
     let groups: Vec<(i32, String)> = sorted_groups(&ctx);
-    crate::admin::page(&ctx, "admin/users.html", "users", "Users", minijinja::context! { users => users, pagination => pg, q => minijinja::context!{ username => q.username, email => q.email, ip => q.ip, gid => q.gid, sort => q.sort }, groups => groups, total => total }).await
+    // Pill counts are board-wide: they ignore the search box and group filter.
+    let counts = flag_counts(&ctx, week_ago).await?;
+    let pills: Vec<_> = std::iter::once(("", "All", counts[0]))
+        .chain(
+            FLAG_SQL
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (f.0, f.1, counts[i + 1])),
+        )
+        .map(|(k, label, n)| minijinja::context! { key => k, label => label, n => n })
+        .collect();
+    crate::admin::page(&ctx, "admin/users.html", "users", "Users", minijinja::context! { users => users, pagination => pg, q => minijinja::context!{ q => q.q, username => q.username, email => q.email, ip => q.ip, gid => q.gid, sort => q.sort, flag => flag }, qs => qs, pills => pills, groups => groups, total => total }).await
+}
+
+/// Board-wide counts for the filter pills: all, then one per `FLAG_SQL` entry.
+async fn flag_counts(ctx: &Ctx, week_ago: i64) -> AppResult<Vec<i64>> {
+    use sqlx::Row;
+    let mut sql = String::from("SELECT COUNT(*)");
+    for f in FLAG_SQL {
+        sql.push_str(&format!(
+            ", COUNT(*) FILTER (WHERE {})",
+            f.2.replace("$7", "$1")
+        ));
+    }
+    sql.push_str(" FROM users");
+    let row = sqlx::query(&sql)
+        .bind(week_ago)
+        .fetch_one(&ctx.app.db)
+        .await?;
+    Ok((0..=FLAG_SQL.len()).map(|i| row.get::<i64, _>(i)).collect())
 }
 
 pub fn sorted_groups(ctx: &Ctx) -> Vec<(i32, String)> {
@@ -172,14 +257,10 @@ pub async fn new_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Res
             "The password must be at least 6 characters.",
         ));
     }
-    if ctx
-        .cache
-        .group(gid)
-        .map(|g| g.perms.0.cancp)
-        .unwrap_or(false)
-        && !ctx.is_admin()
-    {
-        return Err(AppError::no_perm());
+    if ctx.cache.group(gid).is_some_and(|g| g.perms.0.cancp) && !is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can create administrators.",
+        ));
     }
     let hash = crate::auth::hash_password(&password).await?;
     let uid: i32 = sqlx::query_scalar("INSERT INTO users (username, password, email, usergroup, regdate, lastactive, regip, pmfolders) VALUES ($1, $2, $3, $4, $5, 0, $6, '[]') RETURNING uid")
@@ -224,9 +305,115 @@ async fn load(ctx: &Ctx, uid: i32) -> AppResult<User> {
     .ok_or_else(|| AppError::not_found("user"))
 }
 
-pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
+/// Groups an account belongs to, primary first.
+fn member_groups(u: &User) -> impl Iterator<Item = i32> + '_ {
+    std::iter::once(u.usergroup).chain(u.additionalgroups.iter().copied())
+}
+
+/// True when any of the account's groups grants Admin CP access.
+fn has_cancp(ctx: &Ctx, u: &User) -> bool {
+    member_groups(u).any(|g| ctx.cache.group(g).is_some_and(|g| g.perms.0.cancp))
+}
+
+/// True when the account is an administrator or a (super) moderator.
+fn has_staff_role(ctx: &Ctx, u: &User) -> bool {
+    has_cancp(ctx, u)
+        || member_groups(u).any(|g| {
+            ctx.cache
+                .group(g)
+                .is_some_and(|g| g.perms.0.issupermod || g.perms.0.canmodcp)
+        })
+}
+
+/// Whether the signed-in admin has no per-module restrictions (Admin Permissions). Only these
+/// admins may touch other administrators' accounts or admin permissions.
+async fn is_full_admin(ctx: &Ctx) -> AppResult<bool> {
+    let perms: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT permissions FROM adminoptions WHERE uid = $1")
+            .bind(ctx.uid())
+            .fetch_optional(&ctx.app.db)
+            .await?;
+    let restricted = perms
+        .as_ref()
+        .and_then(|p| p.as_object())
+        .is_some_and(|o| o.values().any(|v| v == &serde_json::Value::Bool(false)));
+    Ok(!restricted)
+}
+
+/// A module-restricted admin may not act on another administrator, or on other staff when
+/// `staff_too`, or it could take over the account (password, 2FA, groups) or remove it.
+async fn guard_target(ctx: &Ctx, target: &User, staff_too: bool) -> AppResult<()> {
+    // System's cosmetic fields are editable by any admin; its other actions are refused elsewhere.
+    if target.uid == ctx.uid() || target.is_system {
+        return Ok(());
+    }
+    let protected = if staff_too {
+        has_staff_role(ctx, target)
+    } else {
+        has_cancp(ctx, target)
+    };
+    if protected && !is_full_admin(ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can do that to a staff account.",
+        ));
+    }
+    Ok(())
+}
+
+/// Refuse putting `target` into an administrator group it is not already in, unless the
+/// signed-in admin is unrestricted (otherwise a restricted admin could mint full admins).
+async fn guard_admin_grant(ctx: &Ctx, target: &User, new_groups: &[i32]) -> AppResult<()> {
+    let current: Vec<i32> = member_groups(target).collect();
+    let grants_cancp = new_groups
+        .iter()
+        .any(|g| !current.contains(g) && ctx.cache.group(*g).is_some_and(|g| g.perms.0.cancp));
+    if grants_cancp && !is_full_admin(ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can grant administrator access.",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Deserialize, Default)]
+pub struct EditQ {
+    #[serde(default)]
+    pub tab: String,
+    #[serde(default)]
+    pub r#type: String,
+}
+
+/// The member file: who this is and what's wrong at a glance, the actions, the timeline, and the
+/// edit form and sign-in details on their own tabs.
+pub async fn edit_form(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    Query(q): Query<EditQ>,
+) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
+    let view = crate::member_file::View::of(&ctx);
+    let mf = crate::member_file::load(&ctx, &user, view).await?;
+    let tab = match q.tab.as_str() {
+        "details" | "ips" => q.tab.as_str(),
+        _ => "timeline",
+    };
+    // The notes box always wants the notes; the timeline tab shows the chosen kinds.
+    let events = crate::routes::modnotes::timeline(
+        &ctx,
+        &user,
+        if tab == "timeline" {
+            &q.r#type
+        } else {
+            "notes"
+        },
+    )
+    .await?;
+    let notes = if tab == "timeline" && !q.r#type.is_empty() && q.r#type != "notes" {
+        crate::routes::modnotes::timeline(&ctx, &user, "notes").await?
+    } else {
+        vec![]
+    };
     let values: HashMap<String, String> =
         sqlx::query_as::<_, (i32, String)>("SELECT fid, value FROM userfields WHERE uid = $1")
             .bind(uid)
@@ -235,30 +422,166 @@ pub async fn edit_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             .into_iter()
             .map(|(f, v)| (f.to_string(), v))
             .collect();
-    let ips: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
-    let logins: Vec<(i64, String, String)> = sqlx::query_as(
-        "SELECT created, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 ORDER BY created DESC LIMIT 20",
-    )
-    .bind(uid)
-    .fetch_all(&ctx.app.db)
-    .await?;
-    let banned: Option<(String, i64)> =
-        sqlx::query_as("SELECT reason, lifted FROM banned WHERE uid = $1")
-            .bind(uid)
-            .fetch_optional(&ctx.app.db)
-            .await?;
-    let passkeys: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE uid = $1")
+    let (ips, logins): (
+        Vec<(String, i64, Vec<(i32, String, bool)>)>,
+        Vec<(String, i64, String, String)>,
+    ) = if tab == "ips" {
+        let rows: Vec<(String, i64)> = sqlx::query_as("SELECT host(ipaddress), MAX(dateline) FROM posts WHERE uid = $1 AND ipaddress IS NOT NULL GROUP BY ipaddress ORDER BY 2 DESC LIMIT 20").bind(uid).fetch_all(&ctx.app.db).await?;
+        let mut addresses: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+        addresses.sort();
+        addresses.dedup();
+        let shared: Vec<(String, i32, String, bool)> = sqlx::query_as(
+            "SELECT ips.ip, o.uid, o.username, o.banned
+             FROM unnest($2::text[]) ips(ip) CROSS JOIN LATERAL (
+                 SELECT o.uid, o.username, EXISTS (SELECT 1 FROM banned b WHERE b.uid = o.uid) AS banned
+                 FROM users o WHERE o.uid <> $1 AND (o.lastip = ips.ip::inet OR o.regip = ips.ip::inet)
+                 ORDER BY banned DESC LIMIT 5
+             ) o",
+        )
         .bind(uid)
-        .fetch_one(&ctx.app.db)
+        .bind(&addresses)
+        .fetch_all(&ctx.app.db)
         .await?;
+        let mut by_ip: std::collections::HashMap<String, Vec<(i32, String, bool)>> =
+            std::collections::HashMap::new();
+        for (ip, uid, name, banned) in shared {
+            by_ip.entry(ip).or_default().push((uid, name, banned));
+        }
+        let ips = rows
+            .into_iter()
+            .map(|(ip, when)| {
+                let others = by_ip.get(&ip).cloned().unwrap_or_default();
+                (ip, when, others)
+            })
+            .collect();
+        let logins: Vec<(String, i64, String, String)> = sqlx::query_as(
+            "SELECT token_hash, lastused, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC LIMIT 20",
+        )
+        .bind(uid)
+        .bind(crate::util::now())
+        .fetch_all(&ctx.app.db)
+        .await?;
+        let logins = logins
+            .into_iter()
+            .map(|(_, used, ip, ua)| (String::new(), used, ip, crate::audit::device_label(&ua)))
+            .collect();
+        (ips, logins)
+    } else {
+        (vec![], vec![])
+    };
+    let reasons = crate::member_file::reason_suggestions(&ctx.app.db).await?;
+    let kinds: Vec<_> = crate::routes::modnotes::visible_kinds(&ctx);
     crate::admin::page(
         &ctx,
         "admin/user_edit.html",
         "users",
-        &format!("Edit User: {}", user.username),
-        minijinja::context! { user => &user, email => &user.email, regip => &user.regip, lastip => &user.lastip, groups => sorted_groups(&ctx), fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins, banned => banned, has2fa => !user.totp_secret.is_empty(), passkeys => passkeys },
+        &user.username,
+        minijinja::context! {
+            user => &user, mf => &mf, section_tab => tab, filter => &q.r#type, events => events, notes => if notes.is_empty() { None } else { Some(notes) },
+            kinds => kinds, reasons => reasons,
+            email => &user.email, regip => user.regip.to_string(), lastip => user.lastip.to_string(), groups => sorted_groups(&ctx),
+            fields => ctx.cache.profilefields.to_vec(), values => values, ips => ips, logins => logins,
+            has2fa => !user.totp_secret.is_empty(),
+            passkeys => sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM passkeys WHERE uid = $1").bind(uid).fetch_one(&ctx.app.db).await?,
+            can_write_notes => ctx.can(crate::domain::staff::Cap::WriteModNotes),
+            can_warn => ctx.perms.canwarnusers,
+        },
     )
     .await
+}
+
+#[derive(Deserialize, Default)]
+pub struct SecurityForm {
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub reset2fa: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub removepasskeys: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub logoutall: bool,
+    #[serde(default, deserialize_with = "crate::ctx::de::bool")]
+    pub sendreset: bool,
+}
+
+/// Sign-in help for a member: log them out everywhere, turn off two-factor, remove passkeys for
+/// a lost device, or send them a password reset link.
+pub async fn security(
+    ctx: Ctx,
+    Path(uid): Path<i32>,
+    crate::ctx::CsrfForm(f): crate::ctx::CsrfForm<SecurityForm>,
+) -> AppResult<Response> {
+    crate::admin::acp_guard!(ctx, "users");
+    let user = load(&ctx, uid).await?;
+    crate::system::guard(&ctx.cache, uid, "signed out")?;
+    guard_target(&ctx, &user, false).await?;
+    let mut done = vec![];
+    if f.reset2fa {
+        sqlx::query("UPDATE users SET totp_secret = '' WHERE uid = $1")
+            .bind(uid)
+            .execute(&ctx.app.db)
+            .await?;
+        crate::audit::log(
+            &ctx,
+            uid,
+            "twofa_disabled",
+            serde_json::json!({"via": "admin"}),
+        )
+        .await;
+        done.push("two-factor is off");
+    }
+    if f.removepasskeys {
+        let n = sqlx::query("DELETE FROM passkeys WHERE uid = $1")
+            .bind(uid)
+            .execute(&ctx.app.db)
+            .await?
+            .rows_affected();
+        if n > 0 {
+            crate::audit::log(
+                &ctx,
+                uid,
+                "passkey_removed",
+                serde_json::json!({"all": n, "via": "admin"}),
+            )
+            .await;
+            done.push("their passkeys are removed");
+        }
+    }
+    if f.logoutall {
+        crate::auth::destroy_all_logins(
+            &ctx.app,
+            uid,
+            if uid == ctx.uid() {
+                ctx.token_hash.as_deref()
+            } else {
+                None
+            },
+        )
+        .await?;
+        done.push("they're signed out everywhere");
+    }
+    if f.sendreset {
+        crate::usecase::accounts::request_password_reset(
+            &ctx.app,
+            &crate::audit::Actor::from_ctx(&ctx),
+            &user.email,
+        )
+        .await?;
+        done.push("a password reset link is on its way");
+    }
+    crate::admin::log(
+        &ctx,
+        "users",
+        "Changed a member's sign-in",
+        serde_json::json!({"uid": uid, "username": user.username, "done": done}),
+    )
+    .await;
+    let msg = if done.is_empty() {
+        "Nothing changed.".to_string()
+    } else {
+        let mut m = done.join(", ");
+        m[..1].make_ascii_uppercase();
+        format!("{m}.")
+    };
+    Ok(ctx.redirect(&format!("/admin/users/{uid}?tab=ips"), &msg))
 }
 
 pub async fn edit_save(
@@ -268,6 +591,7 @@ pub async fn edit_save(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, false).await?;
     let fl = &f.fields;
     let username = s(fl.get("username")).trim().to_string();
     // System keeps its email, groups and password; only cosmetic fields are editable.
@@ -296,6 +620,20 @@ pub async fn edit_save(
             "You cannot remove your own administrator access.",
         ));
     }
+    // Checked before the rename below so a refused edit changes nothing.
+    let mut additional: Vec<i32> = ints(fl.get("additionalgroups"))
+        .into_iter()
+        .filter(|g| *g != gid && ctx.cache.group(*g).is_some())
+        .collect();
+    additional.sort();
+    additional.dedup();
+    if sys {
+        additional = user.additionalgroups.clone();
+    }
+    let displaygroup = i(fl.get("displaygroup"));
+    crate::system::guard_group(&ctx.cache, uid, &[gid, displaygroup])?;
+    crate::system::guard_group(&ctx.cache, uid, &additional)?;
+    guard_admin_grant(&ctx, &user, &[&[gid][..], &additional].concat()).await?;
     if !sys && !util::valid_email(&email) {
         return Err(AppError::user("Invalid email address."));
     }
@@ -315,31 +653,10 @@ pub async fn edit_save(
         }
         crate::routes::usercp::rename_user(&ctx.app, uid, &user.username, &username).await?;
     }
-    let mut additional: Vec<i32> = ints(fl.get("additionalgroups"))
-        .into_iter()
-        .filter(|g| *g != gid && ctx.cache.group(*g).is_some())
-        .collect();
-    additional.sort();
-    additional.dedup();
-    if sys {
-        additional = user.additionalgroups.clone();
-    }
-    let displaygroup = i(fl.get("displaygroup"));
-    crate::system::guard_group(&ctx.cache, uid, &[gid, displaygroup])?;
-    crate::system::guard_group(&ctx.cache, uid, &additional)?;
-    let until = |on: bool, days: i32| {
-        if !sys && on && days > 0 {
-            now() + days as i64 * 86400
-        } else {
-            0
-        }
-    };
     sqlx::query(
         "UPDATE users SET email = $2, usergroup = $3, additionalgroups = $4, displaygroup = $5, usertitle = $6, website = $7, signature = $8,
             postnum = COALESCE($9, postnum), threadnum = COALESCE($10, threadnum), timezone = $11,
-            suspendposting = $12, suspensiontime = $13, moderateposts = $14, moderationtime = $15, suspendsignature = $16, suspendsigtime = $17,
-            avatar = CASE WHEN $18 THEN '' ELSE avatar END, avatartype = CASE WHEN $18 THEN '' ELSE avatartype END,
-            totp_secret = CASE WHEN $19 THEN '' ELSE totp_secret END
+            avatar = CASE WHEN $12 THEN '' ELSE avatar END, avatartype = CASE WHEN $12 THEN '' ELSE avatartype END
          WHERE uid = $1",
     )
     .bind(uid)
@@ -354,14 +671,7 @@ pub async fn edit_save(
     .bind(fl.get("postnum").map(|v| i(Some(v)).max(0)))
     .bind(fl.get("threadnum").map(|v| i(Some(v)).max(0)))
     .bind(s(fl.get("timezone")).trim())
-    .bind(!sys && b(fl.get("suspendposting")))
-    .bind(until(b(fl.get("suspendposting")), i(fl.get("suspendposting_days"))))
-    .bind(!sys && b(fl.get("moderateposts")))
-    .bind(until(b(fl.get("moderateposts")), i(fl.get("moderateposts_days"))))
-    .bind(!sys && b(fl.get("suspendsignature")))
-    .bind(until(b(fl.get("suspendsignature")), i(fl.get("suspendsignature_days"))))
     .bind(b(fl.get("removeavatar")))
-    .bind(b(fl.get("reset2fa")))
     .execute(&ctx.app.db)
     .await?;
     let pw = s(fl.get("newpassword"));
@@ -440,6 +750,7 @@ pub async fn erase(
         return Err(AppError::user("You cannot erase your own account here."));
     }
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, true).await?;
     if s(f.fields.get("confirm")).trim() != user.username {
         return Err(AppError::user(
             "Type the member's username exactly to confirm the erasure.",
@@ -486,6 +797,7 @@ pub async fn delete(
         return Err(AppError::user("You cannot delete your own account here."));
     }
     let user = load(&ctx, uid).await?;
+    guard_target(&ctx, &user, true).await?;
     let content = b(f.fields.get("deletecontent"));
     crate::routes::usercp::delete_user(&ctx.app, uid, content).await?;
     crate::admin::log(
@@ -512,32 +824,46 @@ pub async fn ban(
     if uid == ctx.uid() {
         return Err(AppError::user("You cannot ban yourself."));
     }
+    guard_target(&ctx, &user, true).await?;
+    let back = format!("/admin/users/{uid}");
     if b(f.fields.get("lift")) {
         crate::routes::modcp::lift_ban_for(&ctx.app, uid).await?;
         crate::audit::log(&ctx, uid, "unbanned", serde_json::Value::Null).await;
-        return Ok(ctx.redirect(&format!("/admin/users/{uid}"), "The ban has been lifted."));
+        return Ok(ctx.redirect(&back, "The ban has been lifted."));
     }
-    crate::routes::modcp::ban_user(
-        &ctx.app,
-        &user,
-        7,
-        s(f.fields.get("reason")).trim(),
-        i(f.fields.get("days")) as i64,
-        ctx.uid(),
-    )
-    .await?;
+    let reason = s(f.fields.get("reason")).trim().to_string();
+    let days = i(f.fields.get("days")) as i64;
+    crate::routes::modcp::ban_user(&ctx.app, &user, 7, &reason, days, ctx.uid()).await?;
+    let deleted = b(f.fields.get("deleteposts"));
+    if deleted {
+        crate::routes::usercp::delete_user_content(&ctx.app, uid).await?;
+    }
     crate::admin::log(
         &ctx,
         "bans",
         "Banned user",
-        serde_json::json!({"uid": uid, "username": user.username}),
+        serde_json::json!({"uid": uid, "username": user.username, "deleteposts": deleted}),
     )
     .await;
-    crate::audit::log(&ctx, uid, "banned", serde_json::json!({"reason": s(f.fields.get("reason")).trim(), "days": i(f.fields.get("days"))})).await;
-    Ok(ctx.redirect(
-        &format!("/admin/users/{uid}"),
-        &format!("{} has been banned.", user.username),
-    ))
+    crate::audit::log(
+        &ctx,
+        uid,
+        "banned",
+        serde_json::json!({"reason": reason, "days": days}),
+    )
+    .await;
+    let msg = format!("{} has been banned.", user.username);
+    // Deleted content can't come back, so only a plain ban offers an undo.
+    if deleted {
+        Ok(ctx.redirect(&back, &msg))
+    } else {
+        Ok(ctx.redirect_undo(
+            &back,
+            &msg,
+            "/modcp/liftban",
+            &[("uid", uid.to_string()), ("back", back.clone())],
+        ))
+    }
 }
 
 pub async fn awaiting(ctx: Ctx) -> AppResult<Response> {
@@ -587,8 +913,18 @@ pub async fn awaiting_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppRes
             }
         }
         "delete" => {
-            for u in &uids {
-                crate::routes::usercp::delete_user(&ctx.app, *u, true).await?;
+            // Only genuinely awaiting accounts, never the admin's own or another staff account
+            // (an extra group can make a pending account staff).
+            let pending: Vec<User> = sqlx::query_as(&format!(
+                "SELECT {} FROM users WHERE uid = ANY($1) AND usergroup = 5 AND uid <> $2 AND NOT is_system",
+                crate::models::USER_COLUMNS
+            ))
+            .bind(&uids)
+            .bind(ctx.uid())
+            .fetch_all(&ctx.app.db)
+            .await?;
+            for u in pending.iter().filter(|u| !has_staff_role(&ctx, u)) {
+                crate::routes::usercp::delete_user(&ctx.app, u.uid, true).await?;
             }
         }
         _ => {}
@@ -644,6 +980,8 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
             "Choose two different users (and not yourself as the source).",
         ));
     }
+    // The source account is deleted, so it needs the same protection as a plain delete.
+    guard_target(&ctx, &load(&ctx, src).await?, true).await?;
     let mut tx = ctx.app.db.begin().await?;
     for sql in [
         "UPDATE posts SET uid = $2, username = $3 WHERE uid = $1",
@@ -680,8 +1018,7 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
             .execute(&mut *tx)
             .await?;
     }
-    tx.commit().await?;
-    crate::routes::usercp::delete_user(&ctx.app, src, false).await?;
+    // Recount in the same transaction: the moved content and the new totals land together.
     sqlx::query(
         "UPDATE users SET postnum = (SELECT COUNT(*) FROM posts p JOIN forums f ON f.fid = p.fid WHERE p.uid = $1 AND p.visible = 1 AND f.usepostcounts),
             threadnum = (SELECT COUNT(*) FROM threads WHERE uid = $1 AND visible = 1), reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1),
@@ -689,8 +1026,19 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
          WHERE uid = $1",
     )
     .bind(dst)
-    .execute(&ctx.app.db)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
+    // `delete_user` runs its own transactions, so it can only follow the commit. If it fails,
+    // the content has already moved; say so rather than leaving the admin guessing.
+    if let Err(e) = crate::routes::usercp::delete_user(&ctx.app, src, false).await {
+        tracing::error!(
+            "merge: moved {src_name} into {dst_name} but could not delete the source: {e}"
+        );
+        return Err(AppError::user(format!(
+            "{src_name}'s content was moved to {dst_name}, but the old account could not be deleted. Delete it from its member page."
+        )));
+    }
     crate::admin::log(
         &ctx,
         "users",
@@ -764,6 +1112,17 @@ pub async fn adminperms_save(
             "You cannot restrict your own admin permissions.",
         ));
     }
+    // Only an unrestricted admin may change another's permissions. That also guarantees the
+    // change can never leave the board without an unrestricted administrator: the actor is one.
+    if !is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can change admin permissions.",
+        ));
+    }
+    let target = load(&ctx, uid).await?;
+    if !has_cancp(&ctx, &target) {
+        return Err(AppError::user("That member is not an administrator."));
+    }
     let mut p = serde_json::json!({});
     for (k, _) in crate::admin::MODULES {
         p[*k] = serde_json::Value::Bool(b(f.fields.get(*k)));
@@ -786,15 +1145,20 @@ pub async fn activity(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
-    let base = format!("/admin/users/{uid}/activity?kind={}&page={{page}}", q.kind);
+    // Same whitelist as the member's own activity page: `kind` goes into a link.
+    let kind = match q.kind.as_str() {
+        "security" | "account" | "staff" => q.kind.as_str(),
+        _ => "",
+    };
+    let base = format!("/admin/users/{uid}/activity?kind={kind}&page={{page}}");
     let (events, pagination) =
-        crate::routes::usercp::audit_rows(&ctx, uid, &q.kind, q.page, &base, false).await?;
+        crate::routes::usercp::audit_rows(&ctx, uid, kind, q.page, &base, false).await?;
     crate::admin::page(
         &ctx,
         "admin/user_activity.html",
         "users",
         &format!("Account activity: {}", user.username),
-        minijinja::context! { user => &user, events => events, pagination => pagination, kind => q.kind },
+        minijinja::context! { user => &user, events => events, pagination => pagination, kind => kind },
     )
     .await
 }

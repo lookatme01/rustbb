@@ -232,12 +232,28 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
     .bind(t - 900)
     .fetch_one(db)
     .await?;
-    let (uthreads, uposts, reports, mailq): (i64, i64, i64, i64) = sqlx::query_as(
+    let (uthreads, uposts, reports, mailq, oldest_report): (i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT (SELECT COALESCE(SUM(unapprovedthreads), 0)::bigint FROM forums), (SELECT COALESCE(SUM(unapprovedposts), 0)::bigint FROM forums),
-                (SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0), (SELECT COUNT(*) FROM mailqueue)",
+                (SELECT COUNT(*) FROM reportedcontent WHERE reportstatus = 0), (SELECT COUNT(*) FROM mailqueue),
+                (SELECT COALESCE(MIN(dateline), 0) FROM reportedcontent WHERE reportstatus = 0)",
     )
     .fetch_one(db)
     .await?;
+    let (appeals, failing_addrs, failed_tasks): (i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM ban_appeals WHERE status = 0),
+                (SELECT COUNT(DISTINCT lower(mailto)) FROM mailqueue WHERE attempts > 0),
+                (SELECT COUNT(DISTINCT tid) FROM tasklog WHERE dateline > $1 AND data LIKE 'error:%')",
+    )
+    .bind(t - 86400)
+    .fetch_one(db)
+    .await?;
+    let newest_appellant: Option<String> = sqlx::query_scalar(
+        "SELECT u.username FROM ban_appeals a JOIN users u ON u.uid = a.uid WHERE a.status = 0 ORDER BY a.created DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await?;
+    let watch =
+        crate::member_file::members_to_watch(&ctx, crate::member_file::View::of(&ctx), 6).await?;
     let dbsize: i64 = sqlx::query_scalar("SELECT pg_database_size(current_database())")
         .fetch_one(db)
         .await?;
@@ -259,6 +275,20 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
     .fetch_all(db)
     .await?;
     let history: Vec<(i64, i32, i32, i32)> = sqlx::query_as("SELECT dateline, numusers, numthreads, numposts FROM stats ORDER BY dateline DESC LIMIT 14").fetch_all(db).await?;
+    // Posts per day for the strip: the stats rows are running totals, so take differences.
+    let deltas: Vec<(i64, i64)> = history
+        .windows(2)
+        .map(|w| (w[0].0, (w[0].3 - w[1].3).max(0) as i64))
+        .collect();
+    let peak = deltas.iter().map(|d| d.1).max().unwrap_or(0).max(1);
+    let n_bars = deltas.len();
+    let bars: Vec<_> = deltas
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(i, (day, n))| minijinja::context! { day => day, n => n, pct => (n * 100 / peak).max(if *n > 0 { 6 } else { 2 }), last => i + 1 == n_bars })
+        .collect();
+    let bars_total: i64 = deltas.iter().map(|d| d.1).sum();
     page(
         &ctx,
         "admin/dashboard.html",
@@ -268,7 +298,8 @@ pub async fn dashboard(ctx: Ctx) -> AppResult<Response> {
             base => base, posts_today => posts_today, threads_today => threads_today, users_today => users_today, awaiting => awaiting, online => online,
             uthreads => uthreads, uposts => uposts, reports => reports, mailq => mailq, dbsize => dbsize, pgversion => pgversion, attach_size => attach_size,
             notes => notes, logs => logs, version => env!("CARGO_PKG_VERSION"), uptime => crate::routes::member::format_duration(t - ctx.app.started),
-            history => history.into_iter().rev().collect::<Vec<_>>(), node => &ctx.app.node_id,
+            bars => bars, bars_total => bars_total, watch => watch, appeals => appeals, newest_appellant => newest_appellant, failing_addrs => failing_addrs,
+            failed_tasks => failed_tasks, oldest_report => oldest_report, node => &ctx.app.node_id,
             image_proxy => ctx.cache.image_proxy.as_ref().map(|p| match p.mode { crate::imageproxy::Mode::Builtin => "builtin", _ => "external" }).unwrap_or("off"),
         },
     )

@@ -262,6 +262,7 @@ pub async fn import(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Respo
         crate::templates::default_template(n).is_some()
     })
     .map_err(AppError::User)?;
+    check_imported_properties(&t.properties)?;
     // The theme and its templates arrive together or not at all.
     let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     let tid: i32 = sqlx::query_scalar(
@@ -443,6 +444,34 @@ pub fn valid_banner(u: &str) -> bool {
         })
 }
 
+/// The values the Branding form validates (brand, banner, logo, colour mode) end up in CSS and
+/// templates; an imported file gets the same checks as the form.
+fn check_imported_properties(props: &serde_json::Map<String, serde_json::Value>) -> AppResult<()> {
+    let text = |k: &str| props.get(k).and_then(|v| v.as_str()).unwrap_or("");
+    if !text("brand").is_empty() && !valid_brand(text("brand")) {
+        return Err(AppError::user("The brand colour must look like #1f45e0."));
+    }
+    for (k, what) in [("banner", "banner"), ("logo", "logo")] {
+        if !text(k).is_empty() && !valid_banner(text(k)) {
+            return Err(AppError::user(format!(
+                "The {what} must be a site path or an https:// URL."
+            )));
+        }
+    }
+    if !matches!(text("colormode"), "" | "light" | "dark") {
+        return Err(AppError::user("The colour mode must be light or dark."));
+    }
+    // Branding values must be text: a number or object here would skip the checks above.
+    for k in ["brand", "banner", "logo", "colormode"] {
+        if props.get(k).is_some_and(|v| !v.is_string() && !v.is_null()) {
+            return Err(AppError::user(format!(
+                "The theme property {k} must be text."
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Merge the Branding fields of the theme form into the properties JSON.
 fn apply_branding(
     props: &mut serde_json::Value,
@@ -465,7 +494,7 @@ fn apply_branding(
     let brand = s(fl.get("brand")).trim().to_lowercase();
     let use_brand = s(fl.get("use_brand")) == "1";
     if use_brand && !valid_brand(&brand) {
-        return Err(AppError::user("The brand colour must look like #5b5bf6."));
+        return Err(AppError::user("The brand colour must look like #1f45e0."));
     }
     set("brand", if use_brand { brand } else { String::new() });
     let mode = s(fl.get("colormode"));
@@ -523,6 +552,9 @@ pub async fn banner_upload(
     {
         match field.name().unwrap_or("") {
             "file" => {
+                // The form puts `my_post_key` first (or the X-CSRF-Token header carries it), so
+                // an unauthenticated request is refused before a 12 MB file is spooled.
+                ctx.check_csrf(&token)?;
                 match crate::infra::uploads::spool(&ctx.app.cfg.upload_dir, field, 12 * 1024 * 1024)
                     .await
                 {

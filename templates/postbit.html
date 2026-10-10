@@ -11,6 +11,7 @@
         {% if a.stars %}<span class="stars" role="img" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
         {% if a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
         {% if a.away %}<span class="tag">Away</span>{% endif %}
+        {% if staff_flags and staff_flags[a.uid] %}<div class="mf-flags small post-staff-flags" aria-label="Staff only">{% for f in staff_flags[a.uid] %}<span class="mf-flag {{ f.level }}">{{ f.label }}</span>{% endfor %}</div>{% endif %}
         {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
         <dl class="author-stats">
           <div><dt>Posts</dt><dd><a href="/user/{{ a.uid }}/posts">{{ a.postnum|num }}</a></dd></div>
@@ -28,7 +29,7 @@
     <header class="post-head">
       <div class="who">
         {{ m.face(a.avatar if a else '', uname, a.uid if a else 0, 38, '', a.online if a else false) }}
-        <div><span class="name">{% if a %}{{ a.formatted|safe }}{% else %}{{ uname }}{% endif %}</span><span class="sub">{% if a %}{{ a.usertitle }}{% if a.usertitle %} · {% endif %}{{ a.postnum|num }} posts{% else %}{{ 'Guest' if not p.uid else 'Deleted user' }}{% endif %}</span></div>
+        <div><span class="name">{% if a %}{{ a.formatted|safe }}{% else %}{{ uname }}{% endif %}</span><span class="sub">{% if a %}{{ a.usertitle }}{% if a.usertitle %} · {% endif %}{{ a.postnum|num }} {{ a.postnum|plural("post","posts") }}{% else %}{{ 'Guest' if not p.uid else 'Deleted user' }}{% endif %}</span></div>
       </div>
       <div class="when">
         {% if p.icon %}<img class="thread-icon" src="{{ p.icon }}" alt="">{% endif %}
@@ -46,7 +47,7 @@
       <div class="post-body">{{ p.message|safe }}</div>
       {% if p.attachments %}
       <div class="post-attachments"><strong>Attached files</strong>
-        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} downloads){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
+        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank" rel="noopener"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
       </div>
       {% endif %}
       {% if p.edited %}<div class="post-edited">Last edited {{ p.edited[1]|date }} by {{ p.edited[0] }}{% if p.edited[2] %} — {{ p.edited[2] }}{% endif %}{% if p.has_history %} · <a href="/post/{{ p.pid }}/history">history</a>{% endif %}</div>{% endif %}
@@ -56,7 +57,7 @@
       <div class="reactions" data-pid="{{ p.pid }}">
         {% for r in p.reactions %}<button type="button" class="reaction{% if r[3] %} mine{% endif %} js-react" data-kind="{{ r[0] }}" {% if not p.can_react %}disabled{% endif %} title="{{ r[0] }}">{{ r[1] }} {{ r[2] }}</button>{% endfor %}
         {% if p.can_react %}
-        <span class="reaction-picker"><button type="button" class="btn secondary small js-react-toggle" aria-label="Add reaction">☺+</button>
+        <span class="reaction-picker"><button type="button" class="btn secondary small js-react-toggle" aria-label="Add reaction"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3.5"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
           <span class="menu">{% for rt in reaction_types %}<button type="button" class="js-react" data-kind="{{ rt[0] }}" title="{{ rt[0] }}">{{ rt[1] }}</button>{% endfor %}</span>
         </span>
         {% endif %}

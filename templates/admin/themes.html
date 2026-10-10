@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
-<div class="actions"><a class="btn small" href="/admin/themes/edit">Add theme</a></div>
+<div class="actions"><a class="btn small" href="/admin/themes/edit">Add theme</a><label class="btn secondary small js-import-pick" hidden>Import theme…<input type="file" accept=".json,application/json" class="sr-only js-import-file" data-form="#theme-import"></label></div>
 <section class="box"><div class="box-head"><h2>Themes</h2></div>
 <table class="grid"><thead><tr><th>Theme</th><th>Parent</th><th class="num">Users</th><th class="num">Custom templates</th><th></th></tr></thead><tbody>
 {% for t in all_themes %}<tr><td><strong>{{ t.name }}</strong>{% if t.def %} <span class="tag">default</span>{% endif %}</td><td>{{ t.parent or '—' }}</td><td class="num">{{ t.users }}</td><td class="num">{{ t.overrides }}</td>
@@ -9,8 +9,8 @@
 {% if not t.def %}<form method="post" action="/admin/themes/default" style="display:inline">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t.tid }}"><button class="btn secondary small">Make default</button></form>
 <form method="post" action="/admin/themes/delete" style="display:inline" class="js-confirm" data-confirm="Delete this theme?">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ t.tid }}"><button class="btn secondary small">Delete</button></form>{% endif %}</td></tr>{% endfor %}
 </tbody></table></section>
-<form method="post" action="/admin/themes/import" class="box">{{ m.csrf_field() }}
-  <div class="box-head"><h2>Import a theme</h2></div>
+<form method="post" action="/admin/themes/import" class="box" id="theme-import">{{ m.csrf_field() }}
+  <div class="box-head"><h2>Import a theme</h2><span class="desc">Choose an exported .json file with “Import theme…” above, or paste its contents here.</span></div>
   <div class="box-body"><textarea name="json" rows="4" aria-label="Exported theme JSON" placeholder="Paste the contents of an exported theme .json file" required></textarea></div>
   <div class="box-foot"><button class="btn small">Import</button></div>
 </form>

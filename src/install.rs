@@ -110,14 +110,19 @@ pub async fn install(
     bbname: &str,
     bburl: &str,
 ) -> anyhow::Result<()> {
+    let t = now();
+    let mut tx = db.begin().await?;
+    // Two installs racing would both pass the check below; the lock makes the second one wait
+    // for the first to commit and then see its groups.
+    sqlx::query("SELECT pg_advisory_xact_lock(424245)")
+        .execute(&mut *tx)
+        .await?;
     let exists: Option<i32> = sqlx::query_scalar("SELECT gid FROM usergroups LIMIT 1")
-        .fetch_optional(db)
+        .fetch_optional(&mut *tx)
         .await?;
     if exists.is_some() {
         anyhow::bail!("the board is already installed");
     }
-    let t = now();
-    let mut tx = db.begin().await?;
     let groups: Vec<(i32, i16, &str, &str, &str, &str, i16, bool, GroupPerms)> = vec![
         (
             1,
@@ -234,15 +239,10 @@ pub async fn install(
     }
 
     sqlx::query("INSERT INTO themes (tid, name, pid, def, properties, stylesheet) VALUES (1, 'Default', 0, TRUE, $1, '')")
-        .bind(serde_json::json!({"logo": "/static/images/logo.svg", "colormode": "auto"}))
+        .bind(serde_json::json!({"logo": "/static/images/logo.svg", "colormode": "auto", "brand": "#1f45e0"}))
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO themes (tid, name, pid, def, properties, stylesheet) VALUES (2, 'Midnight', 1, FALSE, $1, $2)")
-        .bind(serde_json::json!({"logo": "/static/images/logo.svg", "colormode": "dark", "brand": MIDNIGHT_BRAND}))
-        .bind(MIDNIGHT_CSS)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("SELECT setval('themes_tid_seq', 2)")
+    sqlx::query("SELECT setval('themes_tid_seq', 1)")
         .execute(&mut *tx)
         .await?;
 
@@ -601,7 +601,7 @@ pub async fn install(
 }
 
 /// Idempotent data upgrades run at every startup.
-/// Midnight: the default theme in dark mode on deep navy, with a violet brand colour.
+/// Midnight: no longer installed on new boards, but kept so an unedited Midnight on an older board still upgrades.
 pub const MIDNIGHT_CSS: &str = ":root, :root[data-colormode] {\n  --canvas: #070914; --surface: #0e1122; --surface-2: #12162b; --surface-3: #1a1f3a;\n}\n";
 pub const MIDNIGHT_BRAND: &str = "#a78bfa";
 /// Midnight's stylesheet before the Halo theme (0.5), which fixed the accent colour in CSS.

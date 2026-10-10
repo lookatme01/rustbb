@@ -16,7 +16,7 @@
       <div class="num small">{{ o.votes }} ({{ o.percent }}%)</div>
     </div>
     {% endfor %}
-    <div class="small muted">Total: {{ poll.numvotes }} vote{{ '' if poll.numvotes == 1 else 's' }}{% if poll.multiple %} · multiple choice{% endif %}{% if poll.public %} · public poll{% endif %}</div>
+    <div class="small muted">Total: {{ poll.numvotes }} {{ poll.numvotes|plural("vote","votes") }}{% if poll.multiple %} · multiple choice{% endif %}{% if poll.public %} · public poll{% endif %}</div>
     {% if poll.can_undo %}<form method="post" action="/thread/{{ thread.tid }}/poll/undo" class="actions"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">Undo my vote</button></form>{% endif %}
   </div>
   {% endif %}

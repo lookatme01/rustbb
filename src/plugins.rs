@@ -22,8 +22,10 @@ use std::time::{Duration, Instant};
 const ACTION_BUDGET: Duration = Duration::from_secs(2);
 /// Time budget for one plugin's filter (runs while a page is being rendered).
 const FILTER_BUDGET: Duration = Duration::from_millis(100);
-/// Consecutive failures (errors or overruns) that open a plugin's circuit breaker…
+/// Failures (errors or overruns) within `BREAKER_WINDOW` that open a plugin's circuit breaker.
+/// Successes do not reset the count, so a plugin that overruns on every other call still trips…
 const BREAKER_THRESHOLD: u32 = 5;
+const BREAKER_WINDOW: Duration = Duration::from_secs(60);
 /// …and how long it stays open (the plugin's hooks are skipped meanwhile).
 const BREAKER_COOLDOWN: Duration = Duration::from_secs(60);
 /// Action hooks running at once (each on a blocking thread).
@@ -43,6 +45,8 @@ pub struct Plugin {
 #[derive(Default)]
 struct Breaker {
     failures: u32,
+    /// When the current failure count started.
+    window_start: Option<Instant>,
     open_until: Option<Instant>,
 }
 
@@ -74,11 +78,17 @@ impl Guard {
         crate::infra::metrics::observe("rbb_plugin_hook_seconds", &labels, elapsed.as_secs_f64());
         let mut b = self.breakers.entry(plugin.to_string()).or_default();
         if ok {
-            b.failures = 0;
             b.open_until = None;
             return;
         }
         crate::infra::metrics::counter_with("rbb_plugin_failures_total", &labels, 1);
+        let now = Instant::now();
+        if b.window_start
+            .is_none_or(|t| now.duration_since(t) > BREAKER_WINDOW)
+        {
+            b.window_start = Some(now);
+            b.failures = 0;
+        }
         b.failures += 1;
         if b.failures >= BREAKER_THRESHOLD {
             tracing::error!(

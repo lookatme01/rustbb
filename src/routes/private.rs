@@ -86,12 +86,65 @@ pub struct FolderQuery {
     pub q: Option<String>,
 }
 
-async fn usage(ctx: &Ctx, uid: i32) -> AppResult<(i64, i64)> {
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE uid = $1")
-        .bind(uid)
-        .fetch_one(&ctx.app.db)
-        .await?;
-    Ok((total, ctx.perms.pmquota as i64))
+/// Messages used and the quota. `users.totalpms` is kept incrementally, so this costs no scan;
+/// every folder action recounts it, which repairs any drift.
+fn usage(ctx: &Ctx, me: &User) -> (i64, i64) {
+    (me.totalpms as i64, ctx.perms.pmquota as i64)
+}
+
+/// An ILIKE pattern matching `s` literally: `%`, `_` and the escape character itself
+/// (backslash, Postgres' default) are escaped.
+fn like_pattern(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('%');
+    for c in s.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('%');
+    out
+}
+
+#[derive(FromRow)]
+struct PmListRow {
+    pmid: i32,
+    subject: String,
+    dateline: i64,
+    status: i16,
+    fromid: i32,
+    toid: i32,
+    username: Option<String>,
+    usergroup: Option<i32>,
+    displaygroup: Option<i32>,
+    recipients: sqlx::types::Json<serde_json::Value>,
+    pgp: i16,
+    /// Rows matching the filter over all pages (window count, so no second scan).
+    total: i64,
+}
+
+async fn list_page(
+    ctx: &Ctx,
+    uid: i32,
+    fid: i32,
+    pattern: Option<&str>,
+    per: i64,
+    page: i64,
+) -> AppResult<Vec<PmListRow>> {
+    Ok(sqlx::query_as(
+        "SELECT p.pmid, p.subject, p.dateline, p.status, p.fromid, p.toid, u.username, u.usergroup, u.displaygroup, p.recipients, p.pgp, COUNT(*) OVER() AS total
+         FROM privatemessages p LEFT JOIN users u ON u.uid = CASE WHEN p.folder = 2 OR p.folder = 3 THEN p.toid ELSE p.fromid END
+         WHERE p.uid = $1 AND p.folder = $2 AND ($5::text IS NULL OR p.subject ILIKE $5 OR (p.pgp <> 2 AND p.message ILIKE $5))
+         ORDER BY p.dateline DESC LIMIT $3 OFFSET $4",
+    )
+    .bind(uid)
+    .bind(fid)
+    .bind(per)
+    .bind((page - 1) * per)
+    .bind(pattern)
+    .fetch_all(&ctx.app.db)
+    .await?)
 }
 
 pub async fn folder(ctx: Ctx, Query(q): Query<FolderQuery>) -> AppResult<Response> {
@@ -105,46 +158,42 @@ pub async fn folder(ctx: Ctx, Query(q): Query<FolderQuery>) -> AppResult<Respons
         .ok_or_else(|| AppError::not_found("folder"))?;
     let per = ctx.settings().int("pmsperpage").max(5);
     let search = q.q.clone().unwrap_or_default();
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND folder = $2 AND ($3 = '' OR subject ILIKE '%' || $3 || '%' OR (pgp <> 2 AND message ILIKE '%' || $3 || '%'))")
-        .bind(me.uid)
-        .bind(fid)
-        .bind(&search)
-        .fetch_one(&ctx.app.db)
-        .await?;
+    let pattern = (!search.is_empty()).then(|| like_pattern(&search));
+    let mut page = util::clamp_page(q.page);
+    let mut rows = list_page(&ctx, me.uid, fid, pattern.as_deref(), per, page).await?;
+    let mut total = rows.first().map_or(0, |r| r.total);
+    if rows.is_empty() && page > 1 {
+        // Past the last page: only now is a separate count needed, to find where it ends.
+        total = sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND folder = $2 AND ($3::text IS NULL OR subject ILIKE $3 OR (pgp <> 2 AND message ILIKE $3))")
+            .bind(me.uid)
+            .bind(fid)
+            .bind(pattern.as_deref())
+            .fetch_one(&ctx.app.db)
+            .await?;
+        page = page.min(((total + per - 1) / per).max(1));
+        rows = list_page(&ctx, me.uid, fid, pattern.as_deref(), per, page).await?;
+    }
     let pg = util::paginate(
         total,
         per,
-        util::clamp_page(q.page),
+        page,
         &format!(
             "/pm?folder={fid}&q={}&page={{page}}",
             percent_encoding::utf8_percent_encode(&search, percent_encoding::NON_ALPHANUMERIC)
         ),
     );
-    let rows: Vec<(i32, String, i64, i16, i32, i32, Option<String>, Option<i32>, Option<i32>, serde_json::Value, i16)> = sqlx::query_as(
-        "SELECT p.pmid, p.subject, p.dateline, p.status, p.fromid, p.toid, u.username, u.usergroup, u.displaygroup, p.recipients, p.pgp
-         FROM privatemessages p LEFT JOIN users u ON u.uid = CASE WHEN p.folder = 2 OR p.folder = 3 THEN p.toid ELSE p.fromid END
-         WHERE p.uid = $1 AND p.folder = $2 AND ($5 = '' OR p.subject ILIKE '%' || $5 || '%' OR (p.pgp <> 2 AND p.message ILIKE '%' || $5 || '%'))
-         ORDER BY p.dateline DESC LIMIT $3 OFFSET $4",
-    )
-    .bind(me.uid)
-    .bind(fid)
-    .bind(per)
-    .bind((pg.page - 1) * per)
-    .bind(&search)
-    .fetch_all(&ctx.app.db)
-    .await?;
     let list: Vec<_> = rows
         .into_iter()
-        .map(|(pmid, subject, dl, status, fromid, toid, name, g, d, rec, pgp)| {
-            let other = match name {
-                Some(n) => ctx.cache.format_name(&n, g.unwrap_or(2), d.unwrap_or(0)),
-                None => if fromid == 0 && fid != 2 { format!("{} (system)", util::escape_html(ctx.settings().get("bbname"))) } else { "Unknown".into() },
+        .map(|r| {
+            let other = match r.username {
+                Some(n) => ctx.cache.format_name(&n, r.usergroup.unwrap_or(2), r.displaygroup.unwrap_or(0)),
+                None => if r.fromid == 0 && fid != 2 { format!("{} (system)", util::escape_html(ctx.settings().get("bbname"))) } else { "Unknown".into() },
             };
-            let multi = rec["to"].as_array().map(|a| a.len()).unwrap_or(0) > 1;
-            minijinja::context! { pmid => pmid, subject => subject, dateline => dl, status => status, other => other, other_uid => if fid == 2 || fid == 3 { toid } else { fromid }, multi => multi, pgp => pgp }
+            let multi = r.recipients.0["to"].as_array().map(|a| a.len()).unwrap_or(0) > 1;
+            minijinja::context! { pmid => r.pmid, subject => r.subject, dateline => r.dateline, status => r.status, other => other, other_uid => if fid == 2 || fid == 3 { r.toid } else { r.fromid }, multi => multi, pgp => r.pgp }
         })
         .collect();
-    let (used, quota) = usage(&ctx, me.uid).await?;
+    let (used, quota) = usage(&ctx, &me);
     ctx.render(
         "pm/folder.html",
         minijinja::context! { title => fname.clone(), breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())], folder => fid, folder_name => fname, folders => folders, messages => list, pagination => pg, used => used, quota => quota, search => search },
@@ -515,6 +564,49 @@ struct Recipient {
     pmnotify: bool,
 }
 
+/// Recipients (uid, quota) whose folders are full. Counts come from the incrementally kept
+/// `users.totalpms`; only a figure at or over the quota is checked against the real rows, so a
+/// drifted counter can't lock anyone out.
+async fn full_folders(conn: &mut sqlx::PgConnection, limits: &[(i32, i64)]) -> AppResult<Vec<i32>> {
+    if limits.is_empty() {
+        return Ok(vec![]);
+    }
+    let ids: Vec<i32> = limits.iter().map(|l| l.0).collect();
+    let totals: Vec<(i32, i32)> =
+        sqlx::query_as("SELECT uid, totalpms FROM users WHERE uid = ANY($1)")
+            .bind(&ids)
+            .fetch_all(&mut *conn)
+            .await?;
+    let mut full = vec![];
+    for (uid, total) in totals {
+        let Some(&(_, quota)) = limits.iter().find(|l| l.0 == uid) else {
+            continue;
+        };
+        if (total as i64) < quota {
+            continue;
+        }
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&mut *conn)
+            .await?;
+        if n >= quota {
+            full.push(uid);
+        }
+    }
+    Ok(full)
+}
+
+/// Seconds `uid` still has to wait before sending again, if the flood limit holds them back.
+async fn flood_wait(conn: &mut sqlx::PgConnection, uid: i32, flood: i64) -> AppResult<Option<i64>> {
+    let last: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(dateline) FROM privatemessages WHERE fromid = $1 AND folder <> 3",
+    )
+    .bind(uid)
+    .fetch_one(conn)
+    .await?;
+    Ok(last.map(|l| flood - (now() - l)).filter(|w| *w > 0))
+}
+
 pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Response> {
     let me = require_pm(&ctx)?;
     if !ctx.perms.cansendpms {
@@ -579,6 +671,10 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             errors.push(format!("The user “{n}” does not exist."));
         }
     }
+    // Recipients subject to a quota, and whether the flood limit applies to this sender.
+    let mut quota_limits: Vec<(i32, i64)> = vec![];
+    let flood = s.int("pmfloodsecs");
+    let check_flood = flood > 0 && !ctx.can(crate::domain::staff::Cap::PostingExempt);
     if f.savedraft.is_empty() {
         for r in &recipients {
             let mut groups = vec![r.usergroup];
@@ -598,35 +694,24 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
                     r.username
                 ));
             } else if rperms.pmquota > 0 && !override_ {
-                let n: i64 =
-                    sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE uid = $1")
-                        .bind(r.uid)
-                        .fetch_one(&ctx.app.db)
-                        .await?;
-                if n >= rperms.pmquota as i64 {
-                    errors.push(format!(
-                        "{}'s private message folders are full.",
-                        r.username
-                    ));
-                }
+                quota_limits.push((r.uid, rperms.pmquota as i64));
             }
         }
-        let flood = s.int("pmfloodsecs");
-        if flood > 0 && !ctx.can(crate::domain::staff::Cap::PostingExempt) {
-            let last: Option<i64> = sqlx::query_scalar(
-                "SELECT MAX(dateline) FROM privatemessages WHERE fromid = $1 AND folder <> 3",
-            )
-            .bind(me.uid)
-            .fetch_one(&ctx.app.db)
-            .await?;
-            if let Some(l) = last
-                && now() - l < flood
-            {
+        // This is the friendly early answer; both limits are checked again under the row locks
+        // below, since two simultaneous sends would both pass this.
+        let mut conn = ctx.app.db.acquire().await?;
+        for uid in full_folders(&mut conn, &quota_limits).await? {
+            if let Some(r) = recipients.iter().find(|r| r.uid == uid) {
                 errors.push(format!(
-                    "Please wait {} more seconds before sending another message.",
-                    flood - (now() - l)
+                    "{}'s private message folders are full.",
+                    r.username
                 ));
             }
+        }
+        if check_flood && let Some(wait) = flood_wait(&mut conn, me.uid, flood).await? {
+            errors.push(format!(
+                "Please wait {wait} more seconds before sending another message."
+            ));
         }
     }
     let to_ids: Vec<i32> = recipients
@@ -706,7 +791,9 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             .bind(me.uid)
             .execute(&mut *tx)
             .await?;
-        if f.pmid > 0 {
+        // The draft may have been sent or deleted in another tab meanwhile; then this is saved as
+        // a new draft rather than reporting a save that matched nothing.
+        let updated = if f.pmid > 0 {
             sqlx::query("UPDATE privatemessages SET subject = $3, message = $4, recipients = $5, dateline = $6, pgp = $7, pgp_fpr = $8 WHERE pmid = $1 AND uid = $2 AND folder = 3")
                 .bind(f.pmid)
                 .bind(me.uid)
@@ -717,8 +804,12 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
                 .bind(stored.level)
                 .bind(&stored.fpr)
                 .execute(&mut *tx)
-                .await?;
+                .await?
+                .rows_affected()
         } else {
+            0
+        };
+        if updated == 0 {
             sqlx::query("INSERT INTO privatemessages (uid, toid, fromid, recipients, folder, subject, message, dateline, status, ipaddress, pgp, pgp_fpr) VALUES ($1, 0, $1, $2, 3, $3, $4, $5, 1, $6, $7, $8)")
                 .bind(me.uid)
                 .bind(&rec_json)
@@ -750,6 +841,23 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
         .bind(&participants)
         .execute(&mut *tx)
         .await?;
+    // Quota and flood again, now that the sender's and recipients' rows are locked: concurrent
+    // sends queue up here, so each one sees the others' messages.
+    if let Some(r) = full_folders(&mut tx, &quota_limits)
+        .await?
+        .first()
+        .and_then(|uid| recipients.iter().find(|r| r.uid == *uid))
+    {
+        return Err(AppError::user(format!(
+            "{}'s private message folders are full.",
+            r.username
+        )));
+    }
+    if check_flood && let Some(wait) = flood_wait(&mut tx, me.uid, flood).await? {
+        return Err(AppError::user(format!(
+            "Please wait {wait} more seconds before sending another message."
+        )));
+    }
     let mut rec_pmids: Vec<(i32, i32)> = vec![];
     for r in &recipients {
         let pmid: i32 = sqlx::query_scalar(
@@ -930,6 +1038,30 @@ pub async fn deliver_system_pm(
     Ok(())
 }
 
+/// Mark `uid`'s unread messages among `pmids` as read and, for those the sender asked to track,
+/// flip the receipt on the sender's copy. Returns how many were newly read; the caller fixes
+/// the unread counter.
+async fn mark_read(conn: &mut sqlx::PgConnection, uid: i32, pmids: &[i32]) -> AppResult<u64> {
+    let t = now();
+    let read: Vec<(i32, i16)> = sqlx::query_as(
+        "UPDATE privatemessages SET status = 1, statustime = $3, readtime = $3 WHERE uid = $1 AND pmid = ANY($2) AND status = 0 AND folder NOT IN (2, 3) RETURNING pmid, receipt",
+    )
+    .bind(uid)
+    .bind(pmids)
+    .bind(t)
+    .fetch_all(&mut *conn)
+    .await?;
+    let tracked: Vec<i32> = read.iter().filter(|r| r.1 == 1).map(|r| r.0).collect();
+    if !tracked.is_empty() {
+        sqlx::query("UPDATE privatemessages SET receipt = 2, readtime = $2 WHERE pmid IN (SELECT sent_pmid FROM privatemessages WHERE pmid = ANY($1)) AND receipt = 1")
+            .bind(&tracked)
+            .bind(t)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(read.len() as u64)
+}
+
 pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
     let me = require_pm(&ctx)?;
     let pm: PmRow = sqlx::query_as(&format!(
@@ -950,13 +1082,7 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
             .bind(me.uid)
             .execute(&mut *tx)
             .await?;
-        let changed = sqlx::query(
-            "UPDATE privatemessages SET status = 1, statustime = $2, readtime = $2 WHERE pmid = $1 AND status = 0 AND folder NOT IN (2, 3)",
-        )
-        .bind(pmid)
-        .bind(now())
-        .execute(&mut *tx)
-        .await?.rows_affected();
+        let changed = mark_read(&mut tx, me.uid, &[pmid]).await?;
         if changed > 0 {
             sqlx::query("UPDATE users SET unreadpms = GREATEST(unreadpms - 1, 0) WHERE uid = $1")
                 .bind(me.uid)
@@ -964,14 +1090,6 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
                 .await?;
         }
         tx.commit().await?;
-        // Read receipt: mark the sender's copy.
-        if changed > 0 && pm.receipt == 1 {
-            sqlx::query("UPDATE privatemessages SET receipt = 2, readtime = $2 WHERE pmid = (SELECT sent_pmid FROM privatemessages WHERE pmid = $1) AND receipt = 1")
-                .bind(pm.pmid)
-                .bind(now())
-                .execute(&ctx.app.db)
-                .await?;
-        }
     }
     let s = ctx.settings();
     let opts = crate::parser::ParseOptions {
@@ -1053,8 +1171,10 @@ pub struct ActionForm {
 
 async fn recount_pms(conn: &mut sqlx::PgConnection, uid: i32) -> AppResult<()> {
     sqlx::query(
-        "UPDATE users SET unreadpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND status = 0 AND folder <> 2 AND folder <> 3),
-            totalpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1) WHERE uid = $1",
+        "UPDATE users SET unreadpms = n.unread, totalpms = n.total FROM (
+             SELECT COUNT(*) FILTER (WHERE status = 0 AND folder NOT IN (2, 3))::int AS unread,
+                    COUNT(*)::int AS total FROM privatemessages WHERE uid = $1
+         ) n WHERE uid = $1",
     )
     .bind(uid)
     .execute(conn)
@@ -1083,7 +1203,8 @@ pub async fn action(ctx: Ctx, CsrfForm(f): CsrfForm<ActionForm>) -> AppResult<Re
             sqlx::query("UPDATE privatemessages SET folder = 4, deletetime = $3 WHERE uid = $1 AND pmid = ANY($2)").bind(me.uid).bind(&f.pmids).bind(now()).execute(&mut *tx).await?;
         }
         "move" => {
-            if !folder_list(&me).iter().any(|x| x.0 == f.target) || f.target == 3 {
+            // Drafts and Sent Items only fill by writing and sending, never by moving.
+            if !folder_list(&me).iter().any(|x| x.0 == f.target) || matches!(f.target, 2 | 3) {
                 return Err(AppError::user("Invalid folder."));
             }
             sqlx::query("UPDATE privatemessages SET folder = $3 WHERE uid = $1 AND pmid = ANY($2)")
@@ -1094,7 +1215,7 @@ pub async fn action(ctx: Ctx, CsrfForm(f): CsrfForm<ActionForm>) -> AppResult<Re
                 .await?;
         }
         "read" => {
-            sqlx::query("UPDATE privatemessages SET status = 1, readtime = $3 WHERE uid = $1 AND pmid = ANY($2) AND status = 0").bind(me.uid).bind(&f.pmids).bind(now()).execute(&mut *tx).await?;
+            mark_read(&mut tx, me.uid, &f.pmids).await?;
         }
         "unread" => {
             sqlx::query("UPDATE privatemessages SET status = 0 WHERE uid = $1 AND pmid = ANY($2)")

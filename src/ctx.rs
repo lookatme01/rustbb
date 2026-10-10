@@ -21,9 +21,13 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Largest guest page kept in the page cache.
+const GUEST_PAGE_CACHE_MAX: usize = 2 * 1024 * 1024;
 pub const AUTH_COOKIE: &str = "rbb_auth";
 pub const SID_COOKIE: &str = "rbb_sid";
 pub const FLASH_COOKIE: &str = "rbb_flash";
+/// An "Undo" button shown with the next flash message: a form posting to a path (JSON).
+pub const UNDO_COOKIE: &str = "rbb_undo";
 
 pub struct CtxInner {
     pub app: App,
@@ -53,6 +57,8 @@ pub struct CtxInner {
     /// The API token used (id, scopes), if any.
     pub api_token: Option<(i64, Vec<String>)>,
     pub flash: Option<String>,
+    /// The "Undo" form for the flash message: (path to post to, hidden fields).
+    pub undo: Option<Undo>,
     pub cookies: Mutex<Vec<String>>,
     pub location: (AtomicI32, AtomicI32),
     pub headers: HeaderMap,
@@ -154,6 +160,12 @@ pub fn client_ip(
         }
     }
     peer_ip.unwrap_or_else(|| "0.0.0.0".into())
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Undo {
+    pub action: String,
+    pub fields: Vec<(String, String)>,
 }
 
 pub fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -473,6 +485,7 @@ impl CtxInner {
             path => &self.path,
             current_url => if self.query.is_empty() { self.path.clone() } else { format!("{}?{}", self.path, self.query) },
             flash => &self.flash,
+            undo => &self.undo,
             languages => LANGUAGES.clone(),
             themes => self.cache.themes.iter().filter(|t| t.allowedgroups.is_empty() || t.allowedgroups.iter().any(|g| self.groups.contains(g))).map(|t| (t.tid, t.name.clone())).collect::<Vec<_>>(),
             now => now(),
@@ -527,6 +540,28 @@ impl CtxInner {
         v
     }
 
+    /// Like [`Ctx::redirect`], with an "Undo" button beside the message that posts `fields` to
+    /// `action`. The undo endpoint does its own permission checks: this only offers the button.
+    pub fn redirect_undo(
+        &self,
+        to: &str,
+        msg: &str,
+        action: &str,
+        fields: &[(&str, String)],
+    ) -> Response {
+        let undo = Undo {
+            action: action.to_string(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
+        };
+        if let Ok(json) = serde_json::to_string(&undo) {
+            self.add_cookie(UNDO_COOKIE, &json, Some(60), false);
+        }
+        self.redirect(to, msg)
+    }
+
     /// Redirect with a flash message shown on the next page (MyBB's "redirect" page equivalent).
     pub fn redirect(&self, to: &str, msg: &str) -> Response {
         if !msg.is_empty() {
@@ -555,7 +590,7 @@ impl CtxInner {
         }
         let show_login = login || (status == StatusCode::FORBIDDEN && !self.logged_in());
         match self
-            .render_status(status, "error.html", minijinja::context! { message => msg, show_login => show_login, return_to => &self.path })
+            .render_status(status, "error.html", minijinja::context! { message => msg, status => status.as_u16(), show_login => show_login, return_to => &self.path })
             .await
         {
             Ok(r) => r,
@@ -802,6 +837,14 @@ pub async fn context_middleware(
     if flash.is_some() {
         new_cookies.push(format!("{FLASH_COOKIE}=; Path=/; Max-Age=0"));
     }
+    let undo = get_cookie(&headers, UNDO_COOKIE)
+        .and_then(|u| serde_json::from_str::<Undo>(&u).ok())
+        .filter(|u| u.action.starts_with('/') && !u.action.starts_with("//"));
+    if get_cookie(&headers, UNDO_COOKIE).is_some() {
+        new_cookies.push(format!("{UNDO_COOKIE}=; Path=/; Max-Age=0"));
+    }
+    // An undo only makes sense next to its own message.
+    let undo = undo.filter(|_| flash.is_some());
 
     let datefmt = user
         .as_ref()
@@ -858,6 +901,7 @@ pub async fn context_middleware(
         bearer,
         api_token,
         flash,
+        undo,
         cookies: Mutex::new(new_cookies),
         location: (AtomicI32::new(0), AtomicI32::new(0)),
         headers,
@@ -968,7 +1012,12 @@ pub async fn context_middleware(
             let bytes = axum::body::to_bytes(body, usize::MAX)
                 .await
                 .unwrap_or_default();
-            if parts.status == StatusCode::OK && ctx.guest_cacheable.load(Ordering::Relaxed) {
+            // The page is buffered anyway (the CSRF slot must be filled), but very large ones
+            // are not worth keeping: they would evict many small pages from a weighted cache.
+            if parts.status == StatusCode::OK
+                && ctx.guest_cacheable.load(Ordering::Relaxed)
+                && bytes.len() <= GUEST_PAGE_CACHE_MAX
+            {
                 app.page_cache.put(
                     key.clone(),
                     crate::pagecache::Entry {

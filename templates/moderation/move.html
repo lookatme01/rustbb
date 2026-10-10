@@ -3,7 +3,7 @@
 {% block content %}
 <form method="post" action="/moderation/move" class="box">{{ m.csrf_field() }}
   {% for t in tids %}<input type="hidden" name="tids" value="{{ t }}">{% endfor %}
-  <div class="box-head"><h2>Move or copy {{ tids|length }} thread{{ '' if tids|length == 1 else 's' }}</h2></div>
+  <div class="box-head"><h2>Move or copy {{ tids|length }} {{ tids|length|plural("thread","threads") }}</h2></div>
   <div class="form-row"><label for="target">Destination forum</label><select id="target" name="target">{% for f in forums %}<option value="{{ f[0] }}"{% if f[0] == fid %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select></div>
   <div class="form-row"><span class="label"><strong>Method</strong></span><div class="checks">
     <label><input type="radio" name="method" value="move" checked> Move</label>

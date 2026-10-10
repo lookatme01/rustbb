@@ -5,7 +5,7 @@
   <div class="box-head"><h2>Confirm your password</h2></div>
   <div class="box-body"><p class="small muted">For security, please re-enter your password to access the Admin CP. You won't be asked again for an hour.</p>{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}</div>
   <div class="form-row"><label for="pw">Password</label><input id="pw" type="password" name="password" autocomplete="current-password" required autofocus></div>
-  {% if needs_2fa %}<div class="form-row"><label for="code">Authentication code</label><input id="code" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>{% endif %}
+  {% if needs_2fa %}<div class="form-row"><label for="code">Authentication code</label><input id="code" type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>{% endif %}
   <div class="box-foot"><button class="btn" type="submit">Continue to the Admin CP</button></div>
 </form>
 {% endblock %}
