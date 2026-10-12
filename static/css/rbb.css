@@ -1323,7 +1323,7 @@ a.inbox-row:hover { background: var(--surface-2); text-decoration: none; }
 .convo:has(input:checked) { background: var(--brand-wash); }
 .convo .status { color: var(--faint); }
 .convo-who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--text); font-weight: var(--w-label); color: var(--ink); }
-.convo-who > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-who > :first-child { min-width: 0; overflow-x: clip; text-overflow: ellipsis; white-space: nowrap; padding-right: .15em; }
 .convo-who a { position: relative; z-index: 1; }
 .convo-subject { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--soft); }
 .convo-subject a::after { content: ""; position: absolute; inset: 0; }
@@ -1331,7 +1331,7 @@ a.inbox-row:hover { background: var(--surface-2); text-decoration: none; }
 .convo.unread .convo-subject { color: var(--ink); font-weight: var(--w-label); }
 .convo-when { align-self: start; padding-top: 2px; font-size: var(--text-xs); color: var(--soft); white-space: nowrap; }
 .convo-state { font-size: var(--text-2xs); color: var(--faint); }
-.convo input[type=checkbox] { position: relative; z-index: 1; justify-self: center; }
+.convo input[type=checkbox], .convo > .hit { position: relative; z-index: 1; justify-self: center; }
 .convo .pgp-flag { margin: 0; }
 .convos .empty { padding: 48px 24px; }
 .bulk { display: none; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--rule); background: var(--brand-wash); }
@@ -1639,7 +1639,12 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .reply-bar { padding: 12px; }
   .calendar th { padding: 8px 2px; }
   .calendar td { height: 60px; padding: 4px; }
-  .calendar .event { font-size: 11px; padding: 1px 5px; }
+  /* Cells are too narrow for event names: the whole day opens its day view and a dot marks events. */
+  .calendar td { position: relative; }
+  .calendar a.daynum::after { content: ""; position: absolute; inset: 0; }
+  .calendar a.wk { position: relative; z-index: 1; }
+  .calendar .event { display: none; }
+  .calendar td:has(.event:not(.small))::after { content: ""; position: absolute; left: 50%; bottom: 10px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--brand); pointer-events: none; }
   .dow-long { display: none; }
   .dow-short { display: inline; }
   .devbar-route { max-width: 100%; margin-left: 0; }
@@ -1757,7 +1762,7 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
 .stat b a, .kv a { display: inline-block; min-width: var(--tap); }
 .stat b a { padding-block: 4px; margin-block: -4px; }
 .icon-choices label { min-width: var(--tap); justify-content: center; }
-.footer-links a { padding-inline: 8px; margin-inline: -8px; }
+.footer-links a { min-width: var(--tap); justify-content: center; padding-inline: 8px; margin-inline: -8px; }
 .thread-stats a { min-width: var(--tap); min-height: var(--tap); justify-content: center; margin-block: -6px; }
 a.award.compact, table.grid td a.award { border: 11px solid transparent; background-clip: padding-box; margin: -11px; }
 .awards:has(a.award.compact) { gap: 4px 26px; margin-inline: 11px; }
@@ -1786,6 +1791,17 @@ table.grid td.num a:not(.btn) { display: inline-block; min-width: var(--tap); pa
 p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-block: -12px; }
 .thread-title > a.subject { padding-block: 11px; margin-block: -11px; }
 .inbox-who > a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+.inbox-title > a, .acp-watch-text > a { padding-block: 12px; margin-block: -12px; }
+.box-head .right > a:only-child, .card-head .right > a:only-child, .mf-filters a { justify-content: center; min-width: var(--tap); }
+.box-head .right > a:only-child, .card-head .right > a:only-child { display: inline-flex; }
+.convo-who a, .convo-head .who b > a, .week-events a { padding-block: 12px; margin-block: -12px; }
+.post-facts dd > a, .team-list td > a { display: inline-block; min-width: var(--tap); }
+.box-sub.cluster > a, .thread-title > a.chip { min-width: var(--tap); justify-content: center; }
+.box-body details > summary { padding-block: 11px; cursor: pointer; }
+/* Related threads: the whole row opens the thread; the forum link sits above it. */
+.related .row { position: relative; }
+.related .row > a:first-child::after { content: ""; position: absolute; inset: 0; }
+.related .row .small a { position: relative; z-index: 1; }
 
 /* CP navigation and records reflow instead of requiring sideways reading. */
 .cp-layout > *, .cp-content .form-row > * { min-width: 0; }
@@ -1802,7 +1818,7 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
 /* Matrix headers keep whole words; the .scroll-x wrapper scrolls if the table still overflows. */
 .cp-content table.perm-matrix th, .cp-content table.perm-matrix td { overflow-wrap: break-word; }
 @media (max-width: 760px) {
-  .cp-content .cp-table-cards td.num a:not(.btn) { text-align: left; min-width: 0; }
+  .cp-content .cp-table-cards td.num a:not(.btn) { text-align: left; }
 }
 @media (max-width: 560px) {
   .cluster > input.grow.minw-170 { flex: 1 1 100%; }

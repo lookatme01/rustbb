@@ -19,7 +19,7 @@
         <span class="convo-subject">{% if unread %}<span class="sr-only">Unread: </span>{% endif %}<a href="/pm/read/{{ p.pmid }}">{{ p.subject }}</a>{% if p.status == 3 %} <span class="convo-state">· replied</span>{% elif p.status == 4 %} <span class="convo-state">· forwarded</span>{% endif %}</span>
       </div>
       <span class="convo-when">{{ p.dateline|date }}</span>
-      <input type="checkbox" name="pmids" value="{{ p.pmid }}" aria-label="Select “{{ p.subject }}”">
+      <label class="hit"><input type="checkbox" name="pmids" value="{{ p.pmid }}" aria-label="Select “{{ p.subject }}”"></label>
     </li>
   {% else %}
     <li class="empty">{% if search %}No messages match “{{ search }}”.{% elif folder == 1 %}<strong>Your inbox is empty</strong><br><span class="small">New private messages will show up here.</span><br><a class="btn btn-sm" href="/pm/send">Compose message</a>{% else %}There are no messages in this folder.{% endif %}</li>
