@@ -56,6 +56,13 @@
       if (e.key !== "Escape") return;
       menus().forEach((d) => { d.open = false; if (d.contains(document.activeElement)) $("summary", d).focus(); });
     });
+    // Menus hang from their button's right edge; when the button sits at the left (wrapped on a phone), hang from its left instead.
+    $$("details.popmenu").forEach((d) => d.addEventListener("toggle", () => {
+      const menu = $(".menu", d);
+      if (!d.open || !menu) return;
+      d.classList.remove("start");
+      if (menu.getBoundingClientRect().left < 8) d.classList.add("start");
+    }));
 
     // Side navigation: mark the link for the current page when the server didn't.
     $$(".sidenav").forEach((nav) => {
