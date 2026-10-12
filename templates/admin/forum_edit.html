@@ -13,7 +13,7 @@
   <div class="form-row"><label for="linkto">Redirect link</label><div><input id="linkto" type="url" name="linkto" value="{{ f.linkto if f else '' }}"><span class="help">Makes this a link to another site instead of a forum.</span></div></div>
   <div class="form-row"><span class="label"><strong>Access</strong></span><div class="checks">{{ yn('active', 'Active (visible)', not f or f.active) }}{{ yn('open', 'Open for new posts', not f or f.open) }}{{ yn('showinjump', 'Show in forum jump', not f or f.showinjump) }}</div></div>
   <div class="form-row"><label for="password">Forum password</label><div><input id="password" type="text" name="password" placeholder="{{ '(set — leave empty to keep)' if password_set else 'None' }}">{% if password_set %}<label class="check"><input type="checkbox" name="clearpassword" value="1"> Remove password</label>{% endif %}</div></div>
-  <div class="form-row"><span class="label"><strong>Posting</strong></span><div class="checks">
+  <div class="form-row"><span class="label"><strong>Posting</strong></span><div class="checks cols">
     {{ yn('allowmycode', 'Allow MyCode', not f or f.allowmycode) }}{{ yn('allowsmilies', 'Allow smilies', not f or f.allowsmilies) }}{{ yn('allowimgcode', 'Allow [img]', not f or f.allowimgcode) }}
     {{ yn('allowvideocode', 'Allow [video]', not f or f.allowvideocode) }}{{ yn('allowhtml', 'Allow HTML (sanitized)', f and f.allowhtml) }}{{ yn('allowpicons', 'Allow post icons', not f or f.allowpicons) }}
     {{ yn('allowtratings', 'Allow thread ratings', not f or f.allowtratings) }}{{ yn('usepostcounts', 'Posts count towards post count', not f or f.usepostcounts) }}{{ yn('usethreadcounts', 'Threads count towards thread count', not f or f.usethreadcounts) }}
@@ -30,11 +30,11 @@
     <input type="text" name="rulestitle" aria-label="Rules title" value="{{ f.rulestitle if f else '' }}" placeholder="Rules title">
     <textarea name="rules" rows="4" aria-label="Forum rules" placeholder="Rules (MyCode)">{{ f.rules if f else '' }}</textarea>
   </div></div>
-  <div class="box-foot actions flush"><button class="btn" type="submit">Save forum</button></div>
+  <div class="box-foot"><button class="btn" type="submit">Save forum</button></div>
 </form>
 {% if f %}
 <form method="post" action="/admin/forums/delete" class="box js-confirm" data-confirm="Delete this forum, all subforums and ALL their threads and posts? This cannot be undone.">{{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ f.fid }}">
-  <div class="box-head"><h2>Delete forum</h2></div><div class="box-body actions flush"><span class="small muted">Deletes this forum, its subforums and all of their content.</span><button class="btn danger small">Delete forum</button></div>
+  <div class="box-head"><h2>Delete forum</h2><span class="desc">Deletes this forum, its subforums and all of their content.</span></div><div class="box-foot"><button class="btn btn-danger">Delete forum</button></div>
 </form>
 {% endif %}
 {% endblock %}

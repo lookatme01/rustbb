@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
-<div class="actions"><a class="btn secondary small" href="/admin/users/{{ user.uid }}">Back to {{ user.username }}</a></div>
+<div class="actions"><a class="btn btn-ghost btn-sm" href="/admin/users/{{ user.uid }}">Back to {{ user.username }}</a></div>
 <section class="box">
   <div class="box-head"><h2>Account activity for {{ user.username }}</h2>
     <nav class="seg right" aria-label="Filter events">

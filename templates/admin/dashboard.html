@@ -19,7 +19,7 @@
   <a class="mf-tile{% if failed_tasks %} hot{% else %} calm{% endif %}" href="/admin/tools/tasks"><b>{{ failed_tasks|num }}</b><span>Failed {{ failed_tasks|plural("task","tasks") }}</span><small>In the last 24 hours</small></a>
 </div>
 <div class="two-col">
-<section class="box"><div class="box-head"><h2>Members to watch</h2><a class="right" href="/admin/users?flag=restricted">All flagged</a></div>
+<section class="box"><div class="box-head"><h2>Members to watch</h2><span class="right"><a href="/admin/users?flag=restricted">All flagged</a></span></div>
 {% for w in watch %}<div class="acp-watch">{{ m.face(w.avatar, w.username, w.uid, 32) }}<div class="acp-watch-text"><a href="/admin/users/{{ w.uid }}">{{ w.formatted|safe }}</a><span class="small muted">active {{ w.lastactive|date }}</span></div>{{ mf.flags(w.flags, true) }}</div>
 {% else %}<p class="empty">Nobody needs a closer look right now.</p>{% endfor %}
 </section>
@@ -35,7 +35,7 @@
 </section>
 </div>
 <div class="two-col">
-<section class="box"><div class="box-head"><h2>Recent admin actions</h2><a class="right" href="/admin/tools/adminlog">All</a></div>
+<section class="box"><div class="box-head"><h2>Recent admin actions</h2><span class="right"><a href="/admin/tools/adminlog">All</a></span></div>
 <table class="grid"><tbody>{% for l in logs %}<tr><td class="small">{{ l[5] or 'system' }}</td><td class="small">{{ l[2] }}</td><td class="small muted">{{ l[4]|date }}</td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></section>
 <section class="box"><div class="box-head"><h2>Server</h2></div><div class="kv">
   <div>rbb</div><div>{{ version }} <span class="muted small">up {{ uptime }}, node {{ node }}</span></div>
@@ -45,7 +45,5 @@
   <div>Board</div><div>{% if bb.boardclosed == '1' %}<span class="flag closed">Closed</span> <a href="/admin/settings/general">open it</a>{% else %}Open{% endif %}</div>
 </div></section>
 </div>
-<div class="two-col">
-<form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6" aria-label="Your notes">{{ notes }}</textarea></div><div class="box-foot"><button class="btn small">Save notes</button></div></form>
-</div>
+<form method="post" action="/admin/notes" class="box">{{ m.csrf_field() }}<div class="box-head"><h2>Your notes</h2></div><div class="box-body"><textarea name="notes" rows="6" aria-label="Your notes">{{ notes }}</textarea></div><div class="box-foot"><button class="btn">Save notes</button></div></form>
 {% endblock %}

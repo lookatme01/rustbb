@@ -146,6 +146,8 @@ input[type=file] { font: inherit; font-size: var(--text-sm); }
 label { font-weight: var(--w-label); }
 .checks { display: flex; flex-direction: column; gap: 4px; }
 .checks label, label.check { display: flex; align-items: center; gap: 10px; min-height: var(--tap); font-weight: 400; cursor: pointer; }
+/* Opt-in two-column flow for long checkbox groups. */
+.checks.cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); column-gap: 16px; row-gap: 0; }
 .form-row { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; gap: 8px 24px; padding: 18px var(--box-pad); border-bottom: 1px solid var(--rule); }
 .form-row:last-child { border-bottom: 0; }
 .form-row > label, .form-row > .label { padding-top: 12px; }
@@ -1155,6 +1157,8 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 .mf-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 16px 18px; }
 .mf-actions .btn, .mf-actions form .btn { width: 100%; }
 .mf-actions form { margin: 0; }
+/* The two-column grid leaves about 100px per button, so long labels wrap rather than touch the edges. */
+.mf-actions .btn { padding-inline: 10px; white-space: normal; height: auto; min-height: var(--tap); line-height: 1.25; text-align: center; }
 
 /* A small panel opened by a button (native popover: works without script). */
 .mf-pop { margin: auto; padding: 18px; width: min(340px, calc(100vw - 32px)); border: 1px solid var(--rule); border-radius: var(--r-inner); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
@@ -1792,6 +1796,17 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
 .cp-cell-label { display: none; }
 .cp-requirement { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .cp-requirement > label { flex: 1 1 170px; }
+.form-row .cp-requirement select { width: 76px; flex: none; }
+.form-row .cp-requirement input[type=number] { flex: none; }
+.form-row > .label { font-weight: var(--w-label); }
+/* Matrix headers keep whole words; the .scroll-x wrapper scrolls if the table still overflows. */
+.cp-content table.perm-matrix th, .cp-content table.perm-matrix td { overflow-wrap: break-word; }
+@media (max-width: 760px) {
+  .cp-content .cp-table-cards td.num a:not(.btn) { text-align: left; min-width: 0; }
+}
+@media (max-width: 560px) {
+  .cluster > input.grow.minw-170 { flex: 1 1 100%; }
+}
 
 /* The CP menu folds into a disclosure exactly where Ink's sidebar layouts collapse (980px). */
 @media (max-width: 980px) {

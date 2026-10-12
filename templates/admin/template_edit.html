@@ -1,11 +1,14 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
-{% if error %}<div class="notice bad"><strong>The template has a syntax error and was not saved:</strong><pre class="pre-wrap mt-6">{{ error }}</pre></div>{% endif %}
+{% if error %}<div class="notice bad" role="alert"><strong>The template has a syntax error and was not saved:</strong><pre class="pre-wrap mt-6">{{ error }}</pre></div>{% endif %}
 <form method="post" action="/admin/themes/{{ th.tid }}/template" class="box">{{ m.csrf_field() }}<input type="hidden" name="name" value="{{ name }}">
-  <div class="box-head"><h2><code>{{ name }}</code> — {{ th.name }}</h2><a class="right" href="/admin/themes/{{ th.tid }}/templates">All templates</a></div>
+  <div class="box-head"><h2><code>{{ name }}</code> — {{ th.name }}</h2><span class="right"><a href="/admin/themes/{{ th.tid }}/templates">All templates</a></span></div>
   <div class="box-body"><textarea name="template" rows="30" aria-label="Template source" class="code-input pre" spellcheck="false">{{ source }}</textarea></div>
-  <div class="box-foot actions flush"><button class="btn">Save template</button></div>
+  <div class="box-foot"><button class="btn">Save template</button></div>
 </form>
-{% if own %}<form method="post" action="/admin/themes/{{ th.tid }}/template/revert" class="js-confirm" data-confirm="Revert to the inherited/default template?">{{ m.csrf_field() }}<input type="hidden" name="name" value="{{ name }}"><button class="btn secondary small">Revert to default</button></form>{% endif %}
+{% if own %}<form method="post" action="/admin/themes/{{ th.tid }}/template/revert" class="box js-confirm" data-confirm="Revert to the inherited/default template?">{{ m.csrf_field() }}<input type="hidden" name="name" value="{{ name }}">
+  <div class="box-head"><h2>Customized template</h2><span class="desc">This theme has its own copy of this template. Reverting discards it and goes back to the inherited or default one.</span></div>
+  <div class="box-foot"><button class="btn btn-ghost">Revert to default</button></div>
+</form>{% endif %}
 {% endblock %}

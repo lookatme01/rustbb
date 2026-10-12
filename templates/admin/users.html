@@ -3,13 +3,13 @@
 {% import "member_file.html" as mf %}
 {% block acp %}
 <section class="box">
-<div class="box-head"><h2>Users <span class="muted small">{{ total|num }}</span></h2><span class="right box-head-actions"><a class="btn secondary small" href="/admin/users/merge">Merge users</a><a class="btn small" href="/admin/users/new">Add user</a></span></div>
-<form method="get" action="/admin/users" class="admin-filter acp-list-search">
+<div class="box-head"><h2>Users <span class="muted small">{{ total|num }}</span></h2><span class="right"><a class="btn btn-ghost btn-sm" href="/admin/users/merge">Merge users</a><a class="btn btn-sm" href="/admin/users/new">Add user</a></span></div>
+<form method="get" action="/admin/users" class="cluster acp-list-search">
   <input type="hidden" name="flag" value="{{ q.flag }}">
-  <input type="search" name="q" value="{{ q.q }}" placeholder="Search name, email or IP address" aria-label="Search by username, email or IP address">
+  <input class="grow minw-170" type="search" name="q" value="{{ q.q }}" placeholder="Search name, email or IP address" aria-label="Search by username, email or IP address">
   <select name="gid" aria-label="Group"><option value="0">Any group</option>{% for g in groups %}<option value="{{ g[0] }}"{% if q.gid == g[0] %} selected{% endif %}>{{ g[1] }}</option>{% endfor %}</select>
   <select name="sort" aria-label="Sort">{% for s in [('regdate','Newest'),('username','Username'),('postnum','Posts'),('lastactive','Last active'),('reputation','Reputation')] %}<option value="{{ s[0] }}"{% if q.sort == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}</select>
-  <button class="btn secondary">Search</button>
+  <button class="btn btn-ghost">Search</button>
 </form>
 <nav class="mf-filters" aria-label="Quick filters">{% for p in pills %}<a href="/admin/users?{{ qs }}&amp;flag={{ p.key }}"{% if p.key == q.flag %} aria-current="page"{% endif %}>{{ p.label }}<span class="n">{{ p.n|num }}</span></a>{% endfor %}</nav>
 <div class="acp-table-wrap">

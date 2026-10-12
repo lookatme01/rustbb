@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block acp %}
 <form method="post" action="/admin/settings/{{ group.name }}" class="box">{{ m.csrf_field() }}
-  <div class="box-head"><h2>{{ group.title }}</h2><a class="right" href="/admin/settings">All settings</a></div>
+  <div class="box-head"><h2>{{ group.title }}</h2><span class="right"><a href="/admin/settings">All settings</a></span></div>
   {% for s in items %}
   <div class="form-row"><label for="s_{{ s.name }}">{{ s.title }}{% if s.description %}<span class="help">{{ s.description }}</span>{% endif %}</label><div>
     {% if s.kind == 'yesno' %}<div class="checks row-16"><label><input type="radio" name="{{ s.name }}" value="1"{% if s.value == '1' %} checked{% endif %}> Yes</label><label><input type="radio" name="{{ s.name }}" value="0"{% if s.value != '1' %} checked{% endif %}> No</label></div>

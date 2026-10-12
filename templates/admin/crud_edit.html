@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block acp %}
 <form method="post" action="/admin/crud/{{ slug }}/save" class="box">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ id }}">
-  <div class="box-head"><h2>{{ title }}</h2><a class="right" href="/admin/crud/{{ slug }}">Back to {{ table_title }}</a></div>
+  <div class="box-head"><h2>{{ title }}</h2><span class="right"><a href="/admin/crud/{{ slug }}">Back to {{ table_title }}</a></span></div>
   {% for f in fields %}
   <div class="form-row"><label for="f_{{ f.name }}">{{ f.label }}</label><div>
     {% if f.kind == 'textarea' or f.kind == 'json' %}<textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="{{ 8 if f.kind == 'json' else 4 }}"{% if f.kind == 'json' %} class="code-input"{% endif %}>{{ f.value }}</textarea>

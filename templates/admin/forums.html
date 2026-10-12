@@ -1,9 +1,8 @@
 {% extends "admin/base.html" %}
 {% import "macros.html" as m %}
 {% block acp %}
-<div class="actions"><a class="btn small" href="/admin/forums/edit?type=c">Add category</a><a class="btn small" href="/admin/forums/edit">Add forum</a></div>
 <form method="post" action="/admin/forums/order" class="box">{{ m.csrf_field() }}
-<div class="box-head"><h2>Forums</h2></div>
+<div class="box-head"><h2>Forums</h2><span class="right"><a class="btn btn-ghost btn-sm" href="/admin/forums/edit?type=c">Add category</a><a class="btn btn-sm" href="/admin/forums/edit">Add forum</a></span></div>
 <table class="grid"><thead><tr><th>Forum</th><th class="num">Threads</th><th class="num">Posts</th><th>Order</th><th></th></tr></thead><tbody>
 {% for f in forums %}<tr>
   <td><div class="forum-tree" style="padding-left:{{ f.depth * 22 }}px">{% if f.category %}<strong>{{ f.name }}</strong> <span class="tag">category</span>{% else %}<a href="/forum/{{ f.fid }}">{{ f.name }}</a>{% endif %}
@@ -11,9 +10,9 @@
     {% if f.custom_perms %}<span class="tag" title="Custom permissions">{{ f.custom_perms }} perm overrides</span>{% endif %}{% if f.mods %}<span class="tag">{{ f.mods }} moderators</span>{% endif %}</div></td>
   <td class="num">{{ f.threads|num }}</td><td class="num">{{ f.posts|num }}</td>
   <td><input class="w-70" type="number" name="order_{{ f.fid }}" value="{{ f.disporder }}" aria-label="Display order"></td>
-  <td class="num nowrap"><a class="btn secondary small" href="/admin/forums/edit?fid={{ f.fid }}">Edit</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/permissions">Permissions</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/moderators">Moderators</a> <a class="btn secondary small" href="/admin/forums/edit?pid={{ f.fid }}">Add child</a></td>
+  <td class="num nowrap"><a class="btn btn-ghost btn-sm" href="/admin/forums/edit?fid={{ f.fid }}">Edit</a> <a class="btn btn-ghost btn-sm" href="/admin/forums/{{ f.fid }}/permissions">Permissions</a> <a class="btn btn-ghost btn-sm" href="/admin/forums/{{ f.fid }}/moderators">Moderators</a> <a class="btn btn-ghost btn-sm" href="/admin/forums/edit?pid={{ f.fid }}">Add child</a></td>
 </tr>{% endfor %}
 </tbody></table>
-<div class="box-foot"><button class="btn small">Save display order</button></div>
+<div class="box-foot"><button class="btn">Save display order</button></div>
 </form>
 {% endblock %}

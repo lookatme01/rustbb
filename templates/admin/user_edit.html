@@ -7,7 +7,7 @@
 {{ act.reasons_list(reasons) }}
 <div class="actions between">
   <span class="small muted"><a href="/admin/users">Users</a> › {{ user.username }}</span>
-  <span class="actions flush"><a class="btn secondary small" href="/user/{{ user.uid }}/posts">Posts</a>{% if lastip %}<a class="btn secondary small" href="/modcp/ipsearch?ip={{ lastip|urlenc }}">Search IP</a>{% endif %}<a class="btn secondary small" href="/admin/users/{{ user.uid }}/activity">Account activity</a></span>
+  <span class="actions flush"><a class="btn btn-ghost btn-sm" href="/user/{{ user.uid }}/posts">Posts</a>{% if lastip %}<a class="btn btn-ghost btn-sm" href="/modcp/ipsearch?ip={{ lastip|urlenc }}">Search IP</a>{% endif %}<a class="btn btn-ghost btn-sm" href="/admin/users/{{ user.uid }}/activity">Account activity</a></span>
 </div>
 {% if user.is_system %}<div class="notice">This is the built-in System account. It never signs in and cannot be banned, deleted or merged; its email, password and groups are fixed. You can change its name, title, signature and avatar.</div>{% endif %}
 
@@ -16,26 +16,26 @@
 
   <div class="mf-col">
     {% set identity = mf.signals|selectattr("group", "equalto", "identity")|list %}
-    {% set email = mf.signals|selectattr("group", "equalto", "email")|list %}
+    {% set sig_email = mf.signals|selectattr("group", "equalto", "email")|list %}
     {% set security = mf.signals|selectattr("group", "equalto", "security")|list %}
     {% set standing = mf.signals|selectattr("group", "equalto", "standing")|list %}
-    {% if standing %}<section class="box"><div class="box-head"><h2 class="mf-head">Standing</h2></div>{{ mfm.checks(standing) }}</section>{% endif %}
-    <section class="box"><div class="box-head"><h2 class="mf-head">Identity</h2></div>{{ mfm.checks(identity) }}</section>
-    {% if email %}<section class="box"><div class="box-head"><h2 class="mf-head">Email</h2><a class="right" href="/admin/tools/maillogs">Mail log</a></div>{{ mfm.checks(email) }}
-      <form method="post" action="/admin/users/{{ user.uid }}/security" class="box-foot">{{ m.csrf_field() }}<input type="hidden" name="sendreset" value="1"><button class="btn secondary small">Send a password reset link</button> <a class="btn ghost small" href="?tab=details#email">Change email</a></form>
+    {% if standing %}<section class="box"><div class="box-head"><h2>Standing</h2></div>{{ mfm.checks(standing) }}</section>{% endif %}
+    <section class="box"><div class="box-head"><h2>Identity</h2></div>{{ mfm.checks(identity) }}</section>
+    {% if sig_email %}<section class="box"><div class="box-head"><h2>Email</h2><span class="right"><a href="/admin/tools/maillogs">Mail log</a></span></div>{{ mfm.checks(sig_email) }}
+      <form method="post" action="/admin/users/{{ user.uid }}/security" class="box-foot">{{ m.csrf_field() }}<input type="hidden" name="sendreset" value="1"><button class="btn btn-ghost btn-sm">Send a password reset link</button> <a class="btn btn-quiet btn-sm" href="?tab=details#email">Change email</a></form>
     </section>{% endif %}
-    {% if security %}<section class="box"><div class="box-head"><h2 class="mf-head">Security</h2><a class="right" href="?tab=ips">Sign-ins</a></div>{{ mfm.checks(security) }}</section>{% endif %}
+    {% if security %}<section class="box"><div class="box-head"><h2>Security</h2><span class="right"><a href="?tab=ips">Sign-ins</a></span></div>{{ mfm.checks(security) }}</section>{% endif %}
   </div>
 
   <div class="mf-col">
     {% if not user.is_system %}
     <section class="box">
-      <div class="box-head"><h2 class="mf-head">Actions</h2></div>
+      <div class="box-head"><h2>Actions</h2></div>
       <div class="mf-actions">
-        {% if can_warn %}<a class="btn secondary" href="/warnings/{{ user.uid }}/warn">Warn</a>{% endif %}
+        {% if can_warn %}<a class="btn btn-ghost" href="/warnings/{{ user.uid }}/warn">Warn</a>{% endif %}
         {{ act.restrict(mf, back) }}
-        <form method="post" action="/admin/users/{{ user.uid }}/security">{{ m.csrf_field() }}<input type="hidden" name="logoutall" value="1"><button class="btn secondary">Sign out everywhere</button></form>
-        {% if mf.ban %}<form method="post" action="/admin/users/{{ user.uid }}/ban">{{ m.csrf_field() }}<input type="hidden" name="lift" value="1"><button class="btn secondary">Lift ban</button></form>
+        <form method="post" action="/admin/users/{{ user.uid }}/security">{{ m.csrf_field() }}<input type="hidden" name="logoutall" value="1"><button class="btn btn-ghost">Sign out everywhere</button></form>
+        {% if mf.ban %}<form method="post" action="/admin/users/{{ user.uid }}/ban">{{ m.csrf_field() }}<input type="hidden" name="lift" value="1"><button class="btn btn-ghost">Lift ban</button></form>
         {% else %}{{ act.ban(mf, "/admin/users/" ~ user.uid ~ "/ban", back) }}{% endif %}
       </div>
       {{ act.active(mf, back, true) }}
@@ -79,7 +79,7 @@
   </form>
 
   {% else %}
-  <div class="box-body scroll-x">
+  <div class="scroll-x">
     <table class="grid"><thead><tr><th>IP address</th><th>Last used</th><th>Other accounts on it</th></tr></thead><tbody>
       {% if regip %}<tr><td><a href="/modcp/ipsearch?ip={{ regip|urlenc }}">{{ regip }}</a> <span class="small muted">registration</span></td><td class="small">{{ user.regdate|date }}</td><td></td></tr>{% endif %}
       {% if lastip %}<tr><td><a href="/modcp/ipsearch?ip={{ lastip|urlenc }}">{{ lastip }}</a> <span class="small muted">last seen</span></td><td class="small">{{ user.lastactive|date }}</td><td></td></tr>{% endif %}
@@ -93,7 +93,7 @@
     <label class="check"><input type="checkbox" name="logoutall" value="1"> Sign them out everywhere</label>
     {% if has2fa %}<label class="check"><input type="checkbox" name="reset2fa" value="1"> Turn off their two-factor authentication</label>{% endif %}
     {% if passkeys %}<label class="check"><input type="checkbox" name="removepasskeys" value="1"> Remove their {{ passkeys }} {{ passkeys|plural("passkey","passkeys") }} (for a lost device)</label>{% endif %}
-    <div><button class="btn secondary small">Apply</button></div>
+    <div><button class="btn btn-ghost btn-sm">Apply</button></div>
   </form>
   {% endif %}
   {% endif %}
@@ -103,11 +103,11 @@
 <details class="box">
   <summary class="box-head pointer"><h2>Danger zone</h2><span class="right">Merge, delete or erase this account</span></summary>
   <div class="mf-danger">
-    <div><strong>Merge into another account</strong><p>Moves their posts, threads and messages to another member, then deletes this account.</p><a class="btn secondary small" href="/admin/users/merge">Merge…</a></div>
+    <div><strong>Merge into another account</strong><p>Moves their posts, threads and messages to another member, then deletes this account.</p><a class="btn btn-ghost btn-sm" href="/admin/users/merge">Merge…</a></div>
     <form method="post" action="/admin/users/{{ user.uid }}/delete" class="js-confirm" data-confirm="Delete this user permanently?">{{ m.csrf_field() }}
       <strong>Delete account</strong>
       <label class="check"><input type="checkbox" name="deletecontent" value="1"> Also delete their {{ user.threadnum|num }} {{ user.threadnum|plural("thread","threads") }} and {{ user.postnum|num }} {{ user.postnum|plural("post","posts") }}</label>
-      <div><button class="btn danger small">Delete account</button></div>
+      <div><button class="btn btn-danger btn-sm">Delete account</button></div>
     </form>
     <form method="post" action="/admin/users/{{ user.uid }}/erase">{{ m.csrf_field() }}
       <strong>Erase personal data</strong>
@@ -115,7 +115,7 @@
       <label class="check"><input type="checkbox" name="keepposts" value="1" checked> Keep their posts (shown as the deleted-member name)</label>
       <input type="text" name="reference" maxlength="200" placeholder="Reference, e.g. request date or ticket (optional)" aria-label="Reference">
       <input type="text" name="confirm" required autocomplete="off" placeholder="Type {{ user.username }} to confirm" aria-label="Confirm username">
-      <div><button class="btn danger small">Erase personal data</button></div>
+      <div><button class="btn btn-danger btn-sm">Erase personal data</button></div>
     </form>
   </div>
 </details>
