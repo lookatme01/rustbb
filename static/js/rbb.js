@@ -100,7 +100,7 @@
     });
 
     // CP menus expand vertically on phones. Reopen them when returning to desktop.
-    const cpMobile = window.matchMedia("(max-width: 860px)");
+    const cpMobile = window.matchMedia("(max-width: 980px)");
     $$(".cp-navigation").forEach((menu) => {
       const active = $("a.active, a[aria-current]", menu);
       if (active) $(".cp-current", menu).textContent = active.textContent.trim();

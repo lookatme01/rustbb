@@ -107,6 +107,7 @@
   --tap: 44px;
   --page: 1280px;
   --gutter: 32px;
+  --box-pad: 24px; /* side inset shared by card heads, bodies, foots, form rows and table edges */
   --header-h: 68px;
 
   /* ---- motion */
@@ -158,5 +159,5 @@
 }
 
 @media (max-width: 760px) {
-  :root { --gutter: 16px; --header-h: 60px; --h1: 32px; --h1-page: 30px; }
+  :root { --gutter: 16px; --box-pad: 18px; --header-h: 60px; --h1: 32px; --h1-page: 30px; }
 }
