@@ -1503,7 +1503,7 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
 .brand-pick { display: grid; justify-items: start; gap: 8px; }
 .brand-pick input[type=color] { width: 64px; height: var(--tap); padding: 3px; border-radius: var(--r-ctl); cursor: pointer; }
 .brand-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border-radius: var(--r-inner); background: var(--surface-2); border: 1px solid var(--rule); }
-.banner-thumb { width: 320px; max-width: 100%; margin-top: 8px; aspect-ratio: 4 / 1; border-radius: var(--r-ctl); background: center / cover no-repeat; box-shadow: var(--shadow); }
+.banner-thumb { display: block; object-fit: cover; width: 320px; max-width: 100%; margin-top: 8px; aspect-ratio: 4 / 1; border-radius: var(--r-ctl); background: center / cover no-repeat; box-shadow: var(--shadow); }
 
 /* ================================================================== admin debug bar */
 .devbar { border-top: 1px solid var(--rule); background: var(--surface); color: var(--soft); font: 12px/1.45 var(--font-code); }

@@ -223,9 +223,11 @@ pub async fn seed(db: &PgPool, users: i64, threads: i64, posts: i64) -> anyhow::
     println!("computing thread counters…");
     sqlx::query(
         "UPDATE threads t SET replies = s.c - 1, firstpost = s.fp, lastpost = s.lp,
-            lastposter = (SELECT username FROM posts WHERE pid = s.lpid), lastposteruid = (SELECT uid FROM posts WHERE pid = s.lpid)
-         FROM (SELECT tid, COUNT(*) c, MIN(pid) fp, MAX(dateline) lp, (array_agg(pid ORDER BY dateline DESC, pid DESC))[1] lpid FROM posts WHERE tid BETWEEN $1 AND $2 GROUP BY tid) s
-         WHERE t.tid = s.tid",
+            lastposter = last.username, lastposteruid = last.uid
+         FROM (SELECT tid, COUNT(*) c, MIN(pid) fp, MAX(dateline) lp FROM posts WHERE tid BETWEEN $1 AND $2 GROUP BY tid) s
+         CROSS JOIN LATERAL (
+             SELECT username, uid FROM posts WHERE tid = s.tid ORDER BY dateline DESC, pid DESC LIMIT 1
+         ) last WHERE t.tid = s.tid",
     )
     .bind(tmin)
     .bind(tmax)

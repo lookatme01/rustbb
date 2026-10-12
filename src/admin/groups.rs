@@ -206,7 +206,7 @@ pub async fn delete(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Respo
         .bind(gid)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE users SET additionalgroups = array_remove(additionalgroups, $1), displaygroup = CASE WHEN displaygroup = $1 THEN 0 ELSE displaygroup END WHERE $1 = ANY(additionalgroups) OR displaygroup = $1").bind(gid).execute(&mut *tx).await?;
+    sqlx::query("UPDATE users SET additionalgroups = array_remove(additionalgroups, $1), displaygroup = CASE WHEN displaygroup = $1 THEN 0 ELSE displaygroup END WHERE additionalgroups @> ARRAY[$1]::int[] OR displaygroup = $1").bind(gid).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM moderators WHERE isgroup AND id = $1")
         .bind(gid)
         .execute(&mut *tx)

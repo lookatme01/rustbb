@@ -289,7 +289,20 @@ pub async fn forumdisplay(
                 forum.defaultsortorder.clone()
             }
         });
-    let datecut = q.datecut.unwrap_or(forum.defaultdatecut as i64);
+    // Only known sort keys reach the pagination links; anything else sorts as `lastpost` anyway.
+    let sortby = if matches!(
+        sortby.as_str(),
+        "subject" | "starter" | "started" | "replies" | "views" | "rating" | "lastpost"
+    ) {
+        sortby
+    } else {
+        "lastpost".to_string()
+    };
+    let order = if order == "asc" { "asc" } else { "desc" };
+    let datecut = q
+        .datecut
+        .unwrap_or(forum.defaultdatecut as i64)
+        .clamp(0, 100_000);
 
     if !forum.is_category() && fperms.canviewthreads {
         let tpp = ctx

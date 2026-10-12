@@ -110,14 +110,19 @@ pub async fn install(
     bbname: &str,
     bburl: &str,
 ) -> anyhow::Result<()> {
+    let t = now();
+    let mut tx = db.begin().await?;
+    // Two installs racing would both pass the check below; the lock makes the second one wait
+    // for the first to commit and then see its groups.
+    sqlx::query("SELECT pg_advisory_xact_lock(424245)")
+        .execute(&mut *tx)
+        .await?;
     let exists: Option<i32> = sqlx::query_scalar("SELECT gid FROM usergroups LIMIT 1")
-        .fetch_optional(db)
+        .fetch_optional(&mut *tx)
         .await?;
     if exists.is_some() {
         anyhow::bail!("the board is already installed");
     }
-    let t = now();
-    let mut tx = db.begin().await?;
     let groups: Vec<(i32, i16, &str, &str, &str, &str, i16, bool, GroupPerms)> = vec![
         (
             1,

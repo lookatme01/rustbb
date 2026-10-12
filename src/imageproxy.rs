@@ -423,10 +423,15 @@ fn image_response(bytes: Bytes, kind: &'static str) -> Response {
 fn refuse(status: StatusCode, result: &'static str) -> Response {
     crate::infra::metrics::counter_with("rbb_imageproxy_requests_total", &[("result", result)], 1);
     let mut r = status.into_response();
-    r.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=300"),
-    );
+    // Verdicts about the URL are cacheable; a busy or unreachable upstream is transient and must
+    // not stick in a shared cache.
+    let cache = if status.is_server_error() {
+        "no-store"
+    } else {
+        "public, max-age=300"
+    };
+    r.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
     r
 }
 

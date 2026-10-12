@@ -209,31 +209,25 @@ pub async fn forum_subscribers(
     let cache = app.cache();
     let s = &cache.settings;
     let forum_name = cache.forum(fid).map(|f| f.name.clone()).unwrap_or_default();
-    let subs: Vec<(i32, String, String)> = sqlx::query_as(
-        "SELECT u.uid, u.email, u.username FROM forumsubscriptions fs JOIN users u ON u.uid = fs.uid WHERE fs.fid = $1 AND fs.uid <> $2",
+    let subs: Vec<(i32, String, String, i32, Vec<i32>)> = sqlx::query_as(
+        "SELECT u.uid, u.email, u.username, u.usergroup, u.additionalgroups
+         FROM forumsubscriptions fs JOIN users u ON u.uid = fs.uid WHERE fs.fid = $1 AND fs.uid <> $2",
     )
     .bind(fid)
     .bind(poster_uid)
     .fetch_all(&app.db)
     .await?;
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
-    for (uid, email, username) in subs {
-        // Respect current permissions of the subscriber.
-        let groups: Option<(i32, Vec<i32>)> =
-            sqlx::query_as("SELECT usergroup, additionalgroups FROM users WHERE uid = $1")
-                .bind(uid)
-                .fetch_optional(&app.db)
-                .await?;
-        if let Some((g, extra)) = groups {
-            let mut all = vec![g];
-            all.extend(extra);
-            let access = crate::domain::access::member(&cache, uid, &all);
-            if !access
-                .forum(fid)
-                .is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
-            {
-                continue;
-            }
+    for (uid, email, username, g, extra) in subs {
+        // Load current permissions with the subscription rows, avoiding a query per member.
+        let mut all = vec![g];
+        all.extend(extra);
+        let access = crate::domain::access::member(&cache, uid, &all);
+        if !access
+            .forum(fid)
+            .is_ok_and(|a| a.threads == crate::domain::access::Threads::All)
+        {
+            continue;
         }
         deliver_alert(app, Some(&d.key("alert:subscribed_forum", uid)), uid, poster_uid, "subscribed_forum", tid, serde_json::json!({"tid": tid, "subject": subject, "poster": poster, "forum": forum_name})).await?;
         let body = format!(
@@ -266,17 +260,18 @@ pub async fn mentions_and_quotes(
     let cache = app.cache();
     let mut notified: Vec<i32> = vec![poster_uid];
     let mut candidates: Vec<(i32, &str)> = vec![];
-    for qpid in crate::parser::extract_quoted_pids(message) {
-        let quoted: Option<i32> = sqlx::query_scalar("SELECT uid FROM posts WHERE pid = $1")
-            .bind(qpid)
-            .fetch_optional(&app.db)
-            .await?;
-        if let Some(q) = quoted
-            && q > 0
-            && !notified.contains(&q)
-        {
-            notified.push(q);
-            candidates.push((q, "quoted"));
+    let quoted_pids = crate::parser::extract_quoted_pids(message);
+    if !quoted_pids.is_empty() {
+        let quoted: Vec<i32> =
+            sqlx::query_scalar("SELECT uid FROM posts WHERE pid = ANY($1) ORDER BY pid")
+                .bind(&quoted_pids)
+                .fetch_all(&app.db)
+                .await?;
+        for q in quoted {
+            if q > 0 && !notified.contains(&q) {
+                notified.push(q);
+                candidates.push((q, "quoted"));
+            }
         }
     }
     if cache.settings.bool("enablementions") {

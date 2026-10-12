@@ -186,18 +186,22 @@ pub async fn recount_run(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<
                         "users" => crate::ops::rebuild_user_counters(&app).await?,
                         "all" | "threads" => crate::ops::rebuild_all_counters(&app).await?,
                         "reputation" => {
-                            sqlx::query("UPDATE users u SET reputation = COALESCE((SELECT SUM(reputation) FROM reputation r WHERE r.uid = u.uid), 0)").execute(&app.db).await?;
+                            sqlx::query("UPDATE users u SET reputation = COALESCE(r.total, 0) FROM users u2 LEFT JOIN (SELECT uid, SUM(reputation)::int AS total FROM reputation GROUP BY uid) r ON r.uid = u2.uid WHERE u.uid = u2.uid").execute(&app.db).await?;
                         }
                         "pms" => {
                             sqlx::query(
-                                "UPDATE users u SET totalpms = (SELECT COUNT(*) FROM privatemessages p WHERE p.uid = u.uid),
-                                    unreadpms = (SELECT COUNT(*) FROM privatemessages p WHERE p.uid = u.uid AND p.status = 0 AND p.folder NOT IN (2,3))",
+                                "UPDATE users u SET totalpms = COALESCE(p.total, 0), unreadpms = COALESCE(p.unread, 0)
+                                 FROM users u2 LEFT JOIN (
+                                     SELECT uid, COUNT(*)::int AS total,
+                                            COUNT(*) FILTER (WHERE status = 0 AND folder NOT IN (2,3))::int AS unread
+                                     FROM privatemessages GROUP BY uid
+                                 ) p ON p.uid = u2.uid WHERE u.uid = u2.uid",
                             )
                             .execute(&app.db)
                             .await?;
                         }
                         "attachments" => {
-                            sqlx::query("UPDATE threads t SET attachmentcount = (SELECT COUNT(*) FROM attachments a JOIN posts p ON p.pid = a.pid WHERE p.tid = t.tid AND p.visible = 1 AND a.visible)").execute(&app.db).await?;
+                            sqlx::query("UPDATE threads t SET attachmentcount = COALESCE(a.n, 0) FROM threads t2 LEFT JOIN (SELECT p.tid, COUNT(*)::int AS n FROM attachments a JOIN posts p ON p.pid = a.pid WHERE p.visible = 1 AND a.visible GROUP BY p.tid) a ON a.tid = t2.tid WHERE t.tid = t2.tid").execute(&app.db).await?;
                         }
                         _ => {}
                     }

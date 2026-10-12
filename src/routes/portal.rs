@@ -26,11 +26,19 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
             .filter(|f| ann_fids.contains(f))
             .collect()
     };
-    let threads: Vec<Thread> = sqlx::query_as(&format!("SELECT {} FROM threads WHERE fid = ANY($1) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY dateline DESC LIMIT $2", crate::models::THREAD_COLUMNS))
-        .bind(&ann_forums)
-        .bind(s.int("portal_numannouncements").max(1))
-        .fetch_all(&ctx.app.db)
-        .await?;
+    // Bound each forum scan before merging: the outer top N needs at most N per forum.
+    let threads: Vec<Thread> = sqlx::query_as(&format!(
+        "SELECT {} FROM unnest($1::int[]) AS f(fid)
+         CROSS JOIN LATERAL (
+             SELECT * FROM threads WHERE fid = f.fid AND visible = 1 AND closed NOT LIKE 'moved|%'
+             ORDER BY dateline DESC, tid DESC LIMIT $2
+         ) t ORDER BY t.dateline DESC, t.tid DESC LIMIT $2",
+        crate::models::THREAD_COLUMNS_T.as_str()
+    ))
+    .bind(&ann_forums)
+    .bind(s.int("portal_numannouncements").max(1))
+    .fetch_all(&ctx.app.db)
+    .await?;
     let pids: Vec<i32> = threads.iter().map(|t| t.firstpost).collect();
     let posts: HashMap<i32, Post> = sqlx::query_as::<_, Post>(&format!(
         "SELECT {POST_COLUMNS} FROM posts WHERE pid = ANY($1)"

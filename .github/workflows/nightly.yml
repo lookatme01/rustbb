@@ -75,6 +75,9 @@ jobs:
         run: |
           RBB_ADMIN_PASSWORD=ci-admin-password ./target/release/rbb install --admin-email ci@example.com
           ./target/release/rbb seed --users 5000 --threads 20000 --posts 200000
+          # Every request comes from 127.0.0.1, so the per-IP limit (600/min) would turn the
+          # route budgets into a test of the rate limiter. Overload is still checked below.
+          psql "$DATABASE_URL" -c "INSERT INTO settings (name, value) VALUES ('ratelimit_requests', '0') ON CONFLICT (name) DO UPDATE SET value = '0'"
       - name: Performance budgets (latency, statements, pool wait, memory, overload)
         run: |
           ./target/release/rbb serve > server.log 2>&1 &

@@ -5,7 +5,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::Calendar;
 use crate::util::now;
 use axum::extract::{Path, Query};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::Deserialize;
 
@@ -58,6 +58,8 @@ async fn cal_perms(ctx: &Ctx, cid: i32) -> AppResult<CalPerms> {
         p.bypass |= b;
         p.moderate |= m;
     }
+    // The global group permission always applies on top of any per-calendar override.
+    p.canview &= ctx.perms.canviewcalendar;
     if ctx.uid() == 0 {
         p.canadd = false;
     }
@@ -131,31 +133,52 @@ fn occurrences(ctx: &Ctx, e: &EventRow, from: NaiveDate, to: NaiveDate) -> Vec<N
         }
     };
     match kind {
-        "none" | "" => push_span(start, &mut out),
-        _ => {
-            let mut d = start;
-            let mut guard = 0;
-            while d <= to && guard < 5000 {
-                if until.map(|u| d > u).unwrap_or(false) {
-                    break;
+        "daily" | "weekly" | "monthly" | "yearly" => {
+            // Occurrence n is computed from the start date (not stepped from the previous one) so
+            // month-end dates do not drift, and the loop begins near `from` instead of at the start.
+            let nth = |n: i64| -> Option<NaiveDate> {
+                match kind {
+                    "daily" => start.checked_add_signed(Duration::try_days(n * interval)?),
+                    "weekly" => start.checked_add_signed(Duration::try_days(n * 7 * interval)?),
+                    "monthly" => start
+                        .checked_add_months(chrono::Months::new(u32::try_from(n * interval).ok()?)),
+                    _ => start.checked_add_months(chrono::Months::new(
+                        u32::try_from(n * 12 * interval).ok()?,
+                    )),
                 }
+            };
+            // Earliest occurrence that could still reach `from` (multi-day spans reach back).
+            let reach = from - Duration::days(span);
+            let mut n = match kind {
+                "daily" => (reach - start).num_days() / interval,
+                "weekly" => (reach - start).num_days() / (7 * interval),
+                _ => {
+                    let months = (reach.year() as i64 - start.year() as i64) * 12
+                        + reach.month() as i64
+                        - start.month() as i64;
+                    months
+                        / if kind == "monthly" {
+                            interval
+                        } else {
+                            12 * interval
+                        }
+                }
+            }
+            .max(0);
+            let mut guard = 0;
+            while guard < 5000
+                && let Some(d) = nth(n)
+                && d <= to
+                && !until.is_some_and(|u| d > u)
+            {
                 if d + Duration::days(span) >= from {
                     push_span(d, &mut out);
                 }
-                d = match kind {
-                    "daily" => d + Duration::days(interval),
-                    "weekly" => d + Duration::weeks(interval),
-                    "monthly" => d
-                        .checked_add_months(chrono::Months::new(interval as u32))
-                        .unwrap_or(to + Duration::days(1)),
-                    "yearly" => d
-                        .checked_add_months(chrono::Months::new(12 * interval as u32))
-                        .unwrap_or(to + Duration::days(1)),
-                    _ => to + Duration::days(1),
-                };
+                n += 1;
                 guard += 1;
             }
         }
+        _ => push_span(start, &mut out),
     }
     out
 }
@@ -249,7 +272,7 @@ pub async fn calendar_cid(
 ) -> AppResult<Response> {
     let cal = get_calendar(&ctx, cid)?;
     let perms = cal_perms(&ctx, cid).await?;
-    if !perms.canview || !ctx.perms.canviewcalendar {
+    if !perms.canview {
         return Err(AppError::no_perm());
     }
     let today = crate::util::to_local(now(), ctx.tz).date_naive();
@@ -530,6 +553,19 @@ fn build_times(ctx: &Ctx, f: &EventForm) -> AppResult<(i64, i64, bool, serde_jso
     ))
 }
 
+/// Validated event name (cut to 120 characters) and description, shared by add and edit.
+fn event_text(f: &EventForm) -> AppResult<(String, String)> {
+    if f.name.trim().is_empty() || f.message.trim().is_empty() {
+        return Err(AppError::user(
+            "Please enter an event name and description.",
+        ));
+    }
+    Ok((
+        f.name.trim().chars().take(120).collect(),
+        f.message.trim().to_string(),
+    ))
+}
+
 pub async fn add_submit(
     ctx: Ctx,
     Path(cid): Path<i32>,
@@ -540,11 +576,7 @@ pub async fn add_submit(
     if !perms.canadd {
         return Err(AppError::no_perm());
     }
-    if f.name.trim().is_empty() || f.message.trim().is_empty() {
-        return Err(AppError::user(
-            "Please enter an event name and description.",
-        ));
-    }
+    let (name, message) = event_text(&f)?;
     let (start, end, usingtime, repeats) = build_times(&ctx, &f)?;
     let visible = !cal.moderation || perms.bypass || perms.moderate || f.private;
     let eid: i32 = sqlx::query_scalar(
@@ -553,8 +585,8 @@ pub async fn add_submit(
     )
     .bind(cid)
     .bind(ctx.uid())
-    .bind(f.name.trim().chars().take(120).collect::<String>())
-    .bind(f.message.trim())
+    .bind(name)
+    .bind(message)
     .bind(visible)
     .bind(f.private)
     .bind(now())
@@ -616,15 +648,17 @@ pub async fn edit_submit(
     CsrfForm(f): CsrfForm<EventForm>,
 ) -> AppResult<Response> {
     let e = load_event(&ctx, eid).await?;
+    get_calendar(&ctx, e.cid)?;
     let perms = cal_perms(&ctx, e.cid).await?;
     if !(perms.moderate || (e.uid == ctx.uid() && ctx.uid() > 0)) {
         return Err(AppError::no_perm());
     }
+    let (name, message) = event_text(&f)?;
     let (start, end, usingtime, repeats) = build_times(&ctx, &f)?;
     sqlx::query("UPDATE events SET name = $2, description = $3, private = $4, starttime = $5, endtime = $6, usingtime = $7, ignoretimezone = $8, repeats = $9, timezone = $10 WHERE eid = $1")
         .bind(eid)
-        .bind(f.name.trim())
-        .bind(f.message.trim())
+        .bind(name)
+        .bind(message)
         .bind(f.private)
         .bind(start)
         .bind(end)
@@ -649,6 +683,7 @@ pub async fn delete(
     CsrfForm(_): CsrfForm<Empty>,
 ) -> AppResult<Response> {
     let e = load_event(&ctx, eid).await?;
+    get_calendar(&ctx, e.cid)?;
     let perms = cal_perms(&ctx, e.cid).await?;
     if !(perms.moderate || (e.uid == ctx.uid() && ctx.uid() > 0)) {
         return Err(AppError::no_perm());
@@ -669,6 +704,7 @@ pub async fn approve(
     CsrfForm(_): CsrfForm<Empty>,
 ) -> AppResult<Response> {
     let e = load_event(&ctx, eid).await?;
+    get_calendar(&ctx, e.cid)?;
     let perms = cal_perms(&ctx, e.cid).await?;
     if !perms.moderate {
         return Err(AppError::no_perm());
@@ -677,7 +713,6 @@ pub async fn approve(
         .bind(eid)
         .execute(&ctx.app.db)
         .await?;
-    let _ = Redirect::to("/");
     Ok(ctx
         .redirect(
             &format!("/calendar/event/{eid}"),

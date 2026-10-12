@@ -619,12 +619,12 @@ async function composePage(form) {
       if (!u.key) { items.push(h("li", seal("off", u.username, "No key"))); continue; }
       r.trust = await trust(u, u.key.fingerprint);
       const [label] = trustCopy[r.trust.state](u, r.trust);
-      items.push(h("li", h("a.pgp-chip-link", { href: `/pm/verify/${u.uid}`, target: "_blank", title: "Verify identity" }, seal(r.trust.state, u.username, label))));
+      items.push(h("li", h("a.pgp-chip-link", { href: `/pm/verify/${u.uid}`, target: "_blank", rel: "noopener", title: "Verify identity" }, seal(r.trust.state, u.username, label))));
     }
     for (const n of missing) items.push(h("li", seal("invalid", n, "No such member")));
     chips.replaceChildren(...items);
     const changed = recips.filter((r) => r.trust && r.trust.state === "changed");
-    warn.replaceChildren(...(changed.length ? [h("div.notice.warn", icon("shieldAlert"), ` ${changed.map((r) => r.user.username).join(", ")} ${changed.length > 1 ? "have" : "has"} a different key from before. `, h("a", { href: `/pm/verify/${changed[0].user.uid}`, target: "_blank" }, "Verify now"), " before sending anything sensitive.")] : []));
+    warn.replaceChildren(...(changed.length ? [h("div.notice.warn", icon("shieldAlert"), ` ${changed.map((r) => r.user.username).join(", ")} ${changed.length > 1 ? "have" : "has"} a different key from before. `, h("a", { href: `/pm/verify/${changed[0].user.uid}`, target: "_blank", rel: "noopener" }, "Verify now"), " before sending anything sensitive.")] : []));
   }
 
   let lookupSeq = 0;
@@ -654,7 +654,9 @@ async function composePage(form) {
     if (!tab || mode !== "encrypt" || !form.contains(tab)) return;
     e.stopPropagation();
     const ed = tab.closest(".js-editor");
-    ed.classList.add("previewing"); tab.classList.add("active"); $(".js-tab-write", ed).classList.remove("active");
+    const tabW = $(".js-tab-write", ed);
+    ed.classList.add("previewing"); tab.classList.add("active"); tab.setAttribute("aria-pressed", "true");
+    tabW.classList.remove("active"); tabW.setAttribute("aria-pressed", "false");
     core.renderMyCode(ta.value, $(".live-preview", ed));
   }, true);
 

@@ -302,6 +302,13 @@ pub async fn request_password_reset(app: &App, actor: &Actor, email: &str) -> Ap
     .await?;
     let (bbname, bburl) = board(app);
     for (uid, username, to) in users {
+        // The route limits per IP; this limits per account, so many addresses can't be used to
+        // flood one inbox, or to keep replacing its pending code (codes are hashed, so the
+        // earlier link can't be resent). Skipped quietly: the response must not say which
+        // addresses are registered, and the last mail sent stays valid.
+        if !app.throttle(&format!("lostpw-acct:{uid}"), 3, 3600).await {
+            continue;
+        }
         let code = issue_code(&mut uow, uid, "p", "", 30).await?;
         uow.audit(
             actor,

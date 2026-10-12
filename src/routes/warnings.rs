@@ -158,7 +158,7 @@ pub async fn warn_submit(
             f.custom_points
                 .min(ctx.settings().int("maxwarningpoints") as i32),
             if f.expires_days > 0 {
-                now() + f.expires_days * 86400
+                now() + f.expires_days.min(36_500) * 86400
             } else {
                 0
             },

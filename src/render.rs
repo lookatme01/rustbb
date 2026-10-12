@@ -35,7 +35,21 @@ pub fn parse_with(
     opts: &ParseOptions,
     msg: &str,
 ) -> String {
-    let mut html = Parser::new(&cache.parser, opts).parse(msg);
+    // The "Add rel=nofollow to links" setting applies to every parse; changing it bumps the
+    // parser revision so cached renders refresh.
+    let mut html = if opts.nofollow
+        && matches!(
+            cache.settings.get("linknofollow"),
+            "0" | "no" | "false" | "off"
+        ) {
+        let opts = ParseOptions {
+            nofollow: false,
+            ..opts.clone()
+        };
+        Parser::new(&cache.parser, &opts).parse(msg)
+    } else {
+        Parser::new(&cache.parser, opts).parse(msg)
+    };
     if plugins.has_hook("parse_message") {
         html = plugins.filter_string("parse_message", html);
     }

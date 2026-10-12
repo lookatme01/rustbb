@@ -238,8 +238,22 @@ pub fn paginate(total: i64, per_page: i64, page: i64, base: &str) -> Pagination 
     }
 }
 
+/// Upper bound keeps `(page - 1) * per_page` far from i64 overflow and OFFSET sanity limits.
 pub fn clamp_page(p: Option<i64>) -> i64 {
-    p.unwrap_or(1).max(1)
+    p.unwrap_or(1).clamp(1, 1_000_000)
+}
+
+/// Escape `\`, `%` and `_` so user text matches literally inside a LIKE/ILIKE pattern
+/// (Postgres' default escape character is the backslash).
+pub fn like_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Very small user-agent bot detector used for "Who's Online" spider listing.
@@ -287,6 +301,13 @@ pub fn valid_email(e: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn like_escape_is_literal() {
+        assert_eq!(like_escape(r"50%_a\b"), r"50\%\_a\\b");
+        assert_eq!(like_escape("plain"), "plain");
+        assert_eq!(clamp_page(Some(i64::MAX)), 1_000_000);
+        assert_eq!(clamp_page(Some(-4)), 1);
+    }
     #[test]
     fn relative_dates_are_short() {
         let tz = chrono_tz::UTC;
