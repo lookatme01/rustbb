@@ -2,7 +2,9 @@
 {% import "macros.html" as m %}
 {% block bodyclass %}acp{% endblock %}
 {% block content %}
-<div class="with-sidebar">
+<div class="with-sidebar cp-layout">
+  <details class="cp-navigation" open>
+    <summary><span>Admin CP menu</span><span class="cp-current small muted"></span></summary>
   <nav class="sidenav js-nav-groups" aria-label="Admin CP">
     <h3>Admin CP</h3>
     <a href="/admin"{% if acp_section == 'home' %} class="active"{% endif %}>Dashboard</a>
@@ -61,6 +63,7 @@
     <a href="/admin/promotions/logs">Promotion log</a>
     <a href="/modcp/warninglogs">Warning log</a>
   </nav>
-  <div>{% block acp %}{% endblock %}</div>
+  </details>
+  <div class="cp-content">{% block acp %}{% endblock %}</div>
 </div>
 {% endblock %}

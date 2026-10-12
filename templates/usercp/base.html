@@ -15,7 +15,9 @@
   'subs': [['subscriptions', '/usercp/subscriptions', 'Threads'], ['forumsubscriptions', '/usercp/forumsubscriptions', 'Forums']]
 } %}
 {% set hub_labels = {'profile': 'Profile', 'security': 'Sign-in and security', 'subs': 'Subscriptions'} %}
-<div class="with-sidebar">
+<div class="with-sidebar cp-layout">
+  <details class="cp-navigation" open>
+    <summary><span>Account menu</span><span class="cp-current small muted"></span></summary>
   <nav class="sidenav" aria-label="User CP">
     <h3>Your account</h3>
     <a href="/usercp"{% if hub == 'home' %} class="active" aria-current="page"{% endif %}>Overview</a>
@@ -35,7 +37,8 @@
     <a href="/usercp/export">Download my data</a>
     {% if bb.allowaccountdeletion == '1' %}<a href="/usercp/delete"{% if hub == 'delete' %} class="active" aria-current="page"{% endif %}>Delete account</a>{% endif %}
   </nav>
-  <div>
+  </details>
+  <div class="cp-content">
     {% if tabs[hub] %}<nav class="tabs ucp-tabs" aria-label="{{ hub_labels[hub] }}">{% for t in tabs[hub] %}{% if t[3] is not defined or t[3] %}<a href="{{ t[1] }}"{% if t[0] == ucp_active %} aria-current="page"{% endif %}>{{ t[2] }}</a>{% endif %}{% endfor %}</nav>{% endif %}
     {% block ucp %}{% endblock %}
   </div>

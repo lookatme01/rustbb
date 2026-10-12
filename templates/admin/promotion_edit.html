@@ -6,7 +6,7 @@
   <div class="form-row"><label for="t_">Title</label><input id="t_" type="text" name="title" value="{{ p[1] if p else '' }}" required></div>
   <div class="form-row"><label for="d_">Description</label><input id="d_" type="text" name="description" value="{{ p[2] if p else '' }}"></div>
   <div class="form-row"><span class="label"><strong>Requirements</strong></span><div class="stack-6">
-    {% for r in reqs %}<div class="cluster"><label class="check minw-170"><input type="checkbox" name="req_{{ r.key }}" value="1"{% if r.enabled %} checked{% endif %}> {{ r.label }}</label>
+    {% for r in reqs %}<div class="cp-requirement"><label class="check"><input type="checkbox" name="req_{{ r.key }}" value="1"{% if r.enabled %} checked{% endif %}> {{ r.label }}</label>
       <select name="op_{{ r.key }}" aria-label="Comparison">{% for o in ['>=','>','=','<=','<','!='] %}<option{% if r.op == o %} selected{% endif %}>{{ o }}</option>{% endfor %}</select>
       <input class="w-100" type="number" name="val_{{ r.key }}" value="{{ r.value }}" aria-label="Value"></div>{% endfor %}
   </div></div>

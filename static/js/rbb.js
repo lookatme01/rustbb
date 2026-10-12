@@ -70,7 +70,7 @@
     });
 
     // Long side navigations (the ACP) fold into sections; the current one stays open.
-    if (window.matchMedia("(min-width: 901px)").matches) $$(".js-nav-groups").forEach((nav) => {
+    $$(".js-nav-groups").forEach((nav) => {
       const kids = Array.from(nav.children);
       let group = null;
       kids.forEach((el, i) => {
@@ -90,6 +90,46 @@
         d.open = !!$("a.active", d) || store.get(key) === "1";
         d.addEventListener("toggle", () => (d.open ? store.set(key, "1") : store.del(key)));
       });
+    });
+
+    // CP menus expand vertically on phones. Reopen them when returning to desktop.
+    const cpMobile = window.matchMedia("(max-width: 860px)");
+    $$(".cp-navigation").forEach((menu) => {
+      const active = $("a.active, a[aria-current]", menu);
+      if (active) $(".cp-current", menu).textContent = active.textContent.trim();
+      const fit = () => { menu.open = !cpMobile.matches; };
+      fit();
+      cpMobile.addEventListener("change", fit);
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && cpMobile.matches && menu.open) {
+          menu.open = false;
+          $("summary", menu).focus();
+        }
+      });
+    });
+
+    // Turn CP tables into labeled records on phones, retaining their table semantics.
+    $$(".cp-content table.grid").forEach((table) => {
+      const headers = $$("thead tr:first-child > th", table);
+      // Complex matrices keep their original column relationships.
+      if ($$("[rowspan], thead [colspan]", table).length) return;
+      table.setAttribute("role", "table");
+      $$("thead, tbody, tfoot", table).forEach((section) => section.setAttribute("role", "rowgroup"));
+      $$("tr", table).forEach((row) => row.setAttribute("role", "row"));
+      headers.forEach((header) => header.setAttribute("role", "columnheader"));
+      $$("tbody tr, tfoot tr", table).forEach((row) => {
+        Array.from(row.cells).forEach((cell, i) => {
+          cell.setAttribute("role", cell.tagName === "TH" ? "rowheader" : "cell");
+          const label = headers[i] && headers[i].textContent.trim();
+          if (!label || cell.colSpan > 1) return;
+          const caption = document.createElement("span");
+          caption.className = "cp-cell-label";
+          caption.setAttribute("aria-hidden", "true");
+          caption.textContent = label;
+          cell.prepend(caption);
+        });
+      });
+      table.classList.add("cp-table-cards");
     });
 
     // Import a file by reading it into a form's textarea and submitting (theme import).
