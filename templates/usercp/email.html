@@ -1,12 +1,17 @@
 {% extends "usercp/base.html" %}
 {% import "macros.html" as m %}
+{% import "usercp/_fields.html" as f %}
 {% block ucp %}
-{{ m.errors_box(errors) }}
+{% set txt = errors|join(" ") %}
+{% set e_pw = "password you entered is incorrect" in txt %}
+{% set e_email = "invalid" in txt or "banned" in txt or "already in use" in txt %}
+{% set e_match = "do not match" in txt %}
+<div id="form-errors">{{ m.errors_box(errors) }}</div>
 <form method="post" action="/usercp/email" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Change email address</h2><span class="desc">Current: {{ email }}</span></div>
-  <div class="form-row"><label for="password">Current password</label><input id="password" type="password" name="password" autocomplete="current-password" required></div>
-  <div class="form-row"><label for="email">New email</label><input id="email" type="email" name="email" required></div>
-  <div class="form-row"><label for="email2">Confirm new email</label><input id="email2" type="email" name="email2" required></div>
+  <div class="form-row"><label for="password">Current password</label><input id="password" type="password" name="password" autocomplete="current-password" required{{ f.invalid(e_pw, true) }}></div>
+  <div class="form-row"><label for="email">New email</label><input id="email" type="email" name="email" required{{ f.invalid(e_email, not e_pw) }}></div>
+  <div class="form-row"><label for="email2">Confirm new email</label><input id="email2" type="email" name="email2" required{{ f.invalid(e_match, not e_pw and not e_email) }}></div>
   <div class="box-foot"><button class="btn" type="submit">Change email</button></div>
 </form>
 {% endblock %}

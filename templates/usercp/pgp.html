@@ -1,16 +1,13 @@
 {% extends "usercp/base.html" %}
 {% block head %}<script type="module" src="{{ asset('js/pgp.mjs') }}"></script>{% endblock %}
 {% block ucp %}
-<header class="pgp-page-head">
-  <div>
-    <h1>Encryption &amp; identity</h1>
-    <p class="pgp-muted">Sign and encrypt your private messages, and verify the people you talk to.</p>
+<section class="box pgp-box">
+  <div class="box-head"><h2>Encryption &amp; identity</h2><span class="desc">Sign and encrypt your private messages, and verify the people you talk to.</span></div>
+  <div class="box-body" data-pgp-settings data-pgp-board="{{ board }}">
+    <div class="pgp-loading"><span class="pgp-spinner"></span>Loading your keys…</div>
+    <noscript><div class="notice warn">Your keys are created and kept in your browser, so this page needs JavaScript.</div></noscript>
   </div>
-</header>
-<div data-pgp-settings data-pgp-board="{{ board }}">
-  <div class="pgp-loading"><span class="pgp-spinner"></span>Loading your keys…</div>
-  <noscript><div class="notice warn">Your keys are created and kept in your browser, so this page needs JavaScript.</div></noscript>
-</div>
+</section>
 <details class="pgp-faq">
   <summary>How does this work?</summary>
   <div>

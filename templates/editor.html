@@ -29,7 +29,7 @@
   </div>
   {% endif %}
   {% if can_poll %}
-  <div class="compose-poll">
+  <div>
     <label class="check"><input type="checkbox" name="postpoll" value="1" class="js-toggle" data-target="#poll-fields"{% if form.postpoll %} checked{% endif %}> Add a poll</label>
     <div id="poll-fields" class="compose-poll-body"{% if not form.postpoll %} hidden{% endif %}>
       <input type="text" name="poll_question" aria-label="Poll question" value="{{ form.poll_question }}" placeholder="Poll question" maxlength="250">

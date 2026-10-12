@@ -1,31 +1,33 @@
 {% extends "usercp/base.html" %}
 {% import "macros.html" as m %}
 {% block ucp %}
-<form method="post" action="/usercp/options" class="stack">{{ m.csrf_field() }}
+<form method="post" action="/usercp/options">{{ m.csrf_field() }}
 {% set accent = user.accent or 'ink' %}
-<section class="card appearance" aria-labelledby="appearance-title">
-  <h2 id="appearance-title">Appearance</h2>
-  <p class="help">Only you see these choices.</p>
-  <fieldset>
-    <legend><h3 class="h3">Color mode</h3></legend>
-    <div class="seg">{% for o in [('light','Light'),('dark','Dark'),('auto','Follow my device')] %}<label><input type="radio" name="colormode" value="{{ o[0] }}"{% if (user.colormode or 'auto') == o[0] %} checked{% endif %}><span>{{ o[1] }}</span></label>{% endfor %}</div>
-  </fieldset>
-  <fieldset>
-    <legend><h3 class="h3">Accent color</h3></legend>
-    <p class="help">Ink is the default. Every accent keeps buttons and links readable in light and dark.</p>
-    <div class="swatches">{% for a in [('ink','Ink'),('cobalt','Cobalt'),('moss','Moss'),('plum','Plum'),('raspberry','Raspberry'),('amber','Amber')] %}
-      <label class="swatch swatch-{{ a[0] }}" title="{{ a[1] }}"><input type="radio" name="accent" value="{{ a[0] }}" aria-label="{{ a[1] }}"{% if accent == a[0] %} checked{% endif %}>{{ m.icon('check') }}</label>{% endfor %}
+<section class="box">
+  <div class="box-head"><h2>Appearance</h2><span class="desc">Only you see these choices.</span></div>
+  <div class="box-body appearance">
+    <fieldset>
+      <legend><h3 class="h3">Color mode</h3></legend>
+      <div class="seg">{% for o in [('light','Light'),('dark','Dark'),('auto','Follow my device')] %}<label><input type="radio" name="colormode" value="{{ o[0] }}"{% if (user.colormode or 'auto') == o[0] %} checked{% endif %}><span>{{ o[1] }}</span></label>{% endfor %}</div>
+    </fieldset>
+    <fieldset>
+      <legend><h3 class="h3">Accent color</h3></legend>
+      <p class="help">Ink is the default. Every accent keeps buttons and links readable in light and dark.</p>
+      <div class="swatches">{% for a in [('ink','Ink'),('cobalt','Cobalt'),('moss','Moss'),('plum','Plum'),('raspberry','Raspberry'),('amber','Amber')] %}
+        <label class="swatch swatch-{{ a[0] }}" title="{{ a[1] }}"><input type="radio" name="accent" value="{{ a[0] }}" aria-label="{{ a[1] }}"{% if accent == a[0] %} checked{% endif %}>{{ m.icon('check') }}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <div class="appearance-preview" aria-hidden="true">
+      <div class="preview-title">{{ m.status_icon(true) }}A thread with new replies</div>
+      <div class="cluster"><span class="chip">{{ bb.bbname }}</span><span class="soft small">Just now</span></div>
+      <div class="cluster"><span class="btn">Post reply</span><span class="btn btn-ghost">Save draft</span></div>
+      <div class="preview-field">Focus ring on a field</div>
     </div>
-  </fieldset>
-  <div class="appearance-preview" aria-hidden="true">
-    <div class="preview-title">{{ m.status_icon(true) }}A thread with new replies</div>
-    <div class="cluster"><span class="chip">{{ bb.bbname }}</span><span class="soft small">Just now</span></div>
-    <div class="cluster"><span class="btn">Post reply</span><span class="btn btn-ghost">Save draft</span></div>
-    <div class="preview-field">Focus ring on a field</div>
   </div>
+  <div class="box-foot"><button class="btn" type="submit">Save preferences</button><span class="soft">Saves everything on this page.</span></div>
 </section>
-<section class="card">
-  <div class="card-head"><h2>Options</h2></div>
+<section class="box">
+  <div class="box-head"><h2>Options</h2></div>
   <div class="form-row"><span class="label"><strong>Privacy</strong></span><div class="checks">
     {% if can_invisible %}<label><input type="checkbox" name="invisible" value="1"{% if user.invisible %} checked{% endif %}> Hide me from the Who's Online list</label>{% endif %}
     <label><input type="checkbox" name="hideemail" value="1"{% if user.hideemail %} checked{% endif %}> Hide my email address from other members</label>
@@ -52,7 +54,7 @@
   <div class="form-row"><label for="dateformat">Date format</label><div><select id="dateformat" name="dateformat"><option value="">Board default</option>{% for f in dfs %}<option value="{{ f[0] }}"{% if user.dateformat == f[0] %} selected{% endif %}>{{ f[1] }}</option>{% endfor %}{% if user.dateformat and user.dateformat not in dfs|map(attribute=0) %}<option value="{{ user.dateformat }}" selected>Custom ({{ user.dateformat }})</option>{% endif %}</select><span class="help">Recent posts still say "2h ago"; this is used for older dates.</span></div></div>
   {% set tfs = [('%-I:%M %p','2:05 PM (12-hour)'),('%H:%M','14:05 (24-hour)')] %}
   <div class="form-row"><label for="timeformat">Time format</label><select id="timeformat" name="timeformat"><option value="">Board default</option>{% for f in tfs %}<option value="{{ f[0] }}"{% if user.timeformat == f[0] %} selected{% endif %}>{{ f[1] }}</option>{% endfor %}{% if user.timeformat and user.timeformat not in tfs|map(attribute=0) %}<option value="{{ user.timeformat }}" selected>Custom ({{ user.timeformat }})</option>{% endif %}</select></div>
-  <div class="box-foot"><button class="btn" type="submit">Save options</button></div>
+  <div class="box-foot"><button class="btn" type="submit">Save preferences</button></div>
 </section>
 </form>
 {% endblock %}

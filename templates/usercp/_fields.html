@@ -1,0 +1,2 @@
+{# Attributes for a field named in a form error: marks it invalid, points it at the error summary and, for the first one, focuses it. #}
+{% macro invalid(flag, focus=false) %}{% if flag %} aria-invalid="true" aria-describedby="form-errors"{% if focus %} autofocus{% endif %}{% endif %}{% endmacro %}

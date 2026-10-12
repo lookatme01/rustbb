@@ -19,7 +19,7 @@
         <a href="/usercp">User CP</a>
       </div>
     </details>
-    <a class="btn" href="/pm/send">{{ m.icon('plus') }}{{ t("New message") }}</a>
+    <a class="btn mail-new" href="/pm/send">{{ m.icon('plus') }}<span class="btn-label">{{ t("New message") }}</span></a>
   </header>
   <div class="mail-main">{% block pm %}{% endblock %}</div>
 </div>
