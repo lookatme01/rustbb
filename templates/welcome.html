@@ -18,7 +18,7 @@
           <label class="auth-field"><span>Confirm your password</span><input type="password" name="password" autocomplete="current-password" required></label>
           <p class="notice bad small js-passkey-error" role="alert" hidden></p>
           <noscript><p class="notice warn small">Adding a passkey needs JavaScript.</p></noscript>
-          <button class="btn secondary block" type="submit">Add a passkey</button>
+          <button class="btn btn-ghost block" type="submit">Add a passkey</button>
         </form>
       </section>
       {% endif %}
@@ -26,7 +26,7 @@
       <section class="welcome-step">
         <h2>{{ m.face('', me.username, me.uid, 24) }} Put a face to your name</h2>
         <p>So people recognise you in threads.</p>
-        <a class="btn secondary block" href="/usercp/avatar">Add a photo</a>
+        <a class="btn btn-ghost block" href="/usercp/avatar">Add a photo</a>
       </section>
       {% endif %}
     </div>

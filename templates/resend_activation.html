@@ -1,9 +1,16 @@
 {% extends "layout.html" %}
+{% import "macros.html" as m %}
 {% block content %}
-<form method="post" action="/member/resendactivation" class="box mw-520">
-  <input type="hidden" name="my_post_key" value="{{ csrf }}">
-  <div class="box-head"><h2>Resend activation email</h2></div>
-  <div class="form-row"><label for="email">Email address</label><input id="email" type="email" name="email" required></div>
-  <div class="box-foot"><button class="btn" type="submit">Resend</button></div>
-</form>
+<div class="auth">
+  <div class="card auth-card">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
+    <h1>Resend activation email</h1>
+    <p class="muted">Enter the email address you registered with and we'll send the activation link again.</p>
+    <form method="post" action="/member/resendactivation" class="auth-form">
+      {{ m.csrf_field() }}
+      <div class="auth-field"><label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
+      <button class="btn block" type="submit">Resend</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

@@ -1,9 +1,26 @@
 {% extends "layout.html" %}
+{% import "macros.html" as m %}
 {% block content %}
-<article class="post one-col">
-  <div class="post-main">
-    <header class="post-head"><strong>Announcement</strong>{% if author %} by <a href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a>{% endif %} · {{ a.startdate|date('datetime') }}{% if a.enddate %} · until {{ a.enddate|date('date') }}{% endif %}</header>
-    <div class="post-body">{{ html|safe }}</div>
+<header class="page-head">
+  <div class="grow">
+    <h1>{{ a.subject }}</h1>
+    <div class="chips lede">
+      <span class="chip chip-solid">Announcement</span>
+      <span class="chip">{{ a.startdate|date('datetime') }}</span>
+      {% if a.enddate %}<span class="chip">Until {{ a.enddate|date('date') }}</span>{% endif %}
+    </div>
   </div>
+</header>
+<article class="post">
+  {% if author %}
+  <header class="post-head">
+    <a href="{{ url_user(author.uid, author.username) }}" tabindex="-1" aria-hidden="true">{{ m.face(author.avatar, author.username, author.uid, 46) }}</a>
+    <div class="post-who">
+      <div class="post-name"><a class="name" href="{{ url_user(author.uid, author.username) }}">{{ author.formatted|safe }}</a></div>
+      <span class="post-facts">Posted this announcement</span>
+    </div>
+  </header>
+  {% endif %}
+  <div class="post-body">{{ html|safe }}</div>
 </article>
 {% endblock %}

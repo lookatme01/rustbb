@@ -1,4 +1,7 @@
 {% extends "layout.html" %}
 {% block content %}
-<section class="box"><div class="box-head"><h2>{{ title }}</h2>{% if subtitle %}<span class="desc">{{ subtitle }}</span>{% endif %}</div><div class="box-body post-body">{{ html|safe }}</div></section>
+<header class="page-head">
+  <div class="grow"><h1>{{ title }}</h1>{% if subtitle %}<p class="lede">{{ subtitle }}</p>{% endif %}</div>
+</header>
+<section class="card mw-760"><div class="box-body post-body">{{ html|safe }}</div></section>
 {% endblock %}

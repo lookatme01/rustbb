@@ -1,9 +1,12 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="actions"><a class="btn secondary small" href="/calendar/{{ cal.cid }}/week/{{ prev }}">&lsaquo; Previous week</a><a class="btn secondary small" href="/calendar/{{ cal.cid }}/week/{{ next }}">Next week &rsaquo;</a><a class="btn secondary small" href="/calendar/{{ cal.cid }}">Month view</a></div>
-<section class="box">
+<header class="page-head">
+  <div class="grow"><h1>{{ title }}</h1></div>
+  <div class="actions"><a class="btn btn-ghost btn-sm" href="/calendar/{{ cal.cid }}/week/{{ prev }}">&lsaquo; Previous week</a><a class="btn btn-ghost btn-sm" href="/calendar/{{ cal.cid }}/week/{{ next }}">Next week &rsaquo;</a><a class="btn btn-ghost btn-sm" href="/calendar/{{ cal.cid }}">Month view</a></div>
+</header>
+<section class="card">
 {% for d in days %}<div class="box-body row"><a href="/calendar/{{ cal.cid }}/day/{{ d.date }}"><strong>{{ d.label }}</strong></a>
-  <ul class="list-tight">{% for e in d.events %}<li><a href="/calendar/event/{{ e.eid }}">{{ e.name }}</a>{% if e.usingtime %} <span class="small soft">{{ e.starttime|date('time') }}</span>{% endif %}</li>{% endfor %}{% for b in d.birthdays %}<li>🎂 <a href="{{ url_user(b[0]) }}">{{ b[1]|safe }}</a></li>{% endfor %}</ul>{% if not d.events and not d.birthdays %}<p class="soft small flush">Nothing scheduled</p>{% endif %}
+  <ul class="list-tight">{% for e in d.events %}<li><a href="/calendar/event/{{ e.eid }}">{{ e.name }}</a>{% if e.usingtime %} <span class="small soft">{{ e.starttime|date('time') }}</span>{% endif %}</li>{% endfor %}{% for b in d.birthdays %}<li><span class="chip">Birthday</span> <a href="{{ url_user(b[0]) }}">{{ b[1]|safe }}</a></li>{% endfor %}</ul>{% if not d.events and not d.birthdays %}<p class="soft small flush">Nothing scheduled</p>{% endif %}
 </div>{% endfor %}
 </section>
 {% endblock %}

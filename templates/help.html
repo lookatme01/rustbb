@@ -1,7 +1,10 @@
 {% extends "layout.html" %}
 {% block content %}
+<header class="page-head">
+  <div class="grow"><h1>{{ title }}</h1></div>
+</header>
 {% for s in sections %}
-<section class="box"><div class="box-head"><h2>{{ s.name }}</h2><span class="desc">{{ s.description }}</span></div>
+<section class="card"><div class="card-head"><h2>{{ s.name }}</h2>{% if s.description %}<span class="desc">{{ s.description }}</span>{% endif %}</div>
 <table class="grid"><tbody>{% for d in s.docs %}<tr><td><a href="/help/{{ d.hid }}"><strong>{{ d.name }}</strong></a><br><span class="small muted">{{ d.description }}</span></td></tr>{% endfor %}</tbody></table></section>
-{% else %}<div class="box"><div class="empty">No help documents are available.</div></div>{% endfor %}
+{% else %}<div class="card"><div class="empty">No help documents are available.</div></div>{% endfor %}
 {% endblock %}

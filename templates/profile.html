@@ -48,14 +48,14 @@
 
 {% if author.badges %}
 <section class="card profile-badges">
-  <div class="box-head"><h2>Badges</h2><span class="desc">{{ author.badges|length }}</span><a class="right small" href="{% if me and me.uid == user.uid %}/usercp/badges">Arrange{% else %}/badges">All badges{% endif %}</a></div>
+  <div class="card-head"><h2>Badges</h2><span class="desc">{{ author.badges|length }}</span><a class="right small" href="{% if me and me.uid == user.uid %}/usercp/badges">Arrange{% else %}/badges">All badges{% endif %}</a></div>
   <div class="award-list">{% for b in author.badges %}<div class="award-card">{{ m.award(b, true) }}<div><h3>{{ b.name }}</h3>{% if b.description %}<p class="small soft">{{ b.description }}</p>{% endif %}<p class="small faint">Earned {{ b.dateline|date('date') }}</p></div></div>{% endfor %}</div>
 </section>
 {% endif %}
 
 {% if pgp %}
 <section class="card pgp-profile">
-  <div class="box-head"><h2>Identity key</h2><span class="desc">for signed and end-to-end encrypted messages</span>
+  <div class="card-head"><h2>Identity key</h2><span class="desc">for signed and end-to-end encrypted messages</span>
     <span class="right">{% if me and me.uid != user.uid and bb.enablepms == '1' and perms.canusepms %}<a class="btn btn-sm{{ ' btn-ghost' if pgp.verified else '' }}" href="/pm/verify/{{ user.uid }}">{{ 'Verified by you' if pgp.verified else 'Verify identity' }}</a>{% endif %}
     <a class="btn btn-quiet btn-sm" href="/user/{{ user.uid }}/pgp.asc">Public key</a></span></div>
   <div class="box-body"><code class="pgp-fpr">{% for g in pgp.groups %}<span>{{ g }}</span>{% endfor %}</code>
@@ -65,7 +65,7 @@
 
 {% if system_activity %}
 <section class="card system-activity">
-  <div class="box-head"><h2>What {{ user.username }} does</h2></div>
+  <div class="card-head"><h2>What {{ user.username }} does</h2></div>
   <div class="kv">
     <div>Posts quarantined</div><div>{{ system_activity.quarantined|num }}</div>
     <div>Automated messages</div><div>{{ system_activity.messages|num }}</div>
@@ -73,7 +73,7 @@
     <div>Staff announcements and posts</div><div>{{ system_activity.staff_posts|num }}</div>
   </div>
   {% if system_activity.recent is not none %}
-  <div class="box-head"><h2>Latest actions</h2><a class="right small" href="/modcp/modlogs?uid={{ user.uid }}">All</a></div>
+  <div class="card-head"><h2>Latest actions</h2><a class="right small" href="/modcp/modlogs?uid={{ user.uid }}">All</a></div>
   {% with logs = system_activity.recent %}{% include "modcp/logtable.html" %}{% endwith %}
   {% endif %}
 </section>
@@ -81,7 +81,7 @@
 
 <div class="two-col">
   <section class="card">
-    <div class="box-head"><h2>Forum info</h2></div>
+    <div class="card-head"><h2>Forum info</h2></div>
     <div class="kv">
       <div>Joined</div><div>{{ user.regdate|date('date') }}</div>
       <div>Last visit</div><div>{% if lastvisit_visible %}{{ user.lastactive|date }}{% else %}(Hidden){% endif %}</div>
@@ -91,12 +91,12 @@
       <div>Time online</div><div>{{ timeonline }}</div>
       {% if active_forum %}<div>Most active in</div><div><a href="{{ active_forum.url }}">{{ active_forum.name }}</a> ({{ active_forum.count|num }} {{ active_forum.count|plural("post","posts") }})</div>{% endif %}
       {% if bb.enablereputation == '1' %}<div>Reputation</div><div><a href="/reputation/{{ user.uid }}">{{ user.reputation }}</a>{% if can_rep %} · <a href="/reputation/{{ user.uid }}/add">rate</a>{% endif %}</div>{% endif %}
-      {% if warnings_visible %}<div>Warning level</div><div><div class="meter meter-200 warnlevel"><span style="width:{{ warn_level }}%"></span></div><a href="/warnings/{{ user.uid }}">{{ warn_level }}%</a>{% if can_warn %} · <a href="/warnings/{{ user.uid }}/warn">warn</a>{% endif %}</div>{% endif %}
+      {% if warnings_visible %}<div>Warning level</div><div><div class="cluster"><div class="meter w-160 warnlevel" role="img" aria-label="Warning level {{ warn_level }}%"><span style="width:{{ warn_level }}%"></span></div><span><a href="/warnings/{{ user.uid }}">{{ warn_level }}%</a>{% if can_warn %} · <a href="/warnings/{{ user.uid }}/warn">warn</a>{% endif %}</span></div></div>{% endif %}
       {% if user.referrals %}<div>Referrals</div><div><a href="/user/{{ user.uid }}/referrals">{{ user.referrals }}</a></div>{% endif %}
     </div>
   </section>
   <section class="card">
-    <div class="box-head"><h2>About {{ user.username }}</h2></div>
+    <div class="card-head"><h2>About {{ user.username }}</h2></div>
     <div class="kv">
       {% if user.website %}<div>Website</div><div><a href="{{ user.website }}" rel="nofollow ugc noopener" target="_blank">{{ user.website }}</a></div>{% endif %}
       {% if birthday %}<div>Birthday</div><div>{{ birthday }}{% if age %} ({{ age }} years old){% endif %}</div>{% endif %}
@@ -107,12 +107,12 @@
 </div>
 
 {% if author.signature %}
-<section class="card"><div class="box-head"><h2>Signature</h2></div><div class="box-body post-body">{{ author.signature|safe }}</div></section>
+<section class="card"><div class="card-head"><h2>Signature</h2></div><div class="box-body post-body">{{ author.signature|safe }}</div></section>
 {% endif %}
 
 {% if is_mod_viewer or can_edit_profile or can_ban or history_notes is not none %}
 <section class="card">
-  <div class="box-head"><h2>Moderator options</h2></div>
+  <div class="card-head"><h2>Moderator options</h2></div>
   <div class="box-body actions flush">
     {% if history_notes is not none %}<a class="btn btn-ghost btn-sm" href="/modcp/member/{{ user.uid }}">History ({{ history_notes }} note{{ '' if history_notes == 1 else 's' }})</a>{% endif %}
     {% if can_edit_profile %}<a class="btn btn-ghost btn-sm" href="/modcp/editprofile/{{ user.uid }}">Edit profile</a>{% endif %}

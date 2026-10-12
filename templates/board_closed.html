@@ -1,4 +1,12 @@
 {% extends "layout.html" %}
+{% import "macros.html" as m %}
 {% block content %}
-<section class="box mw-640"><div class="box-head"><h2>Board closed</h2></div><div class="box-body"><p>{{ reason }}</p>{% if not me %}<p><a class="btn secondary" href="/member/login">Staff login</a></p>{% endif %}</div></section>
+<div class="auth">
+  <div class="card auth-card">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
+    <h1>Board closed</h1>
+    <p class="muted">{{ reason }}</p>
+    {% if not me %}<a class="btn btn-ghost block" href="/member/login">Staff login</a>{% endif %}
+  </div>
+</div>
 {% endblock %}

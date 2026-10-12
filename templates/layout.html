@@ -33,7 +33,7 @@
       {% if not me and perms.canviewmemberlist and bb.enablememberlist == '1' %}{{ tab('/members', t("Members"), path.startswith('/members') or path.startswith('/user/') or path.startswith('/team')) }}{% endif %}
     </nav>
     {% if perms.cansearch %}
-    <form class="search quicksearch" action="/search/quick" method="get" role="search">
+    <form class="search" action="/search/quick" method="get" role="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
       <input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}">
     </form>
@@ -56,7 +56,7 @@
       </details>
     {% else %}
       <a class="btn btn-quiet" href="/member/login?return_to={{ current_url|urlenc }}">{{ t("Log in") }}</a>
-      {% if bb.disableregs != '1' %}<a class="btn" href="/member/register">{{ t("Register") }}</a>{% endif %}
+      {% if bb.disableregs != '1' %}<a class="btn account-join" href="/member/register">{{ t("Register") }}</a>{% endif %}
     {% endif %}
     </div>
   </div>
@@ -90,7 +90,7 @@
 <footer class="site-footer">
   <div class="wrap">
     <div class="footer-links">
-      {% if perms.canviewmemberlist and bb.enablememberlist == '1' and me %}<a href="/members">{{ t("Members") }}</a>{% endif %}
+      {% if perms.canviewmemberlist and bb.enablememberlist == '1' %}<a href="/members">{{ t("Members") }}</a>{% endif %}
       {% if perms.canviewcalendar and bb.enablecalendar == '1' %}<a href="/calendar">{{ t("Calendar") }}</a>{% endif %}
       {% if bb.portal == '1' %}<a href="/portal">{{ t("Portal") }}</a>{% endif %}
       {% if bb.enablehelp == '1' %}<a href="/help">{{ t("Help") }}</a>{% endif %}

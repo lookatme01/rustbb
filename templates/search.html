@@ -10,7 +10,7 @@
     <p>Try fewer or different words{% if filtered %}, or loosen the filters below{% endif %}.</p>
   </div>
   {% endif %}
-  <form method="post" action="/search" class="search-form" role="search">{{ m.csrf_field() }}
+  <form method="post" action="/search" role="search">{{ m.csrf_field() }}
     <input type="hidden" name="subforums" value="1">
     <div class="search-bar">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>

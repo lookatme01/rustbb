@@ -26,7 +26,7 @@
 
 {% if subforums %}
 <section class="cat">
-  <header class="cat-head"><h2>Sub forums</h2></header>
+  <header class="cat-head"><span class="cat-line" aria-hidden="true"></span><h2>Sub forums</h2></header>
   <div class="forum-list">{% for f in subforums %}{{ m.forum_row(f) }}{% endfor %}</div>
 </section>
 {% endif %}
@@ -34,7 +34,7 @@
 {% if not forum.is_category and not fperms.canviewthreads %}
 <div class="card"><div class="empty">You can see this forum but you do not have permission to read its threads.{% if not me %} <a href="/member/login?return_to={{ current_url|urlenc }}">Log in</a> to see more.{% endif %}</div></div>
 {% endif %}
-{% if not forum.is_category and fperms.canviewthreads %}
+{% if not forum.is_category and fperms.canviewthreads and not (total == 0 and subforums and not announcements) %}
 <div class="toolbar">
   {{ m.pagination(pagination) }}
   <span class="spacer"></span>
@@ -62,8 +62,8 @@
 <section class="card thread-list rise" aria-labelledby="threads-title">
   <div class="card-head"><h2 id="threads-title">Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
   {% for a in announcements %}
-  <div class="thread-row sticky">
-    <span class="face size-40" aria-hidden="true">📣</span>
+  <div class="thread-row">
+    <span class="face size-40" aria-hidden="true">{{ m.icon('megaphone') }}</span>
     <div class="thread-main"><div class="thread-title"><span class="chip chip-solid">Announcement</span> <a class="subject" href="/announcement/{{ a.aid }}">{{ a.subject }}</a></div><div class="thread-meta"><span>{{ a.startdate|date }}</span></div></div>
     <div class="thread-stats"></div><div></div>{% if is_mod %}<div></div>{% endif %}
   </div>
@@ -92,8 +92,8 @@
     {% if modperms.canmanagethreads %}<option value="move">Move / copy threads…</option><option value="merge">Merge threads…</option>{% endif %}
     {% for ct in custom_tools %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endfor %}
   </select>
-  <button class="btn secondary small" type="submit">Go</button>
-  <button class="btn secondary small js-check-all" type="button">Select all</button>
+  <button class="btn btn-ghost btn-sm" type="submit">Go</button>
+  <button class="btn btn-ghost btn-sm js-check-all" type="button">Select all</button>
 </form>
 {% endif %}
 {% endif %}

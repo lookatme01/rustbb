@@ -2,20 +2,23 @@
 {% import "macros.html" as m %}
 {% block content %}
 {% if empty %}
-<div class="listing-empty">
-  <h1>{{ title }}</h1>
-  <p>{{ empty }}</p>
-  <nav class="search-shortcuts" aria-label="Browse">
-    {% if me and path != '/search/unread' %}<a class="pill-link" href="/search/unread">Unread threads</a>{% endif %}
-    {% if path != '/search/today' %}<a class="pill-link" href="/search/today">Today's posts</a>{% endif %}
-    {% if path != '/search/unanswered' %}<a class="pill-link" href="/search/unanswered">Unanswered threads</a>{% endif %}
-    <a class="pill-link" href="/">Browse the forums</a>
-  </nav>
-</div>
+<header class="listing-head"><h1>{{ title }}</h1></header>
+<section class="card">
+  <div class="empty">
+    <p>{{ empty }}</p>
+    <nav class="search-shortcuts" aria-label="Browse">
+      {% if me and path != '/search/unread' %}<a class="pill-link" href="/search/unread">Unread threads</a>{% endif %}
+      {% if path != '/search/today' %}<a class="pill-link" href="/search/today">Today's posts</a>{% endif %}
+      {% if path != '/search/unanswered' %}<a class="pill-link" href="/search/unanswered">Unanswered threads</a>{% endif %}
+      <a class="pill-link" href="/">Browse the forums</a>
+    </nav>
+  </div>
+</section>
 {% else %}
 {% if listing %}
 <header class="listing-head"><h1>{{ listing }}</h1><p class="search-count">{{ total|num }} {{ total|plural("thread","threads") }}</p></header>
 {% else %}
+<header class="listing-head"><h1>{{ title }}</h1></header>
 <div class="search-refine">
   <form class="search-bar" action="/search/quick" method="get" role="search">
     <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg>
@@ -28,12 +31,12 @@
 {% endif %}
 {{ m.pagination(pagination) }}
 {% if kind == 'threads' %}
-<section class="box"><div class="box-head"><h2>Threads</h2></div>
+<section class="card thread-list"><div class="card-head"><h2>Threads</h2></div>
 {% for t in threads %}{{ m.thread_row(t, true) }}{% endfor %}
 </section>
 {% else %}
 {% for p in posts %}
-<section class="box">
+<section class="card">
   <div class="box-sub cluster"><a href="{{ p.forum_url }}">{{ p.forum_name }}</a><span>/</span><a href="{{ p.thread_url }}{{ p.hl }}"><strong>{{ p.thread_subject }}</strong></a><span class="spacer grow"></span><span>{{ p.replies }} {{ p.replies|plural("reply","replies") }} · {{ p.views }} {{ p.views|plural("view","views") }}</span></div>
   <div class="box-body"><div class="small muted mb-6">{{ m.userlink(p.uid, p.username) }} · <a href="/post/{{ p.pid }}">{{ p.dateline|date }}</a></div><div class="post-body p0">{{ p.snippet|safe }}</div></div>
 </section>

@@ -1,27 +1,30 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
+<header class="page-head">
+  <div class="grow"><h1>{{ title }}</h1></div>
+</header>
 <div class="portal-grid">
-  <aside>
+  <aside class="stagger">
     {% if bb.portal_showwelcome == '1' %}
-    <section class="box"><div class="box-head"><h3>{% if me %}Welcome back, {{ me.username }}{% else %}Welcome, guest{% endif %}</h3></div>
+    <section class="card"><div class="card-head"><h2>{% if me %}Welcome back, {{ me.username }}{% else %}Welcome, guest{% endif %}</h2></div>
       <div class="box-body small">{% if me %}You last visited {{ me.lastvisit|date }}.<br><a href="/search/new">View new posts</a> · <a href="/usercp">User CP</a>{% else %}<a href="/member/login">Log in</a> or <a href="/member/register">register</a> to join the discussion.{% endif %}</div></section>
     {% endif %}
-    {% if me and bb.portal_showpms == '1' and bb.enablepms == '1' %}<section class="box"><div class="box-head"><h3>Private messages</h3></div><div class="box-body small"><a href="/pm">{% if me.unreadpms %}{{ me.unreadpms }} unread {{ me.unreadpms|plural("message","messages") }}{% else %}No unread messages{% endif %}</a></div></section>{% endif %}
-    {% if bb.portal_showsearch == '1' and perms.cansearch %}<section class="box"><div class="box-head"><h3>Search</h3></div><form class="box-body portal-search" action="/search/quick" method="get" role="search"><span class="quicksearch"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg><input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}"></span><a class="faint small" href="/search">Advanced search</a></form></section>{% endif %}
-    {% if stats %}<section class="box"><div class="box-head"><h3>Statistics</h3></div><div class="kv small"><div>Members</div><div>{{ stats.users|num }}</div><div>Threads</div><div>{{ stats.threads|num }}</div><div>Posts</div><div>{{ stats.posts|num }}</div></div></section>{% endif %}
-    {% if online %}<section class="box"><div class="box-head"><h3><a href="/online">Online now</a></h3></div><div class="box-body small">{{ online.num_members }} {{ online.num_members|plural("member","members") }}, {{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }}<br>{% for u in online.members %}<a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></section>{% endif %}
-    {% if latest %}<section class="box"><div class="box-head"><h3>Latest threads</h3></div>{% for l in latest %}<div class="box-body small row"><a href="/thread/{{ l[0] }}/lastpost"><strong>{{ l[1] }}</strong></a><br><span class="muted">{{ l[2]|date }} by {{ l[3] }} · {{ l[5] }} {{ l[5]|plural("reply","replies") }}</span></div>{% endfor %}</section>{% endif %}
+    {% if me and bb.portal_showpms == '1' and bb.enablepms == '1' %}<section class="card"><div class="card-head"><h2>Private messages</h2></div><div class="box-body small"><a href="/pm">{% if me.unreadpms %}{{ me.unreadpms }} unread {{ me.unreadpms|plural("message","messages") }}{% else %}No unread messages{% endif %}</a></div></section>{% endif %}
+    {% if bb.portal_showsearch == '1' and perms.cansearch %}<section class="card"><div class="card-head"><h2>Search</h2></div><form class="box-body portal-search stack-6" action="/search/quick" method="get" role="search"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}"></div><a class="small" href="/search">Advanced search</a></form></section>{% endif %}
+    {% if stats %}<section class="card"><div class="card-head"><h2>Statistics</h2></div><div class="kv small"><div>Members</div><div>{{ stats.users|num }}</div><div>Threads</div><div>{{ stats.threads|num }}</div><div>Posts</div><div>{{ stats.posts|num }}</div></div></section>{% endif %}
+    {% if online %}<section class="card"><div class="card-head"><h2><a href="/online">Online now</a></h2></div><div class="box-body small">{{ online.num_members }} {{ online.num_members|plural("member","members") }}, {{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }}<br>{% for u in online.members %}<a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></section>{% endif %}
+    {% if latest %}<section class="card"><div class="card-head"><h2>Latest threads</h2></div>{% for l in latest %}<div class="box-body small row"><a href="/thread/{{ l[0] }}/lastpost"><strong>{{ l[1] }}</strong></a><br><span class="muted">{{ l[2]|date }} by {{ l[3] }} · {{ l[5] }} {{ l[5]|plural("reply","replies") }}</span></div>{% endfor %}</section>{% endif %}
   </aside>
-  <div>
+  <div class="stagger">
     {% for a in announcements %}
-    <article class="box">
-      <div class="box-head"><h2><a href="{{ a.url }}">{{ a.subject }}</a></h2></div>
+    <article class="card">
+      <div class="card-head"><h2><a href="{{ a.url }}">{{ a.subject }}</a></h2></div>
       <div class="box-sub cluster">{{ m.userlink(a.uid, a.username) }} · {{ a.dateline|date }}{% if a.forum %} · {{ a.forum }}{% endif %}</div>
       <div class="box-body post-body">{{ a.html|safe }}</div>
       <div class="box-foot"><a href="{{ a.url }}">{{ a.replies }} {{ a.replies|plural("reply","replies") }}</a> · {{ a.views }} {{ a.views|plural("view","views") }}</div>
     </article>
-    {% else %}<div class="box"><div class="empty">No announcements to show.</div></div>{% endfor %}
+    {% else %}<div class="card"><div class="empty">No announcements to show.</div></div>{% endfor %}
   </div>
 </div>
 {% endblock %}

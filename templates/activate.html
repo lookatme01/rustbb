@@ -1,9 +1,17 @@
 {% extends "layout.html" %}
+{% import "macros.html" as m %}
 {% block content %}
-<form method="get" action="/member/activate" class="box mw-520">
-  <div class="box-head"><h2>Activate your account</h2></div>
-  <div class="form-row"><label for="uid">User ID</label><input id="uid" type="number" name="uid" required></div>
-  <div class="form-row"><label for="code">Activation code</label><input id="code" type="text" name="code" required></div>
-  <div class="box-foot actions flush"><button class="btn" type="submit">Activate</button><a class="small" href="/member/resendactivation">Resend activation email</a></div>
-</form>
+<div class="auth">
+  <div class="card auth-card">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
+    <h1>Activate your account</h1>
+    <p class="muted">Enter the user ID and activation code from your email.</p>
+    <form method="get" action="/member/activate" class="auth-form">
+      <div class="auth-field"><label for="uid">User ID</label><input id="uid" type="number" name="uid" inputmode="numeric" required autofocus></div>
+      <div class="auth-field"><label for="code">Activation code</label><input id="code" type="text" name="code" autocomplete="off" required></div>
+      <button class="btn block" type="submit">Activate</button>
+    </form>
+    <p class="auth-alt"><a href="/member/resendactivation">Resend activation email</a></p>
+  </div>
+</div>
 {% endblock %}

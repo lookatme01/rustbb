@@ -1,9 +1,13 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<section class="box">
-  <div class="box-head">{{ m.award(b) }}<span class="desc">{{ b.description }}{% if rule %} · {{ rule }}{% else %} · Awarded by the team{% endif %}</span><a class="right small" href="/badges">All badges</a></div>
+<header class="page-head">
+  <div class="grow"><h1>{{ b.name }}</h1><p class="lede">{% if b.description %}{{ b.description }} · {% endif %}{% if rule %}{{ rule }}{% else %}Awarded by the team{% endif %}</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/badges">All badges</a></div>
+</header>
+<section class="card">
+  <div class="card-head">{{ m.award(b) }}<span class="desc">Earned by</span></div>
   <table class="grid"><tbody>{% for u in members %}<tr><td><a href="{{ url_user(u.uid, u.username) }}">{{ m.face(u.avatar, u.username, u.uid, 28) }} {{ u.username }}</a></td><td class="small muted num">Earned {{ u.dateline|date('date') }}</td></tr>{% else %}<tr><td class="empty">Nobody has earned this badge yet.</td></tr>{% endfor %}</tbody></table>
 </section>
-{% if newest or older %}<nav class="pagination">{% if newest %}<a class="btn secondary small" href="{{ newest }}">« Newest</a>{% endif %} {% if older %}<a class="btn secondary small" href="{{ older }}">Earlier »</a>{% endif %}</nav>{% endif %}
+{% if newest or older %}<nav class="pagination">{% if newest %}<a class="btn btn-ghost btn-sm" href="{{ newest }}">« Newest</a>{% endif %} {% if older %}<a class="btn btn-ghost btn-sm" href="{{ older }}">Earlier »</a>{% endif %}</nav>{% endif %}
 {% endblock %}

@@ -1,8 +1,10 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<form method="post" action="{% if e %}/calendar/event/{{ e.eid }}/edit{% else %}/calendar/{{ cal.cid }}/addevent{% endif %}" class="box js-editor-form">{{ m.csrf_field() }}
-  <div class="box-head"><h2>{{ title }} — {{ cal.name }}</h2></div>
+<header class="page-head">
+  <div class="grow"><h1>{{ title }}</h1><p class="lede">{{ cal.name }}</p></div>
+</header>
+<form method="post" action="{% if e %}/calendar/event/{{ e.eid }}/edit{% else %}/calendar/{{ cal.cid }}/addevent{% endif %}" class="card js-editor-form">{{ m.csrf_field() }}
   <div class="form-row"><label for="name">Event name</label><input id="name" type="text" name="name" value="{{ e.name if e else '' }}" maxlength="120" required></div>
   <div class="form-row"><span class="label"><strong>When</strong></span><div class="stack-6">
     <div class="cluster"><input type="date" name="date" value="{{ date }}" required aria-label="Start date"><input type="time" name="starttime" value="{{ starttime }}" aria-label="Start time"><span>to</span><input type="date" name="enddate" value="{{ enddate }}" aria-label="End date"><input type="time" name="endtime" value="{{ endtime }}" aria-label="End time"></div>

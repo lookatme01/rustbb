@@ -1,9 +1,17 @@
 {% extends "layout.html" %}
+{% import "macros.html" as m %}
 {% block content %}
-<form method="post" action="/member/lostpw" class="box mw-520">
-  <input type="hidden" name="my_post_key" value="{{ csrf }}">
-  <div class="box-head"><h2>Reset your password</h2></div>
-  <div class="box-body"><p>Enter the email address of your account and we'll send you a link to choose a new password.</p><input class="w-full" type="email" name="email" required aria-label="Email address"></div>
-  <div class="box-foot"><button class="btn" type="submit">Send reset link</button></div>
-</form>
+<div class="auth">
+  <div class="card auth-card">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
+    <h1>Reset your password</h1>
+    <p class="muted">Enter the email address of your account and we'll send you a link to choose a new password.</p>
+    <form method="post" action="/member/lostpw" class="auth-form">
+      {{ m.csrf_field() }}
+      <div class="auth-field"><label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
+      <button class="btn block" type="submit">Send reset link</button>
+    </form>
+    <p class="auth-alt"><a href="/member/login">Back to log in</a></p>
+  </div>
+</div>
 {% endblock %}
