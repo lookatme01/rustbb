@@ -1,77 +1,74 @@
 {# expects: p (PostView), thread, is_mod, modperms, reaction_types #}
-<article class="post{% if p.visible == 0 %} unapproved{% elif p.visible == -1 %} deleted{% endif %}{% if p.ignored %} ignored-post{% endif %}" id="pid{{ p.pid }}" data-pid="{{ p.pid }}">
+{# One card per post, author on top. Each card stands alone, so a post linked on its own still says who wrote it. #}
+<article class="post{% if p.visible == 0 %} unapproved{% elif p.visible == -1 %} deleted{% endif %}{% if p.ignored %} ignored-post{% endif %}" id="pid{{ p.pid }}" data-pid="{{ p.pid }}" aria-labelledby="pid{{ p.pid }}-by">
   {% set a = p.author %}
   {% set uname = a.username if a else (p.username or 'Guest') %}
-  <aside class="post-author">
-    <div class="post-author-inner">
-      {% if a %}<a href="{{ url_user(a.uid, a.username) }}" tabindex="-1" aria-label="{{ a.username }}">{{ m.face(a.avatar, a.username, a.uid, 88, '', a.online) }}</a>{% else %}{{ m.face('', uname, 0, 88) }}{% endif %}
+  <header class="post-head">
+    {% if a %}<a href="{{ url_user(a.uid, a.username) }}" tabindex="-1" aria-hidden="true">{{ m.face(a.avatar, a.username, a.uid, 46, '', a.online) }}</a>{% else %}{{ m.face('', uname, 0, 46) }}{% endif %}
+    <div class="post-who">
+      <div class="post-name" id="pid{{ p.pid }}-by">
+        {% if a %}<a class="name" href="{{ url_user(a.uid, a.username) }}">{{ a.formatted|safe }}</a>{% else %}<span class="name">{{ uname }}</span>{% endif %}
+        {% if thread and p.uid and p.uid == thread.uid %}<span class="chip">Original poster</span>{% endif %}
+        {% if a and a.usertitle %}<span class="chip">{{ a.usertitle }}</span>{% endif %}
+        {% if a and a.stars %}<span class="stars" role="img" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
+        {% if a and a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
+        {% if a and a.away %}<span class="tag">Away</span>{% endif %}
+        {% if a and a.online %}<span class="sr-only">(online)</span>{% endif %}
+      </div>
       {% if a %}
-        <a class="name" href="{{ url_user(a.uid, a.username) }}">{{ a.formatted|safe }}</a>
-        {% if a.usertitle %}<span class="role">{{ a.usertitle }}</span>{% endif %}
-        {% if a.stars %}<span class="stars" role="img" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
-        {% if a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
-        {% if a.away %}<span class="tag">Away</span>{% endif %}
-        {% if staff_flags and staff_flags[a.uid] %}<div class="mf-flags small post-staff-flags" aria-label="Staff only">{% for f in staff_flags[a.uid] %}<span class="mf-flag {{ f.level }}">{{ f.label }}</span>{% endfor %}</div>{% endif %}
-        {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
-        <dl class="author-stats">
-          <div><dt>Posts</dt><dd><a href="/user/{{ a.uid }}/posts">{{ a.postnum|num }}</a></dd></div>
-          <div><dt>Joined</dt><dd>{{ a.regdate|date('date') }}</dd></div>
-          {% if bb.enablereputation == '1' and a.reputation %}<div><dt>Reputation</dt><dd><a href="/reputation/{{ a.uid }}">{{ a.reputation }}</a></dd></div>{% endif %}
-          {% if a.warninglevel and (is_mod or (me and me.uid == a.uid)) %}<div><dt>Warning</dt><dd><a href="/warnings/{{ a.uid }}">{{ a.warninglevel }}%</a></dd></div>{% endif %}
-          {% for f in a.fields or [] %}<div><dt>{{ f[0] }}</dt><dd>{{ f[1] }}</dd></div>{% endfor %}
-        </dl>
+      <dl class="post-facts">
+        <div><dt class="sr-only">Posts</dt><dd><a href="/user/{{ a.uid }}/posts">{{ a.postnum|num }} {{ a.postnum|plural("post","posts") }}</a></dd></div>
+        <div><dt>Joined</dt><dd>{{ a.regdate|date('date') }}</dd></div>
+        {% if bb.enablereputation == '1' and a.reputation %}<div><dt>Reputation</dt><dd><a href="/reputation/{{ a.uid }}">{{ a.reputation }}</a></dd></div>{% endif %}
+        {% if a.warninglevel and (is_mod or (me and me.uid == a.uid)) %}<div><dt>Warning</dt><dd><a href="/warnings/{{ a.uid }}">{{ a.warninglevel }}%</a></dd></div>{% endif %}
+        {% for f in a.fields or [] %}<div><dt>{{ f[0] }}</dt><dd>{{ f[1] }}</dd></div>{% endfor %}
+      </dl>
+      {% if staff_flags and staff_flags[a.uid] %}<div class="mf-flags small post-staff-flags" aria-label="Staff only">{% for f in staff_flags[a.uid] %}<span class="mf-flag {{ f.level }}">{{ f.label }}</span>{% endfor %}</div>{% endif %}
+      {% set nb = (bb.badgespostbit or '3')|int %}{% if a.badges and nb > 0 %}<div class="awards">{% for b in a.badges[:nb] %}{{ m.award(b, true) }}{% endfor %}</div>{% endif %}
       {% else %}
-        <span class="name">{{ uname }}</span><span class="role">{{ 'Guest' if not p.uid else 'Deleted user' }}</span>
+      <span class="post-facts">{{ 'Guest' if not p.uid else 'Deleted user' }}</span>
       {% endif %}
     </div>
-  </aside>
-  <div class="post-main">
-    <header class="post-head">
-      <div class="who">
-        {{ m.face(a.avatar if a else '', uname, a.uid if a else 0, 38, '', a.online if a else false) }}
-        <div><span class="name">{% if a %}{{ a.formatted|safe }}{% else %}{{ uname }}{% endif %}</span><span class="sub">{% if a %}{{ a.usertitle }}{% if a.usertitle %} · {% endif %}{{ a.postnum|num }} {{ a.postnum|plural("post","posts") }}{% else %}{{ 'Guest' if not p.uid else 'Deleted user' }}{% endif %}</span></div>
-      </div>
-      <div class="when">
-        {% if p.icon %}<img class="thread-icon" src="{{ p.icon }}" alt="">{% endif %}
-        {% if p.visible == 0 %}<span class="state">Awaiting approval</span>{% elif p.visible == -1 %}<span class="state">Deleted</span>{% endif %}
-        {% if p.ip %}<a class="faint" href="/modcp/ipsearch?ip={{ p.ip|urlenc }}" title="IP address">{{ p.ip }}</a>{% endif %}
-        <a href="/post/{{ p.pid }}" title="Permalink">{{ p.dateline|date }}</a>
-        <a class="num" href="/post/{{ p.pid }}">#{{ p.number }}</a>
-        {% if is_mod %}<input class="checkbox-mod inline-check" type="checkbox" name="pids" value="{{ p.pid }}" form="inlinemod-posts" aria-label="Select post">{% endif %}
-      </div>
-    </header>
-    {% if p.ignored %}<div class="ignored-note">This post is by a user you are ignoring. <button type="button" class="linklike js-show-ignored">Show the post</button></div>{% endif %}
-    {% if p.visible == -1 and not p.message %}
-      <div class="deleted-note">This post was deleted.</div>
-    {% else %}
-      <div class="post-body">{{ p.message|safe }}</div>
-      {% if p.attachments %}
-      <div class="post-attachments"><strong>Attached files</strong>
-        <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="faint small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
-      </div>
-      {% endif %}
-      {% if p.edited %}<div class="post-edited">Last edited {{ p.edited[1]|date }} by {{ p.edited[0] }}{% if p.edited[2] %} — {{ p.edited[2] }}{% endif %}{% if p.has_history %} · <a href="/post/{{ p.pid }}/history">history</a>{% endif %}</div>{% endif %}
-      {% if p.author and p.author.signature %}<div class="signature">{{ p.author.signature|safe }}</div>{% endif %}
+    <div class="post-when">
+      {% if p.icon %}<img class="thread-icon" src="{{ p.icon }}" alt="">{% endif %}
+      {% if p.visible == 0 %}<span class="chip chip-warn">Awaiting approval</span>{% elif p.visible == -1 %}<span class="chip chip-bad">Deleted</span>{% endif %}
+      {% if p.ip %}<a href="/modcp/ipsearch?ip={{ p.ip|urlenc }}" title="IP address">{{ p.ip }}</a>{% endif %}
+      <a href="/post/{{ p.pid }}" title="Permalink"><span class="num">#{{ p.number }}</span>&nbsp;·&nbsp;{{ p.dateline|date }}</a>
+      {% if is_mod %}<label class="hit"><input class="checkbox-mod inline-check" type="checkbox" name="pids" value="{{ p.pid }}" form="inlinemod-posts" aria-label="Select post #{{ p.number }}"></label>{% endif %}
+    </div>
+  </header>
+  {% if p.ignored %}<div class="ignored-note">This post is by a user you are ignoring. <button type="button" class="linklike js-show-ignored">Show the post</button></div>{% endif %}
+  {% if p.visible == -1 and not p.message %}
+    <div class="deleted-note">This post was deleted.</div>
+  {% else %}
+    <div class="post-body">{{ p.message|safe }}</div>
+    {% if p.attachments %}
+    <div class="post-attachments"><strong>Attached files</strong>
+      <ul>{% for at in p.attachments %}<li>{% if at.is_image and bb.attachthumbnails != 'download' %}<a class="attachment_image" href="/attachment/{{ at.aid }}" target="_blank"><img src="/attachment/{{ at.aid }}{% if at.has_thumb and bb.attachthumbnails == 'yes' %}?thumb=1{% endif %}" alt="{{ at.filename }}" loading="lazy"></a><br>{% endif %}<a href="/attachment/{{ at.aid }}">{{ at.filename }}</a> <span class="soft small">({{ at.filesize|bytes }}, {{ at.downloads }} {{ at.downloads|plural("download","downloads") }}){% if not at.visible %} — awaiting approval{% endif %}</span></li>{% endfor %}</ul>
+    </div>
     {% endif %}
-    <footer class="post-foot">
-      <div class="reactions" data-pid="{{ p.pid }}">
-        {% for r in p.reactions %}<button type="button" class="reaction{% if r[3] %} mine{% endif %} js-react" data-kind="{{ r[0] }}" {% if not p.can_react %}disabled{% endif %} title="{{ r[0] }}">{{ r[1] }} {{ r[2] }}</button>{% endfor %}
-        {% if p.can_react %}
-        <span class="reaction-picker"><button type="button" class="btn secondary small js-react-toggle" aria-label="Add reaction"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3.5"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
-          <span class="menu">{% for rt in reaction_types %}<button type="button" class="js-react" data-kind="{{ rt[0] }}" title="{{ rt[0] }}">{{ rt[1] }}</button>{% endfor %}</span>
-        </span>
-        {% endif %}
-      </div>
-      <span class="spacer"></span>
-      {% if p.can_report %}<a class="btn secondary small" href="/report?type=post&id={{ p.pid }}">{{ t("Report") }}</a>{% endif %}
-      {% if p.can_warn %}<a class="btn secondary small" href="/warnings/{{ p.uid }}/warn?pid={{ p.pid }}">Warn</a>{% endif %}
-      {% if p.visible == -1 and is_mod %}<form method="post" action="/restorepost/{{ p.pid }}"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">Restore</button></form>{% endif %}
-      {% if p.can_edit %}<a class="btn secondary small" href="/editpost/{{ p.pid }}">{{ t("Edit") }}</a>{% endif %}
-      {% if p.can_delete and p.visible != -1 %}<form method="post" action="/deletepost/{{ p.pid }}" class="js-confirm" data-confirm="Delete this post?"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn secondary small" type="submit">{{ t("Delete") }}</button></form>{% endif %}
-      {% if p.can_quote and thread and not p.visible == -1 %}
-        {% if bb.multiquote == '1' %}<button type="button" class="btn secondary small js-multiquote" data-pid="{{ p.pid }}" aria-pressed="false" title="Collect several posts to quote in one reply">Multi-quote</button>{% endif %}
-        <a class="btn small js-quote" data-pid="{{ p.pid }}" href="/newreply/{{ thread.tid }}?pid={{ p.pid }}">{{ t("Quote") }}</a>
+    {% if p.edited %}<div class="post-edited">Last edited {{ p.edited[1]|date }} by {{ p.edited[0] }}{% if p.edited[2] %} — {{ p.edited[2] }}{% endif %}{% if p.has_history %} · <a href="/post/{{ p.pid }}/history">history</a>{% endif %}</div>{% endif %}
+    {% if p.author and p.author.signature %}<div class="signature">{{ p.author.signature|safe }}</div>{% endif %}
+  {% endif %}
+  <footer class="post-foot">
+    <div class="reactions" data-pid="{{ p.pid }}">
+      {% for r in p.reactions %}<button type="button" class="reaction{% if r[3] %} mine{% endif %} js-react" data-kind="{{ r[0] }}" aria-pressed="{{ 'true' if r[3] else 'false' }}" {% if not p.can_react %}disabled{% endif %} title="{{ r[0] }}">{{ r[1] }} <span class="count">{{ r[2] }}</span></button>{% endfor %}
+      {% if p.can_react %}
+      <span class="reaction-picker"><button type="button" class="react js-react-toggle" aria-label="Add reaction" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3.5"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
+        <span class="menu">{% for rt in reaction_types %}<button type="button" class="js-react" data-kind="{{ rt[0] }}" title="{{ rt[0] }}" aria-label="React with {{ rt[0] }}">{{ rt[1] }}</button>{% endfor %}</span>
+      </span>
       {% endif %}
-    </footer>
-  </div>
+    </div>
+    <div class="post-tools">
+      {% if p.can_quote and thread and not p.visible == -1 %}
+        <a class="btn btn-quiet btn-sm js-quote" data-pid="{{ p.pid }}" href="/newreply/{{ thread.tid }}?pid={{ p.pid }}">{{ t("Quote") }}</a>
+        {% if bb.multiquote == '1' %}<button type="button" class="btn btn-quiet btn-sm js-multiquote" data-pid="{{ p.pid }}" aria-pressed="false" title="Collect several posts to quote in one reply">Multi-quote</button>{% endif %}
+      {% endif %}
+      {% if p.can_edit %}<a class="btn btn-quiet btn-sm" href="/editpost/{{ p.pid }}">{{ t("Edit") }}</a>{% endif %}
+      {% if p.visible == -1 and is_mod %}<form method="post" action="/restorepost/{{ p.pid }}"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn btn-quiet btn-sm" type="submit">Restore</button></form>{% endif %}
+      {% if p.can_delete and p.visible != -1 %}<form method="post" action="/deletepost/{{ p.pid }}" class="js-confirm" data-confirm="Delete this post?"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button class="btn btn-quiet btn-sm" type="submit">{{ t("Delete") }}</button></form>{% endif %}
+      {% if p.can_warn %}<a class="btn btn-quiet btn-sm" href="/warnings/{{ p.uid }}/warn?pid={{ p.pid }}">Warn</a>{% endif %}
+      {% if p.can_report %}<a class="btn btn-quiet btn-sm" href="/report?type=post&id={{ p.pid }}">{{ t("Report") }}</a>{% endif %}
+    </div>
+  </footer>
 </article>

@@ -5,8 +5,8 @@
 <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ kind }}">
 {% for i in items %}
 <section class="box">
-  <div class="box-sub" style="display:flex;gap:10px;flex-wrap:wrap"><a href="{{ i.url }}"><strong>{{ i.subject }}</strong></a>{% if i.forum %}<span>in {{ i.forum }}</span>{% endif %}<span>by {{ m.userlink(i.uid, i.username) }}</span><span>{{ i.dateline|date }}</span>
-    <span style="flex:1"></span>
+  <div class="box-sub cluster"><a href="{{ i.url }}"><strong>{{ i.subject }}</strong></a>{% if i.forum %}<span>in {{ i.forum }}</span>{% endif %}<span>by {{ m.userlink(i.uid, i.username) }}</span><span>{{ i.dateline|date }}</span>
+    <span class="grow"></span>
    
     <label class="check"><input type="checkbox" name="approve" value="{{ i.id }}"> Approve</label>
     <label class="check"><input type="checkbox" name="delete" value="{{ i.id }}"> Delete</label></div>

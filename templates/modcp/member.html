@@ -5,9 +5,9 @@
 {% block mcp %}
 {% set back = "/modcp/member/" ~ mf.uid %}
 {{ act.reasons_list(reasons) }}
-<div class="actions" style="justify-content:space-between">
+<div class="actions between">
   <span class="small muted"><a href="/modcp/finduser">Members</a> › {{ mf.username }}</span>
-  <span class="actions" style="margin:0">{% if can_edit %}<a class="btn secondary small" href="/modcp/editprofile/{{ mf.uid }}">Edit profile</a>{% endif %}{% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ mf.uid }}">Admin CP</a>{% endif %}</span>
+  <span class="actions flush">{% if can_edit %}<a class="btn secondary small" href="/modcp/editprofile/{{ mf.uid }}">Edit profile</a>{% endif %}{% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ mf.uid }}">Admin CP</a>{% endif %}</span>
 </div>
 
 <div class="mf-hero two">

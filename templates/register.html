@@ -2,8 +2,8 @@
 {% import "macros.html" as m %}
 {% block content %}
 <div class="auth">
-  <div class="auth-card auth-card-wide">
-    <img class="auth-logo" src="{{ theme.props.logo if theme and theme.props.logo else asset('images/logo.svg') }}" alt="" width="48" height="48">
+  <div class="card auth-card auth-card-wide">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
     <h1>Join {{ bb.bbname }}</h1>
     <p class="muted">Create your account. It only takes a minute.</p>
     {{ m.errors_box(errors) }}

@@ -1,43 +1,46 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
-{% block line %}--line: var(--line-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}){% endblock %}
+{% block bodyclass %}thread-page{% endblock %}
+{% block tone %}tone-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}{% endblock %}
 {% block content %}
-<header class="thread-head">
-  <div class="grow">
-    <h1>{{ prefix_html|safe }}{{ thread.subject }}</h1>
-    <div class="meta">
-      <a class="chip" href="{{ url_forum(forum.fid, forum.name) }}">{{ forum.name }}</a>
+<header class="thread-head rise">
+  <div class="chips">
+    <a class="chip dot" href="{{ url_forum(forum.fid, forum.name) }}">{{ forum.name }}</a>
+    {{ prefix_html|safe }}
+    {% if thread.sticky %}<span class="chip">Pinned</span>{% endif %}{% if thread.closed == '1' %}<span class="chip chip-bad">Closed</span>{% endif %}
+  </div>
+  <h1>{{ thread.subject }}</h1>
+  <div class="meta">
       <span>Started by {{ m.userlink(thread.uid, thread.username) }} · {{ thread.dateline|date }}</span>
       <span>{{ thread.replies|num }} repl{{ 'y' if thread.replies == 1 else 'ies' }} · {{ thread.views|num }} {{ thread.views|plural("view","views") }}</span>
-      {% if thread.numratings and forum.allowtratings %}<span>★ {{ "%.1f"|format(rating) }} ({{ thread.numratings }})</span>{% endif %}
-    </div>
+      {% if thread.numratings and forum.allowtratings %}<span>★ {{ "%.1f"|format(rating) }}<span class="sr-only"> out of 5</span> ({{ thread.numratings }} {{ thread.numratings|plural("rating","ratings") }})</span>{% endif %}
   </div>
   <div class="actions">
-    {% if can_reply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ m.icon('reply') }}{{ t("New Reply") }}</a>{% elif thread.closed == '1' %}<span class="flag closed">Thread closed</span>{% endif %}
+    {% if can_reply %}<a class="btn" href="{{ '#quickreply' if quickreply else '/newreply/' ~ thread.tid }}">{{ m.icon('reply') }}{{ t("New Reply") }}</a>{% endif %}
+    {% if me %}
+    <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}
+      {% if subscription is none %}<input type="hidden" name="notification" value="0"><button class="btn btn-ghost" type="submit" aria-pressed="false">{{ m.icon('bell') }}Follow thread</button>
+      {% else %}<input type="hidden" name="unsubscribe" value="1"><button class="btn btn-ghost" type="submit" aria-pressed="true" title="You get alerts about new replies">{{ m.icon('check') }}Following</button>{% endif %}
+    </form>
+    {% endif %}
   </div>
 </header>
 {% if thread.visible == 0 %}<div class="notice warn">This thread is awaiting moderator approval.</div>{% elif thread.visible == -1 %}<div class="notice bad">This thread has been deleted.</div>{% endif %}
 
 {% if poll %}{% include "poll.html" %}{% endif %}
 
-{% if pagination.pages > 1 %}<div class="actions">{{ m.pagination(pagination) }}</div>{% endif %}
+{% if pagination.pages > 1 %}<div class="pager">{{ m.pagination(pagination) }}</div>{% endif %}
 
 <div id="posts" class="postlist" data-tid="{{ thread.tid }}" data-last-pid="{{ last_pid }}" data-live="{{ 1 if live and pagination.page == pagination.pages else 0 }}">
 {% for p in posts %}{% include "postbit.html" %}{% endfor %}
 </div>
 <div class="live-banner" id="live-banner" hidden><button class="btn js-load-new" type="button">New replies — show them</button></div>
 
-<div class="actions thread-foot">
+<div class="pager thread-foot">
   {{ m.pagination(pagination) }}
-  <span class="spacer"></span>
-  {% if me %}
-  <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}
-    {% if subscription is none %}<input type="hidden" name="notification" value="0"><button class="btn secondary small" type="submit">Subscribe</button>
-    {% else %}<input type="hidden" name="unsubscribe" value="1"><button class="btn secondary small" type="submit" aria-pressed="true" title="You get alerts about new replies">Unsubscribe</button>{% endif %}
-  </form>
-  {% endif %}
+  <div class="actions">
   <details class="popmenu">
-    <summary class="btn secondary small" aria-label="More thread actions">More</summary>
+    <summary class="btn btn-ghost" aria-label="More thread actions">More</summary>
     <div class="menu">
       {% if me and subscription is none %}
       <form method="post" action="/thread/{{ thread.tid }}/subscribe">{{ m.csrf_field() }}<input type="hidden" name="notification" value="1"><button type="submit">Subscribe with email notifications</button></form>
@@ -49,11 +52,12 @@
     </div>
   </details>
   {% if can_reply and not quickreply %}<a class="btn" href="/newreply/{{ thread.tid }}">{{ t("New Reply") }}</a>{% endif %}
+  </div>
 </div>
 
 {% if can_rate %}
 <form method="post" action="/thread/{{ thread.tid }}/rate" class="rate-thread">{{ m.csrf_field() }}
-  <span class="small muted" id="rate-label">Rate this thread</span>
+  <span class="small soft" id="rate-label">Rate this thread</span>
   <span class="stars-input" role="group" aria-labelledby="rate-label">{% for r in range(5, 0, -1) %}<button name="rating" value="{{ r }}" type="submit" title="{{ r }} star{{ '' if r == 1 else 's' }}" aria-label="{{ r }} star{{ '' if r == 1 else 's' }}">★</button>{% endfor %}</span>
 </form>
 {% endif %}
@@ -69,7 +73,7 @@
     {% if modperms.canmanagethreads %}<option value="merge">Merge posts</option><option value="split">Split into new thread…</option><option value="moveposts">Move to another thread…</option>{% endif %}
     {% for ct in custom_tools %}{% if ct[2] == 'p' %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endif %}{% endfor %}
   </select>
-  <button class="btn secondary small" type="submit">Go</button>
+  <button class="btn btn-ghost" type="submit">Go</button>
 </form>
 <form method="post" action="/moderation/thread/{{ thread.tid }}" class="actions">{{ m.csrf_field() }}
   <label for="threadmod" class="small">Thread tools:</label>
@@ -84,28 +88,27 @@
     <option value="log">View moderator log</option>
     {% for ct in custom_tools %}{% if ct[2] == 't' %}<option value="tool:{{ ct[0] }}">{{ ct[1] }}</option>{% endif %}{% endfor %}
   </select>
-  <button class="btn secondary small" type="submit">Go</button>
+  <button class="btn btn-ghost" type="submit">Go</button>
 </form>
 {% if thread.notes %}<div class="notice warn small"><strong>Moderator notes:</strong> {{ thread.notes }}</div>{% endif %}
 {% endif %}
 
 {% if can_reply and quickreply %}
-<section class="box quickreply" id="quickreply">
+<section class="card quickreply" id="quickreply" aria-labelledby="qr-title">
+  <h2 class="h3" id="qr-title">{{ t("Reply") }}</h2>
   <form method="post" action="/newreply/{{ thread.tid }}" class="composer js-editor-form" data-fid="{{ forum.fid }}" data-tid="{{ thread.tid }}">
-    {{ m.face(me.avatar if me else '', me.username if me else 'Guest', me.uid if me else 0, 44) }}
-    <div>
+    <div class="stack">
     {{ m.csrf_field() }}
     <input type="hidden" name="quickreply" value="1">
     <input type="hidden" name="subject" value="RE: {{ thread.subject }}">
     <input type="hidden" name="did" value="{{ draft[0] if draft else 0 }}">
-    {% if not me %}<p><label for="qr-username">Your name</label><br><input id="qr-username" type="text" name="username" maxlength="30"></p>{% endif %}
+    {% if not me %}<div class="auth-field"><label for="qr-username">Your name</label><input id="qr-username" type="text" name="username" maxlength="30"></div>{% endif %}
     {% include "editor_widget.html" %}
     {% if captcha %}{% include "captcha_field.html" %}{% endif %}
-    <div class="actions">
+    <div class="composer-actions">
       <button class="btn" type="submit">{{ t("Post Reply") }}</button>
-      <button class="btn secondary" type="submit" name="preview" value="1" formaction="/newreply/{{ thread.tid }}">{{ t("Preview") }}</button>
-      <span class="spacer"></span>
-      <a class="btn ghost small" href="/newreply/{{ thread.tid }}">Full editor</a>
+      <button class="btn btn-ghost" type="submit" name="preview" value="1" formaction="/newreply/{{ thread.tid }}">{{ t("Preview") }}</button>
+      <a class="btn btn-quiet" href="/newreply/{{ thread.tid }}">Full editor</a>
     </div>
     </div>
   </form>
@@ -113,8 +116,8 @@
 {% endif %}
 
 {% if similar %}
-<section class="box">
-  <div class="box-head"><h2>Related threads</h2></div>
+<section class="card related">
+  <div class="card-head"><h2>Related threads</h2></div>
   <table class="grid related"><thead><tr><th>Thread</th><th>Forum</th><th class="num">Replies</th><th>Last post</th></tr></thead><tbody>
   {% for s in similar %}<tr><td><a href="{{ s.url }}">{{ s.subject }}</a></td><td><a href="{{ s.forum_url }}">{{ s.forum_name }}</a></td><td class="num">{{ s.replies }}</td><td class="small">{{ s.lastpost|date }} by {{ s.lastposter }}</td></tr>{% endfor %}
   </tbody></table>

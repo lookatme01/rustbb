@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block content %}
 {{ m.errors_box(errors) }}
-<form method="post" action="/contact" class="box" style="max-width:760px">
+<form method="post" action="/contact" class="box mw-760">
   {{ m.csrf_field() }}
   <div class="box-head"><h2>Contact the staff of {{ bb.bbname }}</h2></div>
   {% if not me %}<div class="form-row"><label for="email">Your email</label><input id="email" type="email" name="email" value="{{ form.email }}" required></div>{% endif %}

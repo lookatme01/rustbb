@@ -3,8 +3,8 @@
 {% block head %}{% if passkeys %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="auth">
-  <div class="auth-card auth-card-wide welcome">
-    <img class="auth-logo" src="{{ theme.props.logo if theme and theme.props.logo else asset('images/logo.svg') }}" alt="" width="48" height="48">
+  <div class="card auth-card auth-card-wide welcome">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
     <h1>Welcome, {{ me.username }}</h1>
     <p class="muted">You're in. A couple of optional extras before you start:</p>
     <div class="welcome-steps">

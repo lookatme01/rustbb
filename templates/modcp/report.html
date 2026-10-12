@@ -11,7 +11,7 @@
     <div>Handling</div><div>{% if report.claimed %}Claimed by {{ report.claimed_by }} {{ report.claimed_at|date }}{% else %}Nobody has claimed it{% endif %}</div>
     {% if not report.open %}<div>Resolution</div><div>Resolved by {{ report.resolved_by }} {{ report.resolved_at|date }}{% if report.resolution %}: {{ report.resolution }}{% endif %}</div>{% endif %}
   </div>
-  <div class="box-foot actions" style="margin:0">
+  <div class="box-foot actions flush">
     {% if report.open %}
       {% if not report.claimed %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn small" name="action" value="claim">Claim</button></form>
       {% elif report.claimed_by_me %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn secondary small" name="action" value="release">Release</button></form>
@@ -39,7 +39,7 @@
 <form method="post" action="/modcp/reports/{{ report.rid }}/resolve" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Resolve</h2></div>
   <div class="box-body"><textarea name="resolution" rows="2" maxlength="1000" placeholder="What was done (optional, visible to staff)" aria-label="Resolution"></textarea></div>
-  <div class="box-foot actions" style="margin:0"><button class="btn small" type="submit">Mark as resolved</button></div>
+  <div class="box-foot actions flush"><button class="btn small" type="submit">Mark as resolved</button></div>
 </form>
 {% endif %}
 <section class="box"><div class="box-head"><h2>History</h2></div>

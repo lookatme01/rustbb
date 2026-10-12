@@ -330,9 +330,9 @@
   function initReactions() {
     document.addEventListener("click", async (e) => {
       const tog = e.target.closest(".js-react-toggle");
-      if (tog) { tog.parentElement.classList.toggle("open"); return; }
+      if (tog) { const open = tog.parentElement.classList.toggle("open"); tog.setAttribute("aria-expanded", String(open)); return; }
       const b = e.target.closest(".js-react");
-      if (!b) { $$(".reaction-picker.open").forEach((p) => p.classList.remove("open")); return; }
+      if (!b) { $$(".reaction-picker.open").forEach((p) => { p.classList.remove("open"); $(".js-react-toggle", p)?.setAttribute("aria-expanded", "false"); }); return; }
       const box = b.closest(".reactions");
       const r = await post("/post/" + box.dataset.pid + "/react", { kind: b.dataset.kind });
       if (!r.ok) return;
@@ -343,12 +343,17 @@
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "reaction js-react" + (x.mine ? " mine" : "");
+        btn.setAttribute("aria-pressed", String(!!x.mine));
         btn.dataset.kind = x.kind;
         btn.title = x.kind;
-        btn.textContent = x.emoji + " " + x.count;
+        btn.append(x.emoji + " ");
+        const n = document.createElement("span");
+        n.className = "count";
+        n.textContent = x.count;
+        btn.append(n);
         box.insertBefore(btn, picker);
       });
-      if (picker) picker.classList.remove("open");
+      if (picker) { picker.classList.remove("open"); $(".js-react-toggle", picker)?.setAttribute("aria-expanded", "false"); }
     });
   }
 

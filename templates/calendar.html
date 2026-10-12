@@ -2,13 +2,13 @@
 {% block content %}
 <div class="actions">
   <a class="btn secondary small" href="/calendar/{{ cal.cid }}?year={{ prev[0] }}&month={{ prev[1] }}">&lsaquo; Previous</a>
-  <h1 style="margin:0 8px;font-size:1.3rem">{{ month_name }}</h1>
+  <h1 class="cal-arrow">{{ month_name }}</h1>
   <a class="btn secondary small" href="/calendar/{{ cal.cid }}?year={{ next[0] }}&month={{ next[1] }}">Next &rsaquo;</a>
   <span class="spacer"></span>
   {% if calendars|length > 1 %}<form method="get" action="/calendar" class="js-calpick"><select name="cid" aria-label="Calendar" class="js-calselect">{% for c in calendars %}<option value="{{ c.cid }}"{% if c.cid == cal.cid %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></form>{% endif %}
   {% if can_add %}<a class="btn small" href="/calendar/{{ cal.cid }}/addevent">Add event</a>{% endif %}
 </div>
-<div class="box" style="overflow-x:auto">
+<div class="box scroll-x">
 <table class="calendar">
   <thead><tr>{% for d in dow %}<th scope="col"><span class="dow-long">{{ d }}</span><span class="dow-short">{{ d[:3] }}</span></th>{% endfor %}</tr></thead>
   <tbody>

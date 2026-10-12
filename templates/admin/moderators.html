@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block acp %}
 <section class="box"><div class="box-head"><h2>Moderators of {{ forum.name }}</h2></div>
-<table class="grid"><tbody>{% for mo in list %}<tr><td>{% if mo.isgroup %}Group: {% endif %}<strong>{{ mo.name }}</strong></td><td class="num"><a class="btn secondary small" href="/admin/forums/moderators/{{ mo.mid }}">Permissions</a> <form method="post" action="/admin/forums/moderators/{{ mo.mid }}/delete" style="display:inline">{{ m.csrf_field() }}<button class="btn secondary small">Remove</button></form></td></tr>{% else %}<tr><td class="empty">No moderators. Moderators of parent forums also moderate this one.</td></tr>{% endfor %}</tbody></table></section>
+<table class="grid"><tbody>{% for mo in list %}<tr><td>{% if mo.isgroup %}Group: {% endif %}<strong>{{ mo.name }}</strong></td><td class="num"><a class="btn secondary small" href="/admin/forums/moderators/{{ mo.mid }}">Permissions</a> <form class="inline" method="post" action="/admin/forums/moderators/{{ mo.mid }}/delete">{{ m.csrf_field() }}<button class="btn secondary small">Remove</button></form></td></tr>{% else %}<tr><td class="empty">No moderators. Moderators of parent forums also moderate this one.</td></tr>{% endfor %}</tbody></table></section>
 <form method="post" action="/admin/forums/{{ forum.fid }}/moderators" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Add a moderator</h2></div>
   <div class="form-row"><label for="username">Username</label><input id="username" type="text" name="username"></div>

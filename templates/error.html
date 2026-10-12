@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="auth">
-  <div class="auth-card auth-card-wide error-card">
+  <div class="card auth-card auth-card-wide error-card">
     <p class="error-code" aria-hidden="true">{{ status }}</p>
     <h1>{% if status == 404 %}Page not found{% elif status == 401 %}Please log in to continue{% elif status == 403 %}You don't have permission to view this{% elif status == 429 %}Slow down a little{% else %}Something went wrong{% endif %}</h1>
     {% if status != 401 %}<p class="muted">{{ message }}</p>{% endif %}

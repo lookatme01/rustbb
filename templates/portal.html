@@ -11,13 +11,13 @@
     {% if bb.portal_showsearch == '1' and perms.cansearch %}<section class="box"><div class="box-head"><h3>Search</h3></div><form class="box-body portal-search" action="/search/quick" method="get" role="search"><span class="quicksearch"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 0 1 4.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 1 1 8.5 3zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="currentColor"/></svg><input type="search" name="q" placeholder="{{ t('Search') }}" aria-label="{{ t('Search the forums') }}"></span><a class="faint small" href="/search">Advanced search</a></form></section>{% endif %}
     {% if stats %}<section class="box"><div class="box-head"><h3>Statistics</h3></div><div class="kv small"><div>Members</div><div>{{ stats.users|num }}</div><div>Threads</div><div>{{ stats.threads|num }}</div><div>Posts</div><div>{{ stats.posts|num }}</div></div></section>{% endif %}
     {% if online %}<section class="box"><div class="box-head"><h3><a href="/online">Online now</a></h3></div><div class="box-body small">{{ online.num_members }} {{ online.num_members|plural("member","members") }}, {{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }}<br>{% for u in online.members %}<a href="{{ url_user(u.uid) }}">{{ u.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></section>{% endif %}
-    {% if latest %}<section class="box"><div class="box-head"><h3>Latest threads</h3></div>{% for l in latest %}<div class="box-body small" style="border-bottom:1px solid var(--rule);padding:8px 14px"><a href="/thread/{{ l[0] }}/lastpost"><strong>{{ l[1] }}</strong></a><br><span class="muted">{{ l[2]|date }} by {{ l[3] }} · {{ l[5] }} {{ l[5]|plural("reply","replies") }}</span></div>{% endfor %}</section>{% endif %}
+    {% if latest %}<section class="box"><div class="box-head"><h3>Latest threads</h3></div>{% for l in latest %}<div class="box-body small row"><a href="/thread/{{ l[0] }}/lastpost"><strong>{{ l[1] }}</strong></a><br><span class="muted">{{ l[2]|date }} by {{ l[3] }} · {{ l[5] }} {{ l[5]|plural("reply","replies") }}</span></div>{% endfor %}</section>{% endif %}
   </aside>
   <div>
     {% for a in announcements %}
     <article class="box">
       <div class="box-head"><h2><a href="{{ a.url }}">{{ a.subject }}</a></h2></div>
-      <div class="box-sub" style="display:flex;gap:8px">{{ m.userlink(a.uid, a.username) }} · {{ a.dateline|date }}{% if a.forum %} · {{ a.forum }}{% endif %}</div>
+      <div class="box-sub cluster">{{ m.userlink(a.uid, a.username) }} · {{ a.dateline|date }}{% if a.forum %} · {{ a.forum }}{% endif %}</div>
       <div class="box-body post-body">{{ a.html|safe }}</div>
       <div class="box-foot"><a href="{{ a.url }}">{{ a.replies }} {{ a.replies|plural("reply","replies") }}</a> · {{ a.views }} {{ a.views|plural("view","views") }}</div>
     </article>

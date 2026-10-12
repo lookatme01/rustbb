@@ -59,8 +59,53 @@ async function audit(context, path, label) {
     const r = await window.axe.run({ include: [["html"]], exclude: [[".mycode_color"]] }, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] });
     return r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, all ? 1000 : 5).map((n) => ({ target: n.target.join(" "), summary: n.failureSummary })) , count: v.nodes.length }));
   }, [TAGS, !!process.env.AXE_ALL]);
+  res.push(...await layout(page));
   await page.close();
   return { path, label, violations: res };
+}
+
+/// Checks the theme promises beyond axe: every tap target is at least 44×44 (links inside running
+/// text excepted), and nothing scrolls sideways at phone width.
+async function layout(page) {
+  const out = await page.evaluate(() => {
+    const small = [];
+    const sel = "a[href], button, select, summary, input:not([type=hidden]), textarea, [role=button], [tabindex='0']";
+    for (const el of document.querySelectorAll(sel)) {
+      if (el.closest(".devbar, .post-body, .signature, .mycode_quote, [hidden], .sr-only, .menu, .wy-surface")) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      let r = el.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      // A link in a line of text is sized by that text (the WCAG 2.5.8 inline exception): walk up
+      // through inline ancestors to the line's block and look for other words on it.
+      if (el.tagName === "A" && cs.display === "inline") {
+        let blk = el.parentElement;
+        while (blk && getComputedStyle(blk).display === "inline") blk = blk.parentElement;
+        const other = blk ? blk.textContent.replace(el.textContent, "").replace(/[\s·|,]/g, "") : "";
+        if (other.length > 1) continue;
+      }
+      // A stretched link (::after covering its row) is as big as the row.
+      if (el.tagName === "A" && getComputedStyle(el, "::after").position === "absolute") {
+        let row = el.parentElement;
+        while (row && getComputedStyle(row).position === "static") row = row.parentElement;
+        if (row) r = row.getBoundingClientRect();
+      }
+      // Checkboxes, radios and file inputs count their label as the target; a search field counts its box.
+      const lab = el.closest("label, .search") || (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`));
+      if (lab && el.tagName === "INPUT") { const lr = lab.getBoundingClientRect(); if (lr.height >= r.height) r = lr; }
+      if (Math.round(r.width) < 44 || Math.round(r.height) < 44) {
+        const cls = (e) => e.tagName.toLowerCase() + (e.className && typeof e.className === "string" && e.className.trim() ? "." + e.className.trim().split(/\s+/).join(".") : "");
+        const name = (el.parentElement ? cls(el.parentElement) + " > " : "") + cls(el);
+        small.push(`${name} "${(el.textContent || el.getAttribute("aria-label") || el.value || "").trim().slice(0, 24)}" is ${Math.round(r.width)}×${Math.round(r.height)}`);
+      }
+    }
+    const de = document.documentElement;
+    return { small, overflow: de.scrollWidth > de.clientWidth + 1 ? de.scrollWidth - de.clientWidth : 0 };
+  });
+  const v = [];
+  if (out.small.length) v.push({ id: "tap-target-44", impact: "serious", help: "Tap targets are at least 44×44 px", count: out.small.length, nodes: out.small.slice(0, 5).map((t) => ({ target: t, summary: "smaller than 44×44" })) });
+  if (out.overflow) v.push({ id: "horizontal-scroll", impact: "serious", help: "The page fits the viewport without sideways scrolling", count: 1, nodes: [{ target: "html", summary: `${out.overflow}px wider than the viewport` }] });
+  return v;
 }
 
 /// Keyboard checks axe can't make: the first Tab reaches the skip link, and each of the next
@@ -85,7 +130,10 @@ async function keyboard(context, path, label) {
       const header = document.querySelector("body > header, .site-header, header");
       const hb = header && !header.contains(el) && getComputedStyle(header).position === "sticky" ? header.getBoundingClientRect().bottom : 0;
       const name = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : "") + " " + (el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 30);
-      const indicator = (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== "none";
+      const ring = (s) => (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || s.boxShadow !== "none";
+      // A field inside a .search pill draws its ring on the pill (:focus-within), not on itself.
+      const wrap = el.closest(".search");
+      const indicator = ring(cs) || (!!wrap && wrap !== el && ring(getComputedStyle(wrap)));
       const hidden = r.width === 0 && r.height === 0;
       return { name, indicator, obscured: !hidden && r.bottom <= hb + 1, hidden };
     });
@@ -110,6 +158,16 @@ for (const [scheme, viewport] of [["light", { width: 1280, height: 900 }], ["dar
   await login(admin);
   for (const p of [...MEMBER, ...ADMIN]) results.push(await audit(admin, p, "admin, " + label));
   for (const p of ["/thread/1", "/newthread/3", "/usercp"]) results.push(await keyboard(admin, p, "admin, " + label));
+  await admin.close();
+}
+// Every accent a member can pick, in both modes, on the pages that use the accent most.
+for (const scheme of ["light", "dark"]) {
+  const admin = await browser.newContext({ colorScheme: scheme, viewport: { width: 1280, height: 900 }, reducedMotion: "reduce", bypassCSP: true });
+  await login(admin);
+  for (const accent of ["ink", "cobalt", "moss", "plum", "raspberry", "amber"]) {
+    await admin.addInitScript((a) => { document.addEventListener("DOMContentLoaded", () => document.documentElement.style.setProperty("--accent", `var(--accent-${a})`)); }, accent);
+    for (const p of ["/", "/thread/1", "/usercp/options", "/pm", "/search"]) results.push(await audit(admin, p, `admin, ${scheme}, accent ${accent}`));
+  }
   await admin.close();
 }
 await browser.close();

@@ -975,7 +975,12 @@ pub struct OptionsForm {
     pub timeformat: String,
     #[serde(default, deserialize_with = "de::string")]
     pub colormode: String,
+    #[serde(default, deserialize_with = "de::string")]
+    pub accent: String,
 }
+
+/// Accent keys a member can pick; each names an `--accent-*` token in static/css/tokens.css.
+pub const ACCENTS: [&str; 6] = ["ink", "cobalt", "moss", "plum", "raspberry", "amber"];
 
 pub async fn options_save(ctx: Ctx, CsrfForm(f): CsrfForm<OptionsForm>) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
@@ -1005,10 +1010,16 @@ pub async fn options_save(ctx: Ctx, CsrfForm(f): CsrfForm<OptionsForm>) -> AppRe
     } else {
         "auto".into()
     };
+    // Only the vetted palette: each key maps to a token that passes AA in both modes.
+    let accent = if ACCENTS.contains(&f.accent.as_str()) {
+        f.accent.clone()
+    } else {
+        String::new()
+    };
     sqlx::query(
         "UPDATE users SET invisible = $2, allownotices = $3, hideemail = $4, receivepms = $5, receivefrombuddy = $6, pmnotice = $7,
             pmnotify = $8, showsigs = $9, showavatars = $10, showimages = $11, showvideos = $12, showquickreply = $13,
-            subscriptionmethod = $14, tpp = $15, ppp = $16, timezone = $17, dateformat = $18, timeformat = $19, colormode = $20
+            subscriptionmethod = $14, tpp = $15, ppp = $16, timezone = $17, dateformat = $18, timeformat = $19, colormode = $20, accent = $21
          WHERE uid = $1",
     )
     .bind(me.uid)
@@ -1031,6 +1042,7 @@ pub async fn options_save(ctx: Ctx, CsrfForm(f): CsrfForm<OptionsForm>) -> AppRe
     .bind(dateformat)
     .bind(timeformat)
     .bind(colormode)
+    .bind(accent)
     .execute(&ctx.app.db)
     .await?;
     crate::audit::log(&ctx, ctx.uid(), "options_changed", serde_json::Value::Null).await;

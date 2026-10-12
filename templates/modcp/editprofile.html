@@ -9,9 +9,9 @@
   {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
   <div class="form-row"><span class="label"><strong>Avatar</strong></span><label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div>
   <div class="form-row"><span class="label"><strong>Restrictions</strong></span><div class="checks">
-    <label><input type="checkbox" name="suspendposting" value="1"{% if user.suspendposting %} checked{% endif %}> Suspend posting for <input type="number" name="suspendposting_days" value="7" min="0" style="width:70px"> days (0 = permanently)</label>
-    <label><input type="checkbox" name="moderateposts" value="1"{% if user.moderateposts %} checked{% endif %}> Moderate all posts for <input type="number" name="moderateposts_days" value="7" min="0" style="width:70px"> days</label>
-    <label><input type="checkbox" name="suspendsignature" value="1"{% if user.suspendsignature %} checked{% endif %}> Hide signature for <input type="number" name="suspendsignature_days" value="7" min="0" style="width:70px"> days</label>
+    <label><input type="checkbox" name="suspendposting" value="1"{% if user.suspendposting %} checked{% endif %}> Suspend posting for <input class="w-70" type="number" name="suspendposting_days" value="7" min="0"> days (0 = permanently)</label>
+    <label><input type="checkbox" name="moderateposts" value="1"{% if user.moderateposts %} checked{% endif %}> Moderate all posts for <input class="w-70" type="number" name="moderateposts_days" value="7" min="0"> days</label>
+    <label><input type="checkbox" name="suspendsignature" value="1"{% if user.suspendsignature %} checked{% endif %}> Hide signature for <input class="w-70" type="number" name="suspendsignature_days" value="7" min="0"> days</label>
   </div></div>
   <div class="form-row"><span class="label"><strong>Moderator notes</strong></span><div><a href="/modcp/member/{{ user.uid }}">Notes and moderation history</a></div></div>
   <div class="box-foot"><button class="btn" type="submit">Save profile</button></div>

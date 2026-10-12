@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<div style="max-width:520px">{{ m.errors_box(errors) }}
+<div class="mw-520">{{ m.errors_box(errors) }}
 <form method="post" action="/member/resetpw" class="box">
   {{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="code" value="{{ code }}">
   <div class="box-head"><h2>Choose a new password</h2></div>

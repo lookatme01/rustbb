@@ -43,4 +43,5 @@ for _ in $(seq 1 100); do
 done
 curl -fsS "$BASE/livez" >/dev/null 2>&1 || { echo "server did not start; log:"; tail -50 "$LOG"; exit 1; }
 
+node tests/a11y/contrast.mjs || exit 1
 node tests/a11y/axe.mjs "$BASE" "$PASSWORD"

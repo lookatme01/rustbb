@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% block content %}
 <section class="box"><div class="box-head"><h2>Board statistics</h2></div>
-<div class="two-col" style="gap:0">
+<div class="two-col gap-0">
 <div class="kv">
   <div>Posts</div><div>{{ base.posts|num }} ({{ posts_per_day }} per day)</div>
   <div>Threads</div><div>{{ base.threads|num }} ({{ threads_per_day }} per day)</div>

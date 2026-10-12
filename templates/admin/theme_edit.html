@@ -23,14 +23,14 @@
     {% if pr.banner %}<div class="banner-thumb" style="background-image:url('{{ pr.banner }}')"></div>{% endif %}</div></div>
   <div class="form-row"><label for="logo">Logo</label><div><input id="logo" type="text" name="logo" value="{{ pr.logo or '' }}" placeholder="/static/images/logo.svg"></div></div>
   <div class="box-sub">Advanced</div>
-  <div class="form-row"><label for="properties">Properties (JSON)</label><div><textarea id="properties" name="properties" rows="5" style="font-family:var(--font-code);font-size:.85rem">{{ props }}</textarea><span class="help">Any extra properties. The Branding fields above take precedence.</span></div></div>
-  <div class="form-row"><label for="stylesheet">Stylesheet (CSS)</label><div><textarea id="stylesheet" name="stylesheet" rows="18" style="font-family:var(--font-code);font-size:.85rem" spellcheck="false">{{ t.stylesheet if t else '' }}</textarea><span class="help">Loaded after the base stylesheet. Override design tokens, e.g. <code>:root { --slate: #3b2f58; --unread: #ff7a59; }</code></span></div></div>
+  <div class="form-row"><label for="properties">Properties (JSON)</label><div><textarea id="properties" name="properties" rows="5" class="code-input">{{ props }}</textarea><span class="help">Any extra properties. The Branding fields above take precedence.</span></div></div>
+  <div class="form-row"><label for="stylesheet">Stylesheet (CSS)</label><div><textarea id="stylesheet" name="stylesheet" rows="18" class="code-input" spellcheck="false">{{ t.stylesheet if t else '' }}</textarea><span class="help">Loaded after the base stylesheet. Override design tokens, e.g. <code>:root { --slate: #3b2f58; --unread: #ff7a59; }</code></span></div></div>
   <div class="box-foot"><button class="btn">Save theme</button></div>
 </form>
 {% if t %}
 <form method="post" action="/admin/themes/{{ t.tid }}/banner" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Upload a banner</h2><span class="desc">JPEG, PNG, GIF or WebP. Wide images (2400 × 600 or so) look best; they are resized and compressed for you.</span></div>
-  <div class="box-body actions" style="margin:0"><input type="file" name="file" accept="image/*" required aria-label="Banner image"><button class="btn secondary">Upload</button></div>
+  <div class="box-body actions flush"><input type="file" name="file" accept="image/*" required aria-label="Banner image"><button class="btn secondary">Upload</button></div>
 </form>
 {% endif %}
 {% endblock %}

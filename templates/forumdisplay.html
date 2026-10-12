@@ -1,25 +1,25 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
-{% block line %}--line: var(--line-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}){% endblock %}
+{% block tone %}tone-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}{% endblock %}
 {% block content %}
-<header class="page-head forum-head">
-  <span class="forum-icon big" aria-hidden="true">{{ m.icon('chat') }}</span>
+<header class="page-head forum-head rise">
+  <span class="ficon on" aria-hidden="true">{{ m.icon('chat') }}</span>
   <div class="grow">
-    <h1>{{ forum.name }}</h1>
+    <h1 class="h1">{{ forum.name }}</h1>
     {% if forum.description %}<p class="lede">{{ forum.description|safe }}</p>{% endif %}
   </div>
   <div class="actions">
     {% if me %}
-    <form method="post" action="/forum/{{ forum.fid }}/subscribe">{{ m.csrf_field() }}<button class="btn secondary small" type="submit">{{ m.icon('bell') }}{{ 'Unsubscribe' if subscribed else 'Follow' }}</button></form>
-    <form method="post" action="/forum/{{ forum.fid }}/markread">{{ m.csrf_field() }}<button class="btn ghost small" type="submit">{{ m.icon('check') }}Mark read</button></form>
+    <form method="post" action="/forum/{{ forum.fid }}/subscribe">{{ m.csrf_field() }}<button class="btn btn-ghost" type="submit" aria-pressed="{{ 'true' if subscribed else 'false' }}">{{ m.icon('check' if subscribed else 'bell') }}{{ 'Following' if subscribed else 'Follow forum' }}</button></form>
+    <form method="post" action="/forum/{{ forum.fid }}/markread">{{ m.csrf_field() }}<button class="btn btn-quiet" type="submit">{{ m.icon('check') }}Mark read</button></form>
     {% endif %}
     {% if can_post %}<a class="btn" href="/newthread/{{ forum.fid }}">{{ m.icon('plus') }}{{ t("New Thread") }}</a>{% endif %}
   </div>
 </header>
 
 {% if rules_html %}
-<section class="box">
-  <div class="box-head"><h2>{{ forum.rulestitle or 'Forum Rules' }}</h2></div>
+<section class="card">
+  <div class="card-head"><h2>{{ forum.rulestitle or 'Forum Rules' }}</h2></div>
   <div class="box-body">{% if forum.rulestype == 1 %}{{ rules_html|safe }}{% else %}<details><summary>Read the rules</summary>{{ rules_html|safe }}</details>{% endif %}</div>
 </section>
 {% endif %}
@@ -32,16 +32,16 @@
 {% endif %}
 
 {% if not forum.is_category and not fperms.canviewthreads %}
-<div class="box"><div class="empty">You can see this forum but you do not have permission to read its threads.{% if not me %} <a href="/member/login?return_to={{ current_url|urlenc }}">Log in</a> to see more.{% endif %}</div></div>
+<div class="card"><div class="empty">You can see this forum but you do not have permission to read its threads.{% if not me %} <a href="/member/login?return_to={{ current_url|urlenc }}">Log in</a> to see more.{% endif %}</div></div>
 {% endif %}
 {% if not forum.is_category and fperms.canviewthreads %}
-<div class="actions toolbar">
+<div class="toolbar">
   {{ m.pagination(pagination) }}
   <span class="spacer"></span>
   {% set sort_labels = {'lastpost':'Last post','started':'Start date','subject':'Subject','starter':'Author','replies':'Replies','views':'Views','rating':'Rating'} %}
   {% set filtered = (sortby and sortby != 'lastpost') or order == 'asc' or datecut or prefix %}
   <details class="popmenu down">
-    <summary class="btn secondary small">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
+    <summary class="btn btn-ghost">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
     <div class="menu">
   <form method="get" action="{{ forum_url }}" class="filters menu-form">
     {% if prefixes %}<select name="prefix" aria-label="Prefix"><option value="0">Any prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
@@ -52,19 +52,19 @@
     <select name="datecut" aria-label="From">
       {% for d in [(0,'Any time'),(1,'Today'),(7,'Last week'),(30,'Last month'),(90,'Last 3 months'),(365,'Last year')] %}<option value="{{ d[0] }}"{% if datecut == d[0] %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}
     </select>
-    <button class="btn small" type="submit">Apply</button>
+    <button class="btn btn-sm" type="submit">Apply</button>
     {% if filtered %}<a class="menu-reset" href="{{ forum_url }}">Reset</a>{% endif %}
   </form>
     </div>
   </details>
 </div>
 
-<section class="thread-list">
-  <div class="box-head"><h2>Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
+<section class="card thread-list rise" aria-labelledby="threads-title">
+  <div class="card-head"><h2 id="threads-title">Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
   {% for a in announcements %}
   <div class="thread-row sticky">
-    <span class="face" style="--size:40px">📣</span>
-    <div><div class="thread-title"><span class="flag sticky">Announcement</span> <a href="/announcement/{{ a.aid }}">{{ a.subject }}</a></div><div class="thread-meta"><span>{{ a.startdate|date }}</span></div></div>
+    <span class="face size-40" aria-hidden="true">📣</span>
+    <div class="thread-main"><div class="thread-title"><span class="chip chip-solid">Announcement</span> <a class="subject" href="/announcement/{{ a.aid }}">{{ a.subject }}</a></div><div class="thread-meta"><span>{{ a.startdate|date }}</span></div></div>
     <div class="thread-stats"></div><div></div>{% if is_mod %}<div></div>{% endif %}
   </div>
   {% endfor %}
@@ -73,9 +73,8 @@
   {% endfor %}
 </section>
 
-<div class="actions">
+<div class="pager">
   {{ m.pagination(pagination) }}
-  <span class="spacer"></span>
   {% if can_post %}<a class="btn" href="/newthread/{{ forum.fid }}">{{ t("New Thread") }}</a>{% endif %}
 </div>
 

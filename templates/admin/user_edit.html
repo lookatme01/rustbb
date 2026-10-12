@@ -5,9 +5,9 @@
 {% block acp %}
 {% set back = "/admin/users/" ~ user.uid %}
 {{ act.reasons_list(reasons) }}
-<div class="actions" style="justify-content:space-between">
+<div class="actions between">
   <span class="small muted"><a href="/admin/users">Users</a> › {{ user.username }}</span>
-  <span class="actions" style="margin:0"><a class="btn secondary small" href="/user/{{ user.uid }}/posts">Posts</a>{% if lastip %}<a class="btn secondary small" href="/modcp/ipsearch?ip={{ lastip|urlenc }}">Search IP</a>{% endif %}<a class="btn secondary small" href="/admin/users/{{ user.uid }}/activity">Account activity</a></span>
+  <span class="actions flush"><a class="btn secondary small" href="/user/{{ user.uid }}/posts">Posts</a>{% if lastip %}<a class="btn secondary small" href="/modcp/ipsearch?ip={{ lastip|urlenc }}">Search IP</a>{% endif %}<a class="btn secondary small" href="/admin/users/{{ user.uid }}/activity">Account activity</a></span>
 </div>
 {% if user.is_system %}<div class="notice">This is the built-in System account. It never signs in and cannot be banned, deleted or merged; its email, password and groups are fixed. You can change its name, title, signature and avatar.</div>{% endif %}
 
@@ -71,15 +71,15 @@
     <div class="form-row"><label for="signature">Signature</label><textarea id="signature" name="signature" rows="3">{{ user.signature }}</textarea></div>
     <div class="form-row"><label for="timezone">Timezone</label><input id="timezone" type="text" name="timezone" value="{{ user.timezone }}" placeholder="Board default"></div>
     {% for f in fields %}{% include "profilefield_input.html" %}{% endfor %}
-    <div class="form-row"><span class="label"><strong>Avatar</strong></span><div>{% if user.avatar %}<img src="{{ user.avatar|img }}" alt="" width="64" height="64" style="border-radius:6px"> {% endif %}<label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div></div>
+    <div class="form-row"><span class="label"><strong>Avatar</strong></span><div>{% if user.avatar %}<img src="{{ user.avatar|img }}" alt="" width="64" height="64" class="avatar-img"> {% endif %}<label class="check"><input type="checkbox" name="removeavatar" value="1"> Remove avatar</label></div></div>
     <div class="box-sub">Statistics</div>
-    <div class="form-row"><label for="postnum">Post count</label><input id="postnum" type="number" name="postnum" value="{{ user.postnum }}" style="width:120px"></div>
-    <div class="form-row"><label for="threadnum">Thread count</label><input id="threadnum" type="number" name="threadnum" value="{{ user.threadnum }}" style="width:120px"></div>
+    <div class="form-row"><label for="postnum">Post count</label><input class="w-120" id="postnum" type="number" name="postnum" value="{{ user.postnum }}"></div>
+    <div class="form-row"><label for="threadnum">Thread count</label><input class="w-120" id="threadnum" type="number" name="threadnum" value="{{ user.threadnum }}"></div>
     <div class="box-foot"><button class="btn">Save changes</button></div>
   </form>
 
   {% else %}
-  <div class="box-body" style="overflow-x:auto">
+  <div class="box-body scroll-x">
     <table class="grid"><thead><tr><th>IP address</th><th>Last used</th><th>Other accounts on it</th></tr></thead><tbody>
       {% if regip %}<tr><td><a href="/modcp/ipsearch?ip={{ regip|urlenc }}">{{ regip }}</a> <span class="small muted">registration</span></td><td class="small">{{ user.regdate|date }}</td><td></td></tr>{% endif %}
       {% if lastip %}<tr><td><a href="/modcp/ipsearch?ip={{ lastip|urlenc }}">{{ lastip }}</a> <span class="small muted">last seen</span></td><td class="small">{{ user.lastactive|date }}</td><td></td></tr>{% endif %}
@@ -89,7 +89,7 @@
   <div class="box-sub">Signed-in devices</div>
   <table class="grid"><tbody>{% for l in logins %}<tr><td class="small">{{ l[1]|date }}</td><td class="small">{{ l[3] }}</td><td class="small">{{ l[2] }}</td></tr>{% else %}<tr><td class="empty">Not signed in anywhere.</td></tr>{% endfor %}</tbody></table>
   {% if not user.is_system %}
-  <form method="post" action="/admin/users/{{ user.uid }}/security" class="box-foot" style="display:grid;gap:6px">{{ m.csrf_field() }}
+  <form method="post" action="/admin/users/{{ user.uid }}/security" class="box-foot stack-6">{{ m.csrf_field() }}
     <label class="check"><input type="checkbox" name="logoutall" value="1"> Sign them out everywhere</label>
     {% if has2fa %}<label class="check"><input type="checkbox" name="reset2fa" value="1"> Turn off their two-factor authentication</label>{% endif %}
     {% if passkeys %}<label class="check"><input type="checkbox" name="removepasskeys" value="1"> Remove their {{ passkeys }} {{ passkeys|plural("passkey","passkeys") }} (for a lost device)</label>{% endif %}
@@ -101,7 +101,7 @@
 
 {% if not user.is_system %}
 <details class="box">
-  <summary class="box-head" style="cursor:pointer"><h2>Danger zone</h2><span class="right">Merge, delete or erase this account</span></summary>
+  <summary class="box-head pointer"><h2>Danger zone</h2><span class="right">Merge, delete or erase this account</span></summary>
   <div class="mf-danger">
     <div><strong>Merge into another account</strong><p>Moves their posts, threads and messages to another member, then deletes this account.</p><a class="btn secondary small" href="/admin/users/merge">Merge…</a></div>
     <form method="post" action="/admin/users/{{ user.uid }}/delete" class="js-confirm" data-confirm="Delete this user permanently?">{{ m.csrf_field() }}

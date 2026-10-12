@@ -70,6 +70,7 @@ pub struct User {
     pub dateformat: String,
     pub timeformat: String,
     pub colormode: String,
+    pub accent: String,
     pub referrer: i32,
     pub referrals: i32,
     #[serde(skip_serializing)]
@@ -410,7 +411,7 @@ pub struct Calendar {
 // Explicit column lists for each model (queries never use `SELECT *`, so adding a column to a
 // table cannot change or break what existing queries read). `tests/columns.rs` checks that every
 // list decodes into its struct.
-pub const USER_COLUMNS: &str = "uid, username, password, email, usergroup, additionalgroups, displaygroup, usertitle, regdate, lastactive, lastvisit, lastpost, website, avatar, avatardimensions, avatartype, signature, birthday, birthdayprivacy, timezone, postnum, threadnum, reputation, warningpoints, moderateposts, moderationtime, suspendposting, suspensiontime, suspendsignature, suspendsigtime, regip, lastip, language, style, away, awaydate, returndate, awayreason, pmnotice, pmnotify, receivepms, receivefrombuddy, buddylist, ignorelist, hideemail, allownotices, subscriptionmethod, invisible, showsigs, showavatars, showimages, showvideos, showquickreply, showredirect, tpp, ppp, threadmode, daysprune, dateformat, timeformat, colormode, referrer, referrals, usernotes, notepad, pmfolders, unreadpms, totalpms, unreadalerts, timeonline, loginattempts, loginlockoutexpiry, totp_secret, session_version, coppauser, is_system";
+pub const USER_COLUMNS: &str = "uid, username, password, email, usergroup, additionalgroups, displaygroup, usertitle, regdate, lastactive, lastvisit, lastpost, website, avatar, avatardimensions, avatartype, signature, birthday, birthdayprivacy, timezone, postnum, threadnum, reputation, warningpoints, moderateposts, moderationtime, suspendposting, suspensiontime, suspendsignature, suspendsigtime, regip, lastip, language, style, away, awaydate, returndate, awayreason, pmnotice, pmnotify, receivepms, receivefrombuddy, buddylist, ignorelist, hideemail, allownotices, subscriptionmethod, invisible, showsigs, showavatars, showimages, showvideos, showquickreply, showredirect, tpp, ppp, threadmode, daysprune, dateformat, timeformat, colormode, accent, referrer, referrals, usernotes, notepad, pmfolders, unreadpms, totalpms, unreadalerts, timeonline, loginattempts, loginlockoutexpiry, totp_secret, session_version, coppauser, is_system";
 pub const THREAD_COLUMNS: &str = "tid, fid, subject, prefix, icon, poll, uid, username, dateline, firstpost, lastpost, lastposter, lastposteruid, views, replies, closed, sticky, numratings, totalratings, notes, visible, unapprovedposts, deletedposts, attachmentcount, deletetime, redirect_expires";
 pub const GROUP_COLUMNS: &str = "gid, type, title, description, namestyle, usertitle, stars, starimage, image, disporder, isbannedgroup, perms, is_system";
 pub const THEME_COLUMNS: &str = "tid, name, pid, def, properties, stylesheet, allowedgroups";

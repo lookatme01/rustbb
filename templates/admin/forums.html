@@ -10,8 +10,8 @@
     {% if not f.active %}<span class="tag">inactive</span>{% endif %}{% if not f.open %}<span class="tag">closed</span>{% endif %}{% if f.linkto %}<span class="tag">link</span>{% endif %}
     {% if f.custom_perms %}<span class="tag" title="Custom permissions">{{ f.custom_perms }} perm overrides</span>{% endif %}{% if f.mods %}<span class="tag">{{ f.mods }} moderators</span>{% endif %}</div></td>
   <td class="num">{{ f.threads|num }}</td><td class="num">{{ f.posts|num }}</td>
-  <td><input type="number" name="order_{{ f.fid }}" value="{{ f.disporder }}" style="width:70px" aria-label="Display order"></td>
-  <td class="num" style="white-space:nowrap"><a class="btn secondary small" href="/admin/forums/edit?fid={{ f.fid }}">Edit</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/permissions">Permissions</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/moderators">Moderators</a> <a class="btn secondary small" href="/admin/forums/edit?pid={{ f.fid }}">Add child</a></td>
+  <td><input class="w-70" type="number" name="order_{{ f.fid }}" value="{{ f.disporder }}" aria-label="Display order"></td>
+  <td class="num nowrap"><a class="btn secondary small" href="/admin/forums/edit?fid={{ f.fid }}">Edit</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/permissions">Permissions</a> <a class="btn secondary small" href="/admin/forums/{{ f.fid }}/moderators">Moderators</a> <a class="btn secondary small" href="/admin/forums/edit?pid={{ f.fid }}">Add child</a></td>
 </tr>{% endfor %}
 </tbody></table>
 <div class="box-foot"><button class="btn small">Save display order</button></div>

@@ -24,7 +24,7 @@
 {% if remote %}
 <form method="post" action="/usercp/avatar" enctype="multipart/form-data" class="box">{{ m.csrf_field() }}<input type="hidden" name="action" value="remote">
   <div class="box-head"><h2>Use an image from the web</h2></div>
-  <div class="box-body"><input type="url" name="url" aria-label="Avatar URL" placeholder="https://example.com/me.png" style="width:100%" required></div>
+  <div class="box-body"><input class="w-full" type="url" name="url" aria-label="Avatar URL" placeholder="https://example.com/me.png" required></div>
   <div class="box-foot"><button class="btn" type="submit">Use this image</button></div>
 </form>
 {% endif %}

@@ -3,10 +3,10 @@
 {% block head %}{% if passkeys %}<script src="{{ asset('js/passkeys.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="auth">
-  <div class="auth-card">
-    <img class="auth-logo" src="{{ theme.props.logo if theme and theme.props.logo else asset('images/logo.svg') }}" alt="" width="48" height="48">
+  <div class="card auth-card">
+    <span class="auth-logo">{{ m.logo_mark(48) }}</span>
     <h1>Welcome back</h1>
-    <p class="muted">Log in to {{ bb.bbname }}</p>
+    <p class="soft">Log in to {{ bb.bbname }}</p>
     {{ m.errors_box(errors) }}
     <form method="post" action="/member/login" class="auth-form">
       {{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
@@ -20,7 +20,7 @@
       {{ m.csrf_field() }}<input type="hidden" name="return_to" value="{{ return_to }}">
       <div class="auth-or"><span>or</span></div>
       <p class="notice bad small js-passkey-error" role="alert" hidden></p>
-      <button class="btn secondary block" type="submit">{{ m.icon('lock') }} Sign in with a passkey</button>
+      <button class="btn btn-ghost block" type="submit">{{ m.icon('lock') }} Sign in with a passkey</button>
     </form>
     {% endif %}
     {% if bb.disableregs != '1' %}<p class="auth-alt">New here? <a href="/member/register">Create an account</a></p>{% endif %}

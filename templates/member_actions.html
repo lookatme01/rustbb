@@ -15,7 +15,7 @@
     </fieldset>
     <label>For <select name="days">{% for d in [(1,'1 day'),(3,'3 days'),(7,'1 week'),(30,'1 month'),(0,'Until someone lifts it')] %}<option value="{{ d[0] }}"{% if d[0] == 7 %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}</select></label>
     <label>Reason <span class="mf-shown">· staff only, kept in the moderator log</span><input type="text" name="reason" maxlength="300" list="mf-reasons" autocomplete="off"></label>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost small" type="button" popovertarget="mf-restrict" popovertargetaction="hide">Cancel</button><button class="btn small">Restrict</button></div>
+    <div class="cluster end"><button class="btn ghost small" type="button" popovertarget="mf-restrict" popovertargetaction="hide">Cancel</button><button class="btn small">Restrict</button></div>
   </form>
 </div>
 {% endmacro %}
@@ -36,16 +36,16 @@
     <label>Reason <span class="mf-shown">· shown to them</span><input type="text" name="reason" maxlength="255" list="mf-reasons" autocomplete="off"></label>
     <label>Length <select name="days">{% for d in [(1,'1 day'),(3,'3 days'),(7,'1 week'),(30,'1 month'),(365,'1 year'),(0,'Permanent')] %}<option value="{{ d[0] }}"{% if d[0] == 7 %} selected{% endif %}>{{ d[1] }}</option>{% endfor %}</select></label>
     <label><input type="checkbox" name="deleteposts" value="1"> Also delete all their threads and posts (spammers; can't be undone)</label>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost small" type="button" popovertarget="mf-ban" popovertargetaction="hide">Cancel</button><button class="btn danger small">Ban {{ mf.username }}</button></div>
+    <div class="cluster end"><button class="btn ghost small" type="button" popovertarget="mf-ban" popovertargetaction="hide">Cancel</button><button class="btn danger small">Ban {{ mf.username }}</button></div>
   </form>
 </div>
 {% endmacro %}
 
 {# Active restrictions with a Lift button each. #}
 {% macro active(mf, back, can_lift) %}
-{% if mf.restrictions or mf.ban %}<div class="mf-checks" style="border-top:1px solid var(--rule)">
+{% if mf.restrictions or mf.ban %}<div class="mf-checks rule-top">
   {% if mf.ban %}<div class="mf-check"><span class="mf-dot red"></span><span class="mf-text">{% if mf.ban[1] %}Banned until {{ mf.ban[1]|date('date') }}{% else %}Banned permanently{% endif %}{% if mf.ban[0] %}<span class="mf-sub">“{{ mf.ban[0] }}”</span>{% endif %}</span></div>{% endif %}
-  {% for r in mf.restrictions %}<div class="mf-check" style="align-items:center"><span class="mf-dot red" style="margin-top:0"></span><span class="mf-text">{{ r.label }}<span class="mf-sub">{% if r.until %}until {{ r.until|date('date') }}{% else %}until someone lifts it{% endif %}</span></span>{% if can_lift %}<form method="post" action="/modcp/member/{{ mf.uid }}/lift">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ r.kind }}"><input type="hidden" name="back" value="{{ back }}"><button class="btn secondary small">Lift</button></form>{% endif %}</div>{% endfor %}
+  {% for r in mf.restrictions %}<div class="mf-check mf-check-center"><span class="mf-dot red"></span><span class="mf-text">{{ r.label }}<span class="mf-sub">{% if r.until %}until {{ r.until|date('date') }}{% else %}until someone lifts it{% endif %}</span></span>{% if can_lift %}<form method="post" action="/modcp/member/{{ mf.uid }}/lift">{{ m.csrf_field() }}<input type="hidden" name="kind" value="{{ r.kind }}"><input type="hidden" name="back" value="{{ back }}"><button class="btn secondary small">Lift</button></form>{% endif %}</div>{% endfor %}
 </div>{% endif %}
 {% endmacro %}
 
@@ -55,9 +55,9 @@
   <div class="box-head"><h2>Staff notes</h2><span class="right">Only staff see these</span></div>
   {% set ns = events|selectattr("kind", "equalto", "notes")|list %}
   <div class="mf-checks">
-  {% for e in ns[:4] %}<div class="mf-check{% if e.retracted_by %} muted{% endif %}" style="align-items:flex-start"><span class="mf-text">{% if e.retracted_by %}<s>{{ e.detail }}</s>{% else %}{{ e.detail }}{% endif %}<span class="mf-sub">{{ e.actor or '' }} · {{ e.when|date }}{% if e.pinned %} · pinned{% endif %}</span></span>{% if can_write and not e.retracted_by %}<form method="post" action="/modcp/notes/{{ e.note_id }}/pin">{{ m.csrf_field() }}<input type="hidden" name="back" value="{{ back }}"><button class="btn ghost small">{{ 'Unpin' if e.pinned else 'Pin' }}</button></form>{% endif %}</div>{% else %}<div class="mf-check"><span class="mf-text" style="color:var(--ink-soft)">No notes yet.</span></div>{% endfor %}
+  {% for e in ns[:4] %}<div class="mf-check{% if e.retracted_by %} soft{% endif %}"><span class="mf-text">{% if e.retracted_by %}<s>{{ e.detail }}</s>{% else %}{{ e.detail }}{% endif %}<span class="mf-sub">{{ e.actor or '' }} · {{ e.when|date }}{% if e.pinned %} · pinned{% endif %}</span></span>{% if can_write and not e.retracted_by %}<form method="post" action="/modcp/notes/{{ e.note_id }}/pin">{{ m.csrf_field() }}<input type="hidden" name="back" value="{{ back }}"><button class="btn ghost small">{{ 'Unpin' if e.pinned else 'Pin' }}</button></form>{% endif %}</div>{% else %}<div class="mf-check"><span class="mf-text soft">No notes yet.</span></div>{% endfor %}
   </div>
-  {% if can_write %}<form method="post" action="/modcp/member/{{ mf.uid }}/notes" class="box-body" style="display:grid;gap:8px;border-top:1px solid var(--rule)">{{ m.csrf_field() }}
+  {% if can_write %}<form method="post" action="/modcp/member/{{ mf.uid }}/notes" class="box-body stack-tight rule-top">{{ m.csrf_field() }}
     <textarea name="note" rows="2" maxlength="2000" required aria-label="Add a note" placeholder="Add a note only staff can see. Notes can't be edited later."></textarea>
     <div><button class="btn secondary small">Add note</button></div>
   </form>{% endif %}
@@ -73,9 +73,9 @@
 {% for e in events %}<div class="mf-ev{% if e.retracted_by %} retracted{% endif %}">
   <span class="when">{{ e.when|date }}</span>
   <span><span class="mf-flag {{ {'notes':'grey','warnings':'orange','bans':'red','reports':'orange','moderation':'blue','appeals':'orange'}[e.kind] or 'grey' }}">{{ {'notes':'Note','warnings':'Warning','bans':'Account','reports':'Report','moderation':'Moderation','appeals':'Appeal'}[e.kind] or e.kind }}</span></span>
-  <span class="what">{% if e.link %}<a href="{{ e.link }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}{% if e.detail %}<span class="mf-sub" style="display:block;color:var(--ink-soft);font-size:.82rem">{% if e.retracted_by %}<s>{{ e.detail }}</s> (retracted by {{ e.retracted_by }}){% else %}{{ e.detail }}{% endif %}</span>{% endif %}
-    {% if e.can_retract %}<form method="post" action="/modcp/notes/{{ e.note_id }}/retract" style="display:inline">{{ m.csrf_field() }}<button class="btn ghost small" type="submit">Retract</button></form>{% endif %}</span>
+  <span class="what">{% if e.link %}<a href="{{ e.link }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}{% if e.detail %}<span class="mf-sub mf-sub-block">{% if e.retracted_by %}<s>{{ e.detail }}</s> (retracted by {{ e.retracted_by }}){% else %}{{ e.detail }}{% endif %}</span>{% endif %}
+    {% if e.can_retract %}<form method="post" action="/modcp/notes/{{ e.note_id }}/retract" class="inline">{{ m.csrf_field() }}<button class="btn ghost small" type="submit">Retract</button></form>{% endif %}</span>
   <span class="by">{{ e.actor or '' }}</span>
-</div>{% else %}<div class="empty" style="padding:24px 20px;color:var(--ink-soft)">Nothing recorded yet.</div>{% endfor %}
+</div>{% else %}<div class="empty">Nothing recorded yet.</div>{% endfor %}
 </div>
 {% endmacro %}

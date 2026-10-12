@@ -1,0 +1,162 @@
+/* Ink design tokens: colour, type, shape and motion. Every rule in rbb.css reads these and
+   nothing else, so this file is the whole palette.
+
+   Light first, warm graphite. html[data-mode] picks the mode: "light", "dark", or "auto"
+   (follow the device). A member's accent is one variable, --accent, set on <html> to one of the
+   --accent-* tokens below; --brand falls back to Ink when it is unset. Every accent passes
+   WCAG AA in both modes: 4.5:1 for button text on it, and as text on every surface and on its own
+   wash (tests/a11y/contrast.mjs checks the values in this file). */
+
+/* Onest (SIL Open Font License 1.1), variable weight 400–800, self-hosted. The only font. */
+@font-face { font-family: Onest; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/static/fonts/Onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: Onest; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/static/fonts/Onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: Onest; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/static/fonts/Onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root {
+  /* ---- colour (light) */
+  --canvas: #F6F5F3;
+  --surface: #FFFFFF;
+  --surface-2: #FAF9F7;
+  --surface-3: #EFEDEA;
+  --ink: #1C1B19;
+  --soft: #5E5B56;
+  --faint: #6B6862;
+  --rule: rgba(28, 27, 25, .09);
+  --rule-2: rgba(28, 27, 25, .16);
+  --glass: rgba(255, 255, 255, .8);
+  --scrim: rgba(28, 27, 25, .42);
+
+  /* accents a member can pick (Appearance in the User CP) */
+  --accent-ink: #2B2926;
+  --accent-cobalt: #0A5FB5;
+  --accent-moss: #2F6B4F;
+  --accent-plum: #8E3B8F;
+  --accent-raspberry: #AA1F51;
+  --accent-amber: #8C5100;
+
+  --brand: var(--accent, var(--accent-ink));
+  --brand-ink: #FFFFFF;
+  --brand-hover: color-mix(in oklab, var(--brand) 82%, #000);
+  --brand-wash: color-mix(in srgb, var(--brand) 10%, transparent);
+  --ring: color-mix(in srgb, var(--brand) 22%, transparent);
+  --focus: var(--ink);
+  --live: #198F5E;
+
+  /* category lines and their tints (forum icons, chips, bars) */
+  --l0: #2B2926; --t0: rgba(43, 41, 38, .09);
+  --l1: #0A8984; --t1: rgba(10, 137, 132, .12);
+  --l2: #8A4FE0; --t2: rgba(138, 79, 224, .12);
+  --l3: #D63A73; --t3: rgba(214, 58, 115, .11);
+  --l4: #B07200; --t4: rgba(176, 114, 0, .12);
+  --l5: #2878D0; --t5: rgba(40, 120, 208, .11);
+
+  /* status */
+  --ok: #0F6B4B; --ok-bg: #E3F4EC;
+  --warn: #7A4F00; --warn-bg: #FFF3D6;
+  --bad: #B3243D; --bad-bg: #FCE8EC;
+  --code: #F3F1EE;
+  --mark: #FFE58A;
+
+  /* avatar initials: pastel grounds with ink letters, the same in both modes */
+  --av-0: #E8D5C4; --av-1: #CFE0DA; --av-2: #D9D0EA; --av-3: #F0CFD8; --av-4: #F3E3B8; --av-5: #CDDDF2;
+  --av-ink: #1C1B19;
+
+  /* badge tones */
+  --award-bronze: #9A6234; --award-silver: #6B7280; --award-gold: #8C6A00; --award-green: #1C7F57; --award-blue: #1F6FBF; --award-purple: #7D47D6; --award-red: #C2255C;
+
+  /* fixed grounds: QR codes need white to scan, video letterboxes are black */
+  --qr-bg: #FFFFFF;
+  --media-bg: #000000;
+
+  --shadow: 0 1px 2px rgba(28, 27, 25, .05), 0 8px 28px -14px rgba(28, 27, 25, .16);
+  --shadow-lg: 0 2px 6px rgba(28, 27, 25, .06), 0 24px 60px -20px rgba(28, 27, 25, .32);
+  color-scheme: light;
+
+  /* ---- type */
+  --font: Onest, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --text: 15px;
+  --leading: 1.55;
+  --tracking: -.006em;
+  --text-read: 16px;
+  --leading-read: 1.72;
+  --text-sm: 14px;
+  --text-xs: 13px;
+  --text-2xs: 12px;
+  --h1: 46px;
+  --h1-page: 42px;
+  --h2: 22px;
+  --h3: 19px;
+  --w-display: 780;
+  --w-heading: 750;
+  --w-strong: 650;
+  --w-label: 600;
+  --track-display: -.035em;
+  --track-h2: -.025em;
+  --track-h3: -.02em;
+  --track-caps: .08em;
+
+  /* ---- shape */
+  --r-card: 20px;
+  --r-inner: 16px;
+  --r-icon: 15px;
+  --r-ctl: 12px;
+  --r-tab: 11px;
+  --r-sm: 8px;
+  --r-pill: 999px;
+  --tap: 44px;
+  --page: 1280px;
+  --gutter: 32px;
+  --header-h: 68px;
+
+  /* ---- motion */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --dur-fast: .15s;
+  --dur: .2s;
+  --dur-slow: .28s;
+  --dur-rise: .55s;
+  --lift: translateY(-1px);
+}
+
+/* Dark: the same block twice, once for "dark" and once for "auto" on a dark device. */
+:root[data-mode="dark"] {
+  --canvas: #121110; --surface: #1B1A18; --surface-2: #211F1D; --surface-3: #2A2825;
+  --ink: #F3F1EE; --soft: #B0ACA5; --faint: #9B978F;
+  --rule: rgba(255, 250, 240, .08); --rule-2: rgba(255, 250, 240, .15); --glass: rgba(27, 26, 24, .8); --scrim: rgba(0, 0, 0, .6);
+  --accent-ink: #F3F1EE; --accent-cobalt: #7DB8F5; --accent-moss: #6FCB9C; --accent-plum: #DFA0E0; --accent-raspberry: #FF8DB0; --accent-amber: #F2B53C;
+  --brand-ink: #121110; --brand-hover: color-mix(in oklab, var(--brand) 80%, #fff); --brand-wash: color-mix(in srgb, var(--brand) 14%, transparent);
+  --ring: color-mix(in srgb, var(--brand) 30%, transparent);
+  --live: #5BD3A2;
+  --l0: #E9E6E1; --t0: rgba(233, 230, 225, .12); --l1: #3DD3CC; --t1: rgba(61, 211, 204, .15); --l2: #B68CFF; --t2: rgba(182, 140, 255, .16);
+  --l3: #FF7BA8; --t3: rgba(255, 123, 168, .15); --l4: #F2B53C; --t4: rgba(242, 181, 60, .15); --l5: #6CB6FF; --t5: rgba(108, 182, 255, .15);
+  --ok: #5BD3A2; --ok-bg: #0F2A21; --warn: #F2C35B; --warn-bg: #2C230C; --bad: #FF8DA1; --bad-bg: #331520;
+  --code: #141311; --mark: #5C4D12;
+  --award-bronze: #E0A87A; --award-silver: #B4BAC6; --award-gold: #F2C35B; --award-green: #5BD3A2; --award-blue: #7DB8F5; --award-purple: #B68CFF; --award-red: #FF8DB0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px -16px rgba(0, 0, 0, .7);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .45), 0 30px 70px -24px rgba(0, 0, 0, .85);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode="light"]):not([data-mode="dark"]) {
+    --canvas: #121110; --surface: #1B1A18; --surface-2: #211F1D; --surface-3: #2A2825;
+    --ink: #F3F1EE; --soft: #B0ACA5; --faint: #9B978F;
+    --rule: rgba(255, 250, 240, .08); --rule-2: rgba(255, 250, 240, .15); --glass: rgba(27, 26, 24, .8); --scrim: rgba(0, 0, 0, .6);
+    --accent-ink: #F3F1EE; --accent-cobalt: #7DB8F5; --accent-moss: #6FCB9C; --accent-plum: #DFA0E0; --accent-raspberry: #FF8DB0; --accent-amber: #F2B53C;
+    --brand-ink: #121110; --brand-hover: color-mix(in oklab, var(--brand) 80%, #fff); --brand-wash: color-mix(in srgb, var(--brand) 14%, transparent);
+    --ring: color-mix(in srgb, var(--brand) 30%, transparent);
+    --live: #5BD3A2;
+    --l0: #E9E6E1; --t0: rgba(233, 230, 225, .12); --l1: #3DD3CC; --t1: rgba(61, 211, 204, .15); --l2: #B68CFF; --t2: rgba(182, 140, 255, .16);
+    --l3: #FF7BA8; --t3: rgba(255, 123, 168, .15); --l4: #F2B53C; --t4: rgba(242, 181, 60, .15); --l5: #6CB6FF; --t5: rgba(108, 182, 255, .15);
+    --ok: #5BD3A2; --ok-bg: #0F2A21; --warn: #F2C35B; --warn-bg: #2C230C; --bad: #FF8DA1; --bad-bg: #331520;
+    --code: #141311; --mark: #5C4D12;
+    --award-bronze: #E0A87A; --award-silver: #B4BAC6; --award-gold: #F2C35B; --award-green: #5BD3A2; --award-blue: #7DB8F5; --award-purple: #B68CFF; --award-red: #FF8DB0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px -16px rgba(0, 0, 0, .7);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, .45), 0 30px 70px -24px rgba(0, 0, 0, .85);
+    color-scheme: dark;
+  }
+}
+
+@media (max-width: 760px) {
+  :root { --gutter: 16px; --header-h: 60px; --h1: 32px; --h1-page: 30px; }
+}

@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<div style="max-width:520px">
+<div class="mw-520">
 {{ m.errors_box(errors) }}
 <form method="post" action="/member/login/2fa" class="box">
   {{ m.csrf_field() }}<input type="hidden" name="pending" value="{{ pending }}"><input type="hidden" name="return_to" value="{{ return_to }}">

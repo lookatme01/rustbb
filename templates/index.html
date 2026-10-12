@@ -4,82 +4,73 @@
 {% set props = theme.props if theme else {} %}
 {% set ns = namespace(fresh=[]) %}
 {% for cat in forums %}{% for f in (cat.children if cat.is_category else [cat]) %}{% if f.unread %}{% set ns.fresh = ns.fresh + [f.name] %}{% endif %}{% endfor %}{% endfor %}
-<header class="ao-board-head">
+<div class="stagger">
+<header class="page-head">
   <div class="grow">
     {% if me %}
-      <span class="ao-eyebrow">Welcome back, {{ me.username }}</span>
-      <h1>{% if ns.fresh %}New in {{ ns.fresh[:2]|join(" and ") if ns.fresh|length <= 2 else ns.fresh[:2]|join(", ") ~ " and " ~ (ns.fresh|length - 2) ~ " more" }}{% else %}You're all caught up{% endif %}</h1>
+      <span class="eyebrow">Welcome back, {{ me.username }}</span>
+      <h1 class="h1">{% if ns.fresh %}New in {{ ns.fresh[:2]|join(" and ") if ns.fresh|length <= 2 else ns.fresh[:2]|join(", ") ~ " and " ~ (ns.fresh|length - 2) ~ " more" }}{% else %}You're all caught up{% endif %}</h1>
     {% else %}
-      <h1>{{ props.hero_title or bb.bbname }}</h1>
+      <h1 class="h1">{{ props.hero_title or bb.bbname }}</h1>
       <p class="lede">{{ props.hero_text or "A community built for good conversations. Join in." }}</p>
     {% endif %}
   </div>
+  {% if me %}
   <div class="actions">
-    {% if me %}
-      <form method="post" action="/markread">{{ m.csrf_field() }}<button class="btn secondary" type="submit">{{ t("Mark all read") }}</button></form>
-      {% if perms.cansearch %}<a class="btn" href="/search/new">{{ t("What's new") }}</a>{% endif %}
-    {% endif %}
+    <form method="post" action="/markread">{{ m.csrf_field() }}<button class="btn btn-ghost" type="submit">{{ m.icon('check') }}{{ t("Mark all read") }}</button></form>
+    {% if perms.cansearch %}<a class="btn" href="/search/new">{{ t("What's new") }}</a>{% endif %}
   </div>
+  {% endif %}
 </header>
 
 {% for cat in forums %}
   {% if cat.is_category %}
-  <section class="cat" data-collapse="cat{{ cat.fid }}" style="--line: var(--line-{{ cat.fid % 6 }})">
+  <section class="cat tone-{{ cat.fid % 6 }}" data-collapse="cat{{ cat.fid }}" aria-labelledby="cat{{ cat.fid }}-name">
     <header class="cat-head">
-      <div class="ao-cat-title"><h2><a href="{{ cat.url }}">{{ cat.name }}</a></h2>{% if cat.description %}<span class="desc">{{ cat.description|safe }}</span>{% endif %}</div>
-      <span class="ao-col">Threads</span>
-      <span class="ao-col">Posts</span>
-      <span class="ao-col ao-col-last">Last post{% if bb.collapsecategories == '1' %}<button class="collapse-toggle" type="button" aria-expanded="true" aria-label="Collapse {{ cat.name }}">{{ m.icon('chevron') }}</button>{% endif %}</span>
+      <span class="cat-line" aria-hidden="true"></span>
+      <h2 id="cat{{ cat.fid }}-name"><a href="{{ cat.url }}">{{ cat.name }}</a></h2>
+      {% if cat.description %}<span class="desc">{{ cat.description|safe }}</span>{% endif %}
+      {% if bb.collapsecategories == '1' %}<button class="collapse-toggle" type="button" aria-expanded="true" aria-label="Collapse {{ cat.name }}">{{ m.icon('chevron') }}</button>{% endif %}
     </header>
     <div class="forum-list">
       {% for f in cat.children %}{{ m.forum_row(f) }}{% else %}<div class="empty">No forums in this category yet.</div>{% endfor %}
     </div>
   </section>
   {% else %}
-  <section class="cat" style="--line: var(--line-{{ cat.fid % 6 }})"><div class="forum-list">{{ m.forum_row(cat) }}</div></section>
+  <section class="cat tone-{{ cat.fid % 6 }}"><div class="forum-list">{{ m.forum_row(cat) }}</div></section>
   {% endif %}
 {% else %}
-  <div class="box"><div class="empty">There are no forums to show yet.{% if is_admin %} <a href="/admin/forums">Create one in the Admin CP.</a>{% endif %}</div></div>
+  <div class="card"><div class="empty">There are no forums to show yet.{% if is_admin %} <a href="/admin/forums">Create one in the Admin CP.</a>{% endif %}</div></div>
 {% endfor %}
-{% if online or stats %}
-<section class="cat ao-community" aria-label="{{ t('At a glance') }}" style="--line: var(--live)">
-  <header class="cat-head">
-    <div class="ao-cat-title"><h2>{{ t("At a glance") }}</h2><span class="desc">Who's around and how the board is growing</span></div>
-    <span class="ao-col">Threads</span>
-    <span class="ao-col">Posts</span>
-    <span class="ao-col ao-col-last">Members</span>
-  </header>
-  {% if online %}
-  <div class="forum-row ao-online{% if online.num_members %} unread{% endif %}">
-    <span class="forum-icon ao-live-icon" aria-hidden="true"></span>
-    <div>
-      {% if online.num_members %}
-        <div class="forum-name"><a href="/online">{{ online.total|num }} online now</a></div>
-        <div class="ao-people">
-          <span class="ao-faces" aria-hidden="true">{% for u in online.members[:5] %}{{ m.face(u.avatar, u.username, u.uid, 26) }}{% endfor %}</span>
-          <span>{% for u in online.members[:4] %}<a href="{{ url_user(u.uid) }}"{% if u.invisible %} title="Invisible"{% endif %}>{{ u.formatted|safe }}{% if u.invisible %}*{% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% set rest = online.total - ([online.members|length, 4]|min) %}{% if rest > 0 %} and {{ rest }} {{ rest|plural("other","others") }}{% endif %}</span>
-        </div>
-      {% else %}
-        <div class="forum-name"><a href="/online">Quiet right now</a></div>
-        <div class="forum-desc">{% if online.num_guests %}{{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }} reading{% else %}Nobody's around this minute{% endif %}{% if stats and stats.mostonline %} · the record is {{ stats.mostonline|num }} at once{% if stats.mostonlinetime %}, on {{ stats.mostonlinetime|date('date') }}{% endif %}{% endif %}. Start a thread and they'll find it.</div>
-      {% endif %}
-    </div>
-    <span></span><span></span>
-    <div class="lastpost"><a class="ao-more-link" href="/online">Who's online</a></div>
-  </div>
-  {% endif %}
-  {% if stats %}
-  <div class="forum-row ao-totals">
-    <span class="forum-icon ao-totals-icon" aria-hidden="true"></span>
-    <div>
-      <div class="forum-name">{% if stats.lastuid %}Welcome our newest member, <a href="{{ url_user(stats.lastuid, stats.lastusername) }}">{{ stats.lastusername }}</a>{% else %}Board totals{% endif %}</div>
-      <div class="forum-desc">{% if birthdays %}Birthdays today: {% for b in birthdays %}<a href="{{ url_user(b.uid) }}">{{ b.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}All-time totals for the board{% endif %}<span class="ao-totals-line"> · {{ stats.threads|num }} {{ stats.threads|plural("thread","threads") }} · {{ stats.posts|num }} {{ stats.posts|plural("post","posts") }} · {{ stats.users|num }} {{ stats.users|plural("member","members") }}</span></div>
-    </div>
-    <span class="ao-num">{{ stats.threads|num }}</span>
-    <span class="ao-num">{{ stats.posts|num }}</span>
-    <div class="lastpost"><span class="ao-num">{{ stats.users|num }}</span></div>
-  </div>
-  {% endif %}
+
+{% if stats %}
+<section class="card metrics" aria-label="{{ t('Board statistics') }}">
+  <div class="metric"><span>Threads</span><b>{{ stats.threads|num }}</b></div>
+  <div class="metric"><span>Posts</span><b>{{ stats.posts|num }}</b></div>
+  <div class="metric"><span>Members</span><b>{{ stats.users|num }}</b></div>
+  {% if stats.lastuid %}<div class="metric"><span>Newest member</span><b><a href="{{ url_user(stats.lastuid, stats.lastusername) }}">{{ stats.lastusername }}</a></b></div>{% endif %}
 </section>
 {% endif %}
+
+{% if online or birthdays %}
+<section class="card online-card" aria-labelledby="online-title">
+  <div class="card-head">
+    <h2 id="online-title">{% if online and online.num_members %}<span class="live" aria-hidden="true"></span>{% endif %}<a href="/online">{{ t("Who's online") }}</a></h2>
+    {% if stats and stats.mostonline %}<span class="right">Record: {{ stats.mostonline|num }}{% if stats.mostonlinetime %}, {{ stats.mostonlinetime|date('date') }}{% endif %}</span>{% endif %}
+  </div>
+  <div class="body">
+    {% if online %}
+    <div class="online-summary">{{ online.total|num }} online now · {{ online.num_members }} {{ online.num_members|plural("member","members") }}, {{ online.num_guests }} {{ online.num_guests|plural("guest","guests") }}{% if not online.num_members %}. Start a thread and they'll find it.{% endif %}</div>
+    {% if online.members %}
+    <div class="people">
+      {% for u in online.members[:24] %}<a class="person" href="{{ url_user(u.uid) }}"{% if u.invisible %} title="Invisible"{% endif %}>{{ m.face(u.avatar, u.username, u.uid, 30) }}<span>{{ u.formatted|safe }}{% if u.invisible %}<span aria-hidden="true">*</span><span class="sr-only"> (invisible)</span>{% endif %}</span></a>{% endfor %}
+      {% if online.members|length > 24 %}<a class="person more" href="/online">+{{ online.members|length - 24 }} more</a>{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+    {% if birthdays %}<div class="online-summary">Birthdays today: {% for b in birthdays %}<a href="{{ url_user(b.uid) }}">{{ b.formatted|safe }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  </div>
+</section>
+{% endif %}
+</div>
 {% endblock %}

@@ -1,10 +1,10 @@
 {% macro pagination(p) %}
 {% if p.pages > 1 %}
 <nav class="pagination" aria-label="Pages">
-  <span class="label">Pages ({{ p.pages }}):</span>
-  {% if p.prev %}<a href="{{ p.prev }}" rel="prev" aria-label="Previous page">‹</a>{% endif %}
-  {% for l in p.links %}{% if l.gap %}<span class="gap">…</span>{% elif l.current %}<span class="current" aria-current="page">{{ l.page }}</span>{% else %}<a href="{{ l.url }}">{{ l.page }}</a>{% endif %}{% endfor %}
-  {% if p.next %}<a href="{{ p.next }}" rel="next" aria-label="Next page">›</a>{% endif %}
+  <span class="label">Page {{ p.page }} of {{ p.pages }}</span>
+  {% if p.prev %}<a class="pg" href="{{ p.prev }}" rel="prev" aria-label="Previous page">‹</a>{% endif %}
+  {% for l in p.links %}{% if l.gap %}<span class="pg gap">…</span>{% elif l.current %}<span class="pg current" aria-current="page">{{ l.page }}</span>{% else %}<a class="pg" href="{{ l.url }}">{{ l.page }}</a>{% endif %}{% endfor %}
+  {% if p.next %}<a class="pg" href="{{ p.next }}" rel="next" aria-label="Next page">›</a>{% endif %}
 </nav>
 {% endif %}
 {% endmacro %}
@@ -12,7 +12,7 @@
 {% macro userlink(uid, name, formatted=none) %}{% if uid %}<a href="{{ url_user(uid, name) }}">{{ formatted|safe if formatted else name }}</a>{% else %}{{ name or 'Guest' }}{% endif %}{% endmacro %}
 
 {# Round avatar with a coloured initial when there is no picture. #}
-{% macro face(url, name, uid=0, size=40, cls='', online=false) %}<span class="face av-{{ (uid or (name|length)) % 6 }}{% if cls %} {{ cls }}{% endif %}" style="--size:{{ size }}px" aria-hidden="true">{% if url and (not me or me.showavatars) %}<img src="{{ url|img }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy" decoding="async" data-initial="{{ (name or '?')[:1] }}">{% else %}{{ (name or '?')[:1] }}{% endif %}{% if online %}<span class="presence"></span>{% endif %}</span>{% endmacro %}
+{% macro face(url, name, uid=0, size=40, cls='', online=false) %}<span class="face av-{{ (uid or (name|length)) % 6 }} size-{{ size }}{% if cls %} {{ cls }}{% endif %}" aria-hidden="true">{% if url and (not me or me.showavatars) %}<img src="{{ url|img }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy" decoding="async" data-initial="{{ (name or '?')[:1] }}">{% else %}{{ (name or '?')[:1] }}{% endif %}{% if online %}<span class="presence"></span>{% endif %}</span>{% endmacro %}
 
 {% macro avatar(url, name, cls='avatar', size=96) %}{% if url %}<img class="{{ cls }}" src="{{ url|img }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy" data-initial="{{ (name or '?')[:1]|upper }}" data-fallback="avatar">{% else %}<div class="avatar-fallback" aria-hidden="true">{{ (name or '?')[:1]|upper }}</div>{% endif %}{% endmacro %}
 
@@ -28,15 +28,17 @@
 {% elif name == 'check' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
 {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>{% endif %}{% endmacro %}
 
-{% macro status_icon(kind) %}{% endmacro %}
+{# Thread and conversation state: an outline bubble when read, a filled one when there is something new.
+   The fill is never the only signal; rows also bold the title and show a "New" chip. #}
+{% macro status_icon(unread=false, closed=false) %}<svg class="status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if closed %}<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 1 1 8 0v3"/>{% else %}<path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/>{% endif %}</svg><span class="sr-only">{{ "New posts. " if unread else "" }}</span>{% endmacro %}
 
 {% macro forum_row(f) %}
 <div class="forum-row{% if f.unread %} unread{% endif %}">
-  <span class="forum-icon{% if f.linkto %} is-link{% elif not f.open %} is-locked{% endif %}" title="{{ 'New posts' if f.unread else 'No new posts' }}">{{ icon('link' if f.linkto else ('lock' if not f.open else 'chat')) }}</span>
+  <span class="ficon forum-icon{% if f.linkto %} is-link{% elif not f.open %} is-locked{% endif %}" title="{{ 'New posts' if f.unread else 'No new posts' }}">{{ icon('link' if f.linkto else ('lock' if not f.open else 'chat')) }}</span>
   <div>
-    <div class="forum-name"><a href="{{ f.url }}">{{ f.name }}</a>{% if f.unread %}<span class="sr-only"> (new posts)</span>{% endif %}{% if f.unapproved %} <span class="tag" title="Awaiting moderation">{{ f.unapproved }} unapproved</span>{% endif %}{% if f.viewers %} <span class="faint small">· {{ f.viewers }} viewing</span>{% endif %}</div>
+    <div class="forum-name"><a href="{{ f.url }}">{{ f.name }}</a><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% if f.unread %}<span class="chip chip-new">New<span class="sr-only"> posts</span></span>{% endif %}{% if f.unapproved %} <span class="tag" title="Awaiting moderation">{{ f.unapproved }} unapproved</span>{% endif %}{% if f.viewers %} <span class="viewers">{{ f.viewers }} viewing</span>{% endif %}</div>
     {% if f.description and bb.showdescriptions == '1' %}<div class="forum-desc">{{ f.description|safe }}</div>{% endif %}
-    {% if f.subforums %}<div class="subforums">{% for s in f.subforums %}<a href="{{ s.url }}"{% if s.unread %} class="unread"{% endif %}>{{ s.name }}</a>{% endfor %}</div>{% endif %}
+    {% if f.subforums %}<div class="subforums">{% for s in f.subforums %}<a class="chip{% if s.unread %} unread{% endif %}" href="{{ s.url }}">{{ s.name }}{% if s.unread %}<span class="sr-only"> (new posts)</span>{% endif %}</a>{% endfor %}</div>{% endif %}
     {% if f.moderators %}<div class="moderators">Moderated by {% for m in f.moderators %}{% if m[2] %}{{ m[1]|safe }}{% else %}<a href="{{ url_user(m[0]) }}">{{ m[1]|safe }}</a>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   </div>
   {% if f.linkto %}<div class="forum-stats"></div><div class="lastpost"><span class="none">Link to another site</span></div>
@@ -44,10 +46,10 @@
   <div class="forum-stats"><div><b>{{ f.threads|num }}</b>{{ f.threads|plural("thread","threads") }}</div><div><b>{{ f.posts|num }}</b>{{ f.posts|plural("post","posts") }}</div></div>
   <div class="lastpost">
     {% if f.lastpost %}
-      {{ face(f.lastpost.avatar, f.lastpost.username, f.lastpost.uid, 34) }}
+      {{ face(f.lastpost.avatar, f.lastpost.username, f.lastpost.uid, 36) }}
       <div class="lp-text">
         <a class="subject" href="{{ f.lastpost.url }}" title="{{ f.lastpost.subject }}">{{ f.lastpost.subject }}</a>
-        <span class="by">{{ userlink(f.lastpost.uid, f.lastpost.username) }}</span> · {{ f.lastpost.dateline|date }}
+        <span><span class="by">{{ userlink(f.lastpost.uid, f.lastpost.username) }}</span> · {{ f.lastpost.dateline|date }}</span>
       </div>
     {% elif f.password %}<span class="none">Password protected</span>
     {% else %}<span class="none">No posts yet</span>{% endif %}
@@ -59,21 +61,22 @@
 {% macro thread_row(t, show_forum=false, check=false) %}
 <div class="thread-row{% if t.unread %} unread{% endif %}{% if t.sticky %} sticky{% endif %}{% if t.visible == 0 %} unapproved{% elif t.visible == -1 %} deleted{% endif %}{% if check %} with-check{% endif %}" data-tid="{{ t.tid }}">
   {{ face(t.author_avatar, t.author, t.author_uid, 40) }}
-  <div>
+  <div class="thread-main">
     <div class="thread-title">
+      {{ status_icon(t.unread, t.closed) }}
       {% if t.icon %}<img class="thread-icon" src="{{ t.icon }}" alt="">{% endif %}
-      {{ t.prefix_html|safe }}{% if t.moved %}<span class="faint">Moved:</span> {% endif %}<a href="{{ t.url }}"{% if t.preview %} title="{{ t.preview }}"{% endif %}>{{ t.subject }}</a>
-      <span class="thread-flags">{% if t.sticky %}<span class="flag sticky">Pinned</span>{% endif %}{% if t.closed %}<span class="flag closed">Closed</span>{% endif %}{% if t.poll %}<span class="flag poll">Poll</span>{% endif %}{% if t.hot %}<span class="flag hot">Hot</span>{% endif %}{% if t.visible == 0 %}<span class="flag">Unapproved</span>{% elif t.visible == -1 %}<span class="flag closed">Deleted</span>{% endif %}</span>
-      {% if t.unread %}<a class="newlink" href="{{ t.url }}/newpost" title="Go to first unread post">NEW</a>{% endif %}
+      {{ t.prefix_html|safe }}{% if t.moved %}<span class="soft">Moved:</span> {% endif %}<a class="subject" href="{{ t.url }}"{% if t.preview %} title="{{ t.preview }}"{% endif %}>{{ t.subject }}</a>
+      {% if t.sticky %}<span class="chip">Pinned</span>{% endif %}{% if t.closed %}<span class="chip chip-bad">Closed</span>{% endif %}{% if t.poll %}<span class="chip chip-ok">Poll</span>{% endif %}{% if t.hot %}<span class="chip chip-warn">Hot</span>{% endif %}{% if t.visible == 0 %}<span class="chip chip-warn">Unapproved</span>{% elif t.visible == -1 %}<span class="chip chip-bad">Deleted</span>{% endif %}
+      {% if t.unread %}<a class="chip chip-new" href="{{ t.url }}/newpost" title="Go to first unread post">New<span class="sr-only"> posts</span></a>{% endif %}
     </div>
     <div class="thread-meta">
-      <span>{% if t.dot %}<span class="dot" title="You posted here">●</span> {% endif %}{{ userlink(t.author_uid, t.author) }}</span>
+      <span>{% if t.dot %}<span class="dot" title="You posted here">●</span><span class="sr-only">You posted here. </span> {% endif %}{{ userlink(t.author_uid, t.author) }}</span>
       <span class="tm-start">{{ t.dateline|date }}</span>
       <span class="tm-replies">{{ t.replies|num }} {{ t.replies|plural("reply","replies") }}</span>
       {% if not t.moved %}<span class="tm-last"><a href="{{ t.url }}/lastpost" title="Last post by {{ t.lastposter }}">{{ t.lastpost|date }}</a></span>{% endif %}
       {% if show_forum %}<span class="tm-forum"><a href="{{ t.forum_url }}">{{ t.forum_name }}</a></span>{% endif %}
       {% if t.attachments %}<span>{{ t.attachments }} {{ t.attachments|plural("attachment","attachments") }}</span>{% endif %}
-      {% if t.numratings and bb.allowthreadratings == '1' %}<span>★ {{ "%.1f"|format(t.rating) }}</span>{% endif %}
+      {% if t.numratings and bb.allowthreadratings == '1' %}<span>★ {{ "%.1f"|format(t.rating) }}<span class="sr-only"> rating</span></span>{% endif %}
       {% if t.pages %}<span class="pages">{% for p in t.pages %}<a href="{{ p[1] }}">{{ p[0] }}</a>{% endfor %}{% if t.lastpage %}<a href="{{ t.lastpage }}">Last</a>{% endif %}</span>{% endif %}
     </div>
   </div>
@@ -82,10 +85,10 @@
     <div><b>{{ t.views|num }}</b>{{ t.views|plural("view","views") }}</div>
   </div>
   <div class="lastpost">
-    {% if not t.moved %}{{ face(t.lastposter_avatar, t.lastposter, t.lastposteruid, 30) }}
-    <div class="lp-text"><span class="by">{{ userlink(t.lastposteruid, t.lastposter) }}</span><br><a href="{{ t.url }}/lastpost">{{ t.lastpost|date }}</a></div>{% endif %}
+    {% if not t.moved %}{{ face(t.lastposter_avatar, t.lastposter, t.lastposteruid, 32) }}
+    <div class="lp-text"><span class="by">{{ userlink(t.lastposteruid, t.lastposter) }}</span><a href="{{ t.url }}/lastpost">{{ t.lastpost|date }}</a></div>{% endif %}
   </div>
-  {% if check %}<input type="checkbox" class="inline-check" name="tids" value="{{ t.tid }}" form="inlinemod" aria-label="Select thread">{% endif %}
+  {% if check %}<label class="hit"><input type="checkbox" class="inline-check" name="tids" value="{{ t.tid }}" form="inlinemod" aria-label="Select thread"></label>{% endif %}
 </div>
 {% endmacro %}
 
@@ -95,6 +98,9 @@
 
 {# "15 minutes", "2 hours", "5 days" for a span given in minutes. #}
 {% macro span_mins(n) %}{% if n < 120 %}{{ n }} {{ n|plural("minute","minutes") }}{% elif n < 2880 %}{{ (n / 60)|round|int }} hours{% else %}{{ (n / 1440)|round|int }} days{% endif %}{% endmacro %}
+
+{# The board mark: a rounded square in the member's accent with a leaf. A theme's own logo replaces it. #}
+{% macro logo_mark(size=30) %}{% if theme and theme.props.logo and theme.props.logo != '/static/images/logo.svg' %}<img class="logo-img" src="{{ theme.props.logo }}" alt="" width="{{ size }}" height="{{ size }}">{% else %}<svg class="logo-mark" width="{{ size }}" height="{{ size }}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="10"/><path d="M9 21c3-8 7-11 14-12-1 7-4 11-12 13"/></svg>{% endif %}{% endmacro %}
 
 {% macro csrf_field() %}<input type="hidden" name="my_post_key" value="{{ csrf }}">{% endmacro %}
 {# Badge icon (names in src/badges.rs ICONS). #}

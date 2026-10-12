@@ -1,10 +1,10 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
 {% block content %}
-<h1>{{ title }}{% if thread %}: <a href="{{ thread_url }}">{{ thread.subject }}</a>{% endif %}</h1>
+<h1 class="compose-title">{{ title }}{% if thread %}: <a href="{{ thread_url }}">{{ thread.subject }}</a>{% endif %}</h1>
 {{ m.errors_box(errors) }}
 {% if preview %}
-<section class="box preview-box"><div class="box-head"><h2>Preview</h2></div><div class="post-body">{{ preview|safe }}</div></section>
+<section class="card preview-box"><div class="card-head"><h2>Preview</h2></div><div class="box-body post-body">{{ preview|safe }}</div></section>
 {% endif %}
 {% set show_subject = mode == 'newthread' or is_first %}
 <form method="post" class="compose js-editor-form" data-fid="{{ forum.fid }}" data-tid="{{ tid }}" action="{% if mode == 'newthread' %}/newthread/{{ forum.fid }}{% elif mode == 'newreply' %}/newreply/{{ tid }}{% else %}/editpost/{{ pid }}{% endif %}">
@@ -24,8 +24,8 @@
   {% include "editor_widget.html" %}
   {% if can_attach %}
   <div class="js-attachments compose-attach" data-pid="{{ pid }}">
-    <div class="dropzone js-dropzone">Drop files here or <label class="linklike-label"><span class="linklike">choose files</span><input type="file" multiple class="js-file sr-only"></label><span class="faint"> · up to {{ max_attachments }}, insert them into your post with Insert</span></div>
-    <ul class="attach-list js-attach-list">{% for at in attachments %}<li data-aid="{{ at.aid }}"><span>{{ at.filename }}</span><span class="faint small">{{ at.size }}</span><button type="button" class="btn secondary small js-attach-insert">Insert</button><button type="button" class="btn secondary small js-attach-remove">Remove</button></li>{% endfor %}</ul>
+    <div class="dropzone js-dropzone">Drop files here or <label class="linklike-label"><span class="linklike">choose files</span><input type="file" multiple class="js-file sr-only"></label><span class="soft"> · up to {{ max_attachments }}, insert them into your post with Insert</span></div>
+    <ul class="attach-list js-attach-list">{% for at in attachments %}<li data-aid="{{ at.aid }}"><span>{{ at.filename }}</span><span class="soft small">{{ at.size }}</span><button type="button" class="btn btn-ghost btn-sm js-attach-insert">Insert</button><button type="button" class="btn btn-quiet btn-sm js-attach-remove">Remove</button></li>{% endfor %}</ul>
   </div>
   {% endif %}
   {% if can_poll %}
@@ -43,7 +43,7 @@
   </div>
   {% endif %}
   {% if mode == 'editpost' %}
-  <div class="compose-field"><label for="editreason">Edit reason <span class="faint">(optional)</span></label><input id="editreason" type="text" name="editreason" value="{{ form.editreason }}" maxlength="150"></div>
+  <div class="compose-field"><label for="editreason">Edit reason <span class="soft">(optional)</span></label><input id="editreason" type="text" name="editreason" value="{{ form.editreason }}" maxlength="150"></div>
   {% endif %}
   {% if captcha %}<div class="compose-field">{% include "captcha_field.html" %}</div>{% endif %}
   <details class="compose-more">
@@ -65,7 +65,7 @@
         <label><input type="checkbox" name="mod_sticky" value="1"{% if form.mod_sticky or (thread and thread.sticky) %} checked{% endif %}> Stick thread</label>
         {% endif %}
         {% if can_post_as_system %}
-        <label><input type="checkbox" name="as_system" value="1"{% if form.as_system %} checked{% endif %}> Post as the System account <span class="small muted">(administrators can see that you wrote it)</span></label>
+        <label><input type="checkbox" name="as_system" value="1"{% if form.as_system %} checked{% endif %}> Post as the System account <span class="small soft">(administrators can see that you wrote it)</span></label>
         {% endif %}
         {% if mode == 'editpost' and is_mod %}<label><input type="checkbox" name="silent" value="1"> Silent edit (don't show "edited by")</label>{% endif %}
       </div>
@@ -78,26 +78,26 @@
   </details>
   <div class="compose-foot">
     <button class="btn" type="submit">{% if mode == 'newthread' %}{{ t("Post Thread") }}{% elif mode == 'newreply' %}{{ t("Post Reply") }}{% else %}Save changes{% endif %}</button>
-    <button class="btn secondary" type="submit" name="preview" value="1">{{ t("Preview") }}</button>
-    {% if can_draft and mode != 'editpost' %}<button class="btn ghost" type="submit" name="savedraft" value="1" formnovalidate>Save draft</button>{% endif %}
+    <button class="btn btn-ghost" type="submit" name="preview" value="1">{{ t("Preview") }}</button>
+    {% if can_draft and mode != 'editpost' %}<button class="btn btn-quiet" type="submit" name="savedraft" value="1" formnovalidate>Save draft</button>{% endif %}
   </div>
 </form>
 
 {% if mode == 'editpost' and can_delete %}
-<form method="post" action="/editpost/{{ pid }}" class="box js-confirm" data-confirm="Really delete this {{ 'thread' if is_first else 'post' }}?">
+<form method="post" action="/editpost/{{ pid }}" class="card js-confirm" data-confirm="Really delete this {{ 'thread' if is_first else 'post' }}?">
   {{ m.csrf_field() }}<input type="hidden" name="delete" value="1">
-  <div class="box-head"><h2>Delete {{ 'thread' if is_first else 'post' }}</h2></div>
-  <div class="box-body actions" style="margin:0">
+  <div class="card-head"><h2>Delete {{ 'thread' if is_first else 'post' }}</h2></div>
+  <div class="box-body actions flush">
     {% if is_mod %}<label class="check"><input type="checkbox" name="harddelete" value="1"> Delete permanently (otherwise it can be restored)</label>{% endif %}
-    <button class="btn danger" type="submit">Delete {{ 'thread' if is_first else 'post' }}</button>
+    <button class="btn btn-danger" type="submit">Delete {{ 'thread' if is_first else 'post' }}</button>
   </div>
 </form>
 {% endif %}
 
 {% if recent %}
-<section class="box">
-  <div class="box-head"><h2>Thread review (newest first)</h2></div>
-  {% for r in recent %}<div class="box-body" style="border-bottom:1px solid var(--rule)"><div class="small muted"><strong>{{ r.username }}</strong> — {{ r.dateline|date }} <button type="button" class="linklike js-quote" data-pid="{{ r.pid }}">Quote</button></div><div class="post-body" style="padding:6px 0 0">{{ r.html|safe }}</div></div>{% endfor %}
+<section class="card thread-review">
+  <div class="card-head"><h2>Thread review (newest first)</h2></div>
+  {% for r in recent %}<div class="review-item"><div class="small soft"><strong>{{ r.username }}</strong> — {{ r.dateline|date }} <button type="button" class="btn btn-quiet btn-sm js-quote" data-pid="{{ r.pid }}">Quote</button></div><div class="post-body">{{ r.html|safe }}</div></div>{% endfor %}
 </section>
 {% endif %}
 {% endblock %}
