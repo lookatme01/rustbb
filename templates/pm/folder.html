@@ -13,7 +13,7 @@
     {% set unread = p.status == 0 and folder not in [2, 3] %}
     <li class="convo{% if unread %} unread{% endif %}">
       {{ m.status_icon(unread) }}
-      <span class="face av-{{ p.other_uid % 6 }} size-40" aria-hidden="true">{{ (p.other|striptags)[:1] }}</span>
+      <span class="face av-{{ p.other_uid % 6 }} size-40" aria-hidden="true">{{ p.initial|upper }}</span>
       <div>
         <span class="convo-who"><span>{% if folder in [2, 3] %}<span class="soft">To </span>{% endif %}{% if p.other_uid %}<a href="{{ url_user(p.other_uid) }}">{{ p.other|safe }}</a>{% else %}{{ p.other|safe }}{% endif %}{% if p.pgp == 2 %}<span class="pgp-flag is-encrypted" title="End-to-end encrypted"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 118 0v3"/></svg><span class="sr-only">Encrypted</span></span>{% elif p.pgp == 1 %}<span class="pgp-flag is-signed" title="Signed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z"/></svg><span class="sr-only">Signed</span></span>{% endif %}{% if p.multi %} <span class="convo-state">· group</span>{% endif %}</span>{% if unread %}<span class="chip chip-new">New</span>{% endif %}</span>
         <span class="convo-subject">{% if unread %}<span class="sr-only">Unread: </span>{% endif %}<a href="/pm/read/{{ p.pmid }}">{{ p.subject }}</a>{% if p.status == 3 %} <span class="convo-state">· replied</span>{% elif p.status == 4 %} <span class="convo-state">· forwarded</span>{% endif %}</span>

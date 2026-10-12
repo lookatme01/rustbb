@@ -185,12 +185,19 @@ pub async fn folder(ctx: Ctx, Query(q): Query<FolderQuery>) -> AppResult<Respons
     let list: Vec<_> = rows
         .into_iter()
         .map(|r| {
-            let other = match r.username {
-                Some(n) => ctx.cache.format_name(&n, r.usergroup.unwrap_or(2), r.displaygroup.unwrap_or(0)),
-                None => if r.fromid == 0 && fid != 2 { format!("{} (system)", util::escape_html(ctx.settings().get("bbname"))) } else { "Unknown".into() },
+            // `other` is formatted HTML, so the avatar initial comes from the plain name.
+            let (other, initial) = match r.username {
+                Some(n) => (ctx.cache.format_name(&n, r.usergroup.unwrap_or(2), r.displaygroup.unwrap_or(0)), n.chars().next()),
+                None => if r.fromid == 0 && fid != 2 {
+                    let bbname = ctx.settings().get("bbname");
+                    (format!("{} (system)", util::escape_html(bbname)), bbname.chars().next())
+                } else {
+                    ("Unknown".into(), Some('U'))
+                },
             };
+            let initial = initial.map(String::from).unwrap_or_default();
             let multi = r.recipients.0["to"].as_array().map(|a| a.len()).unwrap_or(0) > 1;
-            minijinja::context! { pmid => r.pmid, subject => r.subject, dateline => r.dateline, status => r.status, other => other, other_uid => if fid == 2 || fid == 3 { r.toid } else { r.fromid }, multi => multi, pgp => r.pgp }
+            minijinja::context! { pmid => r.pmid, subject => r.subject, dateline => r.dateline, status => r.status, other => other, initial => initial, other_uid => if fid == 2 || fid == 3 { r.toid } else { r.fromid }, multi => multi, pgp => r.pgp }
         })
         .collect();
     let (used, quota) = usage(&ctx, &me);
