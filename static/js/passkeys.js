@@ -99,6 +99,28 @@
       if (pw) pw.value = "";
       return post("/usercp/passkeys/finish", f, { credential: JSON.stringify(credentialJSON(cred)), password: "" });
     }));
+    document.querySelectorAll(".js-passkey-admin").forEach((form) => {
+      wire(form, async (f) => {
+        const options = await post("/admin/verify/passkey/begin", f);
+        const cred = await navigator.credentials.get({ publicKey: requestOptions(options) });
+        return post("/admin/verify/passkey/finish", f, { credential: JSON.stringify(credentialJSON(cred)) });
+      });
+      // One box at a time: the passkey first, the password form behind a link (or open after a
+      // wrong password). Without WebAuthn this never runs and the password form stays as it is.
+      const pw = document.querySelector(".js-passkey-fallback");
+      if (!pw) return;
+      const show = (usePassword) => {
+        form.hidden = usePassword;
+        pw.hidden = !usePassword;
+        const target = usePassword ? pw.querySelector("input[name=password]") : form.querySelector("button[type=submit]");
+        if (target) target.focus();
+      };
+      form.querySelector(".js-passkey-use-password").addEventListener("click", () => show(true));
+      const back = pw.querySelector(".js-passkey-use-passkey");
+      back.hidden = false;
+      back.addEventListener("click", () => show(false));
+      show(pw.hasAttribute("data-open"));
+    });
     document.querySelectorAll(".js-passkey-login").forEach((form) => wire(form, async (f) => {
       const options = await post("/member/login/passkey/begin", f);
       const cred = await navigator.credentials.get({ publicKey: requestOptions(options) });

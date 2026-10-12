@@ -1687,7 +1687,7 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
 .row-16 { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
 .stack-6 { display: grid; gap: 6px; }
 .p0 { padding: 0; } .py-8 { padding-block: 8px; } .pad-9-12 { padding: 9px 12px; }
-.m-12 { margin: 12px; } .mt-6 { margin-top: 6px; } .mb-6 { margin-bottom: 6px; } .m-0-12-8 { margin: 0 12px 8px; }
+.m-12 { margin: 12px; } .ml-12 { margin-left: 12px; } .mt-6 { margin-top: 6px; } .mb-6 { margin-bottom: 6px; } .m-0-12-8 { margin: 0 12px 8px; }
 .w-full { width: 100%; } .w-40 { width: 40px; } .w-70 { width: 70px; } .w-80 { width: 80px; } .w-90 { width: 90px; } .w-100 { width: 100px; } .w-120 { width: 120px; } .w-160 { width: 160px; }
 .minw-170 { min-width: 170px; }
 .mw-520 { max-width: 520px; } .mw-640 { max-width: 640px; } .mw-720 { max-width: 720px; } .mw-760 { max-width: 760px; }
