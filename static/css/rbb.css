@@ -1155,10 +1155,10 @@ a.mf-stat:hover { text-decoration: none; background: color-mix(in oklab, var(--i
 .mf-pinned { padding: 12px 18px; border-top: 1px solid var(--rule); background: var(--warn-bg); font-size: .88rem; }
 .mf-pinned .mf-sub { display: block; font-size: .76rem; color: var(--soft); margin-top: 3px; }
 .mf-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 16px 18px; }
-.mf-actions .btn, .mf-actions form .btn { width: 100%; }
 .mf-actions form { margin: 0; }
-/* The two-column grid leaves about 100px per button, so long labels wrap rather than touch the edges. */
-.mf-actions .btn { padding-inline: 10px; white-space: normal; height: auto; min-height: var(--tap); line-height: 1.25; text-align: center; }
+/* The two-column grid leaves about 100px per button, so long labels wrap rather than touch the edges.
+   Direct children only: the Restrict and Ban popovers inside keep their own button row. */
+.mf-actions > .btn, .mf-actions > form > .btn { width: 100%; padding-inline: 10px; white-space: normal; height: auto; min-height: var(--tap); line-height: 1.25; text-align: center; }
 
 /* A small panel opened by a button (native popover: works without script). */
 .mf-pop { margin: auto; padding: 18px; width: min(340px, calc(100vw - 32px)); border: 1px solid var(--rule); border-radius: var(--r-inner); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
@@ -1826,7 +1826,7 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
 }
 @media (max-width: 860px) {
   .cp-content .tabs, .cp-content .mf-tabs { flex-wrap: wrap; overflow: visible; gap: 6px; margin: 0 0 14px; padding: 0; -webkit-mask-image: none; mask-image: none; }
-  .cp-content .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .cp-content .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
   .cp-content .tabs a, .cp-content .mf-tabs a { height: auto; min-height: 44px; white-space: normal; padding: 10px 12px; }
   .cp-content .tabs a { justify-content: center; text-align: center; }
   .cp-content .seg { flex-wrap: wrap; border-radius: var(--r-ctl); }

@@ -2,5 +2,5 @@
 {% import "macros.html" as m %}
 {% block mcp %}
 <section class="box"><div class="box-head"><h2>Moderator logs</h2></div>{% include "modcp/logtable.html" %}</section>
-{% if newest or older %}<nav class="pagination">{% if newest %}<a class="btn secondary small" href="{{ newest }}">« Newest</a>{% endif %} {% if older %}<a class="btn secondary small" href="{{ older }}">Older entries »</a>{% endif %}</nav>{% endif %}
+{% if newest or older %}<nav class="pager" aria-label="Pages">{% if newest %}<a class="btn btn-ghost btn-sm" href="{{ newest }}">« Newest</a>{% endif %} {% if older %}<a class="btn btn-ghost btn-sm" href="{{ older }}">Older entries »</a>{% endif %}</nav>{% endif %}
 {% endblock %}

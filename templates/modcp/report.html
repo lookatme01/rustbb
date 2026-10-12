@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block mcp %}
 <section class="box">
-  <div class="box-head"><h2>Report #{{ report.rid }} · {{ report.what }}</h2><span class="right small">{{ 'Open' if report.open else 'Resolved' }}</span></div>
+  <div class="box-head"><h2>Report #{{ report.rid }} · {{ report.what }}</h2><span class="right"><span class="chip {{ 'chip-warn' if report.open else 'chip-ok' }}">{{ 'Open' if report.open else 'Resolved' }}</span></span></div>
   <div class="kv">
     <div>Reported</div><div>{% if report.link %}<a href="{{ report.link }}">{{ report.what }}</a>{% else %}{{ report.what }}{% endif %}{% if target.uid %} by <a href="{{ url_user(target.uid) }}">{{ target.username }}</a> · <a href="/modcp/member/{{ target.uid }}">moderation history</a>{% endif %}</div>
     <div>Reason</div><div>{{ report.reason_title }}{% if report.comment %}: {{ report.comment }}{% endif %}</div>
@@ -13,25 +13,25 @@
   </div>
   <div class="box-foot actions flush">
     {% if report.open %}
-      {% if not report.claimed %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn small" name="action" value="claim">Claim</button></form>
-      {% elif report.claimed_by_me %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn secondary small" name="action" value="release">Release</button></form>
-      {% else %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn secondary small" name="action" value="takeover">Take over</button></form>{% endif %}
+      {% if not report.claimed %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn" name="action" value="claim">Claim</button></form>
+      {% elif report.claimed_by_me %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn btn-ghost" name="action" value="release">Release</button></form>
+      {% else %}<form method="post" action="/modcp/reports/{{ report.rid }}/claim">{{ m.csrf_field() }}<button class="btn btn-ghost" name="action" value="takeover">Take over</button></form>{% endif %}
     {% else %}
-      <form method="post" action="/modcp/reports/{{ report.rid }}/reopen">{{ m.csrf_field() }}<button class="btn secondary small">Reopen</button></form>
+      <form method="post" action="/modcp/reports/{{ report.rid }}/reopen">{{ m.csrf_field() }}<button class="btn btn-ghost">Reopen</button></form>
     {% endif %}
   </div>
 </section>
 {% if pm %}
 <section class="box">
   <div class="box-head"><h2>Reported message</h2></div>
-  {% if pm.missing %}<div class="box-body small">No copy of this message was kept (reported before message snapshots were added).</div>
+  {% if pm.missing %}<div class="empty">No copy of this message was kept (reported before message snapshots were added).</div>
   {% else %}
   <div class="kv">
     <div>Subject</div><div>{{ pm.subject }}</div>
     <div>From</div><div>{% if pm.from_name %}<a href="{{ url_user(pm.fromid) }}">{{ pm.from_name }}</a>{% else %}A deleted member{% endif %}</div>
     <div>Sent</div><div>{{ pm.sent|date }}</div>
   </div>
-  <div class="box-body">{% if pm.encrypted %}<span class="small">This message was end-to-end encrypted; its content isn't available to moderators.</span>{% else %}{{ pm.html|safe }}{% endif %}</div>
+  <div class="box-body">{% if pm.encrypted %}<span class="soft">This message was end-to-end encrypted; its content isn't available to moderators.</span>{% else %}{{ pm.html|safe }}{% endif %}</div>
   {% endif %}
 </section>
 {% endif %}
@@ -39,7 +39,7 @@
 <form method="post" action="/modcp/reports/{{ report.rid }}/resolve" class="box">{{ m.csrf_field() }}
   <div class="box-head"><h2>Resolve</h2></div>
   <div class="box-body"><textarea name="resolution" rows="2" maxlength="1000" placeholder="What was done (optional, visible to staff)" aria-label="Resolution"></textarea></div>
-  <div class="box-foot actions flush"><button class="btn small" type="submit">Mark as resolved</button></div>
+  <div class="box-foot actions flush"><button class="btn" type="submit">Mark as resolved</button></div>
 </form>
 {% endif %}
 <section class="box"><div class="box-head"><h2>History</h2></div>

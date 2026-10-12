@@ -11,8 +11,8 @@
 </div>
 
 <div class="inbox-grid">
-  <section class="box inbox-next" aria-labelledby="next-up">
-    <div class="box-head"><h2 id="next-up">Next up</h2><span class="right muted small">Oldest first · <button type="button" class="inbox-link" data-triage-help>Keyboard shortcuts</button></span></div>
+  <section class="card" aria-labelledby="next-up">
+    <div class="box-head"><h2 id="next-up">Next up</h2><span class="right">Oldest first · <button type="button" class="inbox-link" data-triage-help>Keyboard shortcuts</button></span></div>
     {% if items %}
     <ol class="inbox-list" data-triage>
       {% for e in items %}{% set i = e.item %}
@@ -36,31 +36,31 @@
         </div>
         <div class="inbox-actions">
           {% if i.kind == 'report' %}
-            <form method="post" action="/modcp/reports">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="ids" value="{{ i.rid }}"><button class="btn small secondary" name="action" value="handled" data-act="dismiss">Dismiss</button></form>
-            {% if not i.claimed %}<form method="post" action="/modcp/reports/{{ i.rid }}/claim">{{ m.csrf_field() }}<button class="btn small secondary" name="action" value="claim">Claim</button></form>{% endif %}
-            <a class="btn small secondary" href="{{ i.detail }}">Details</a>
+            <form method="post" action="/modcp/reports">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="ids" value="{{ i.rid }}"><button class="btn btn-ghost btn-sm" name="action" value="handled" data-act="dismiss">Dismiss</button></form>
+            {% if not i.claimed %}<form method="post" action="/modcp/reports/{{ i.rid }}/claim">{{ m.csrf_field() }}<button class="btn btn-ghost btn-sm" name="action" value="claim">Claim</button></form>{% endif %}
+            <a class="btn btn-ghost btn-sm" href="{{ i.detail }}">Details</a>
           {% elif i.kind == 'appeal' %}
-            <a class="btn small" href="{{ i.url }}">Review appeal</a>
+            <a class="btn btn-sm" href="{{ i.url }}">Review appeal</a>
           {% else %}
-            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn small" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn small danger" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
+            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn btn-sm" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn btn-danger btn-sm" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
           {% endif %}
         </div>
       </li>
       {% endfor %}
     </ol>
-    {% else %}<div class="box-body muted">Nothing is waiting for you. Enjoy the quiet.</div>{% endif %}
+    {% else %}<div class="empty">Nothing is waiting for you. Enjoy the quiet.</div>{% endif %}
   </section>
 
   <div class="inbox-side">
-    <section class="box"><div class="box-head"><h2>Members to watch</h2></div>
+    <section class="card"><div class="box-head"><h2>Members to watch</h2></div>
       {% for w in watch %}
       <a class="inbox-row" href="/modcp/member/{{ w.uid }}">{{ m.face(w.avatar, w.username, w.uid, 30) }}<span class="inbox-who">{{ w.formatted|safe }}{{ mf.flags(w.flags, true) }}</span></a>
-      {% else %}<div class="box-body muted">No one needs watching right now.</div>{% endfor %}
+      {% else %}<div class="empty">No one needs watching right now.</div>{% endfor %}
     </section>
-    <section class="box"><div class="box-head"><h2>Latest actions</h2><a class="right" href="/modcp/modlogs">Moderator log</a></div>
+    <section class="card"><div class="box-head"><h2>Latest actions</h2><span class="right"><a href="/modcp/modlogs">Moderator log</a></span></div>
       {% for l in logs %}
-      <div class="inbox-row"><span class="inbox-who">{% if l.username %}<a href="{{ url_user(l.uid) }}">{{ l.username }}</a>{% endif %} {{ l.action }}{% if l.tid %} <a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% endif %}</span><span class="muted small">{{ l.dateline|date }}</span></div>
-      {% else %}<div class="box-body muted">No moderator actions have been logged.</div>{% endfor %}
+      <div class="inbox-row"><span class="inbox-who"><span>{% if l.username %}<a href="{{ url_user(l.uid) }}">{{ l.username }}</a>{% endif %} {{ l.action }}{% if l.tid %} <a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% endif %}</span></span><span class="soft small nowrap">{{ l.dateline|date }}</span></div>
+      {% else %}<div class="empty">No moderator actions have been logged.</div>{% endfor %}
     </section>
   </div>
 </div>

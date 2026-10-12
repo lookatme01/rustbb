@@ -5,10 +5,10 @@
 {% block mcp %}
 {% set back = "/modcp/member/" ~ mf.uid %}
 {{ act.reasons_list(reasons) }}
-<div class="actions between">
-  <span class="small muted"><a href="/modcp/finduser">Members</a> › {{ mf.username }}</span>
-  <span class="actions flush">{% if can_edit %}<a class="btn secondary small" href="/modcp/editprofile/{{ mf.uid }}">Edit profile</a>{% endif %}{% if is_admin %}<a class="btn secondary small" href="/admin/users/{{ mf.uid }}">Admin CP</a>{% endif %}</span>
-</div>
+<header class="page-head">
+  <p class="grow small soft flush"><a href="/modcp/finduser">Members</a> › {{ mf.username }}</p>
+  <div class="actions">{% if can_edit %}<a class="btn btn-ghost btn-sm" href="/modcp/editprofile/{{ mf.uid }}">Edit profile</a>{% endif %}{% if is_admin %}<a class="btn btn-ghost btn-sm" href="/admin/users/{{ mf.uid }}">Admin CP</a>{% endif %}</div>
+</header>
 
 <div class="mf-hero two">
   <div class="mf-col">
@@ -16,9 +16,9 @@
     {% if can_warn or can_restrict or can_ban %}
     <section class="box">
       <div class="mf-actions">
-        {% if can_warn %}<a class="btn secondary" href="/warnings/{{ mf.uid }}/warn">Warn</a>{% endif %}
+        {% if can_warn %}<a class="btn btn-ghost" href="/warnings/{{ mf.uid }}/warn">Warn</a>{% endif %}
         {% if can_restrict %}{{ act.restrict(mf, back) }}{% endif %}
-        {% if can_ban %}{% if mf.ban %}<form method="post" action="/modcp/liftban">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ mf.uid }}"><input type="hidden" name="back" value="{{ back }}"><button class="btn secondary">Lift ban</button></form>{% else %}{{ act.ban(mf, "/modcp/ban", back, true) }}{% endif %}{% endif %}
+        {% if can_ban %}{% if mf.ban %}<form method="post" action="/modcp/liftban">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ mf.uid }}"><input type="hidden" name="back" value="{{ back }}"><button class="btn btn-ghost">Lift ban</button></form>{% else %}{{ act.ban(mf, "/modcp/ban", back, true) }}{% endif %}{% endif %}
       </div>
       {{ act.active(mf, back, can_restrict) }}
     </section>
@@ -28,7 +28,7 @@
   <div class="mf-col">
     {% set know = (mf.signals|selectattr("group", "equalto", "standing")|list) + (mf.signals|selectattr("group", "equalto", "identity")|list) %}
     <section class="box">
-      <div class="box-head"><h2 class="mf-head">What to know</h2>{% if not is_admin %}<span class="right">Email and sign-in details are for admins</span>{% endif %}</div>
+      <div class="box-head"><h2>What to know</h2>{% if not is_admin %}<span class="right">Email and sign-in details are for admins</span>{% endif %}</div>
       {{ mfm.checks(know) }}
     </section>
     {{ act.notes(mf, notes or events, back, can_write_notes) }}

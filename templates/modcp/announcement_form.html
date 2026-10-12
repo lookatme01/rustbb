@@ -5,7 +5,7 @@
   <div class="box-head"><h2>{{ 'Edit' if a else 'New' }} announcement</h2></div>
   <div class="form-row"><label for="subject">Subject</label><input id="subject" type="text" name="subject" value="{{ a.subject if a else '' }}" required></div>
   <div class="form-row"><label for="fid">Show in</label><select id="fid" name="fid">{% if can_global %}<option value="-1">All forums</option>{% endif %}{% for f in forums %}<option value="{{ f[0] }}"{% if (a and a.fid == f[0]) or (not a and fid == f[0]) %} selected{% endif %}>{{ "— " * f[2] }}{{ f[1] }}</option>{% endfor %}</select></div>
-  <div class="form-row"><label for="startdate">Starts</label><input id="startdate" type="datetime-local" name="startdate" value="{{ start }}"></div>
+  <div class="form-row"><label for="startdate">Starts</label><div><input id="startdate" type="datetime-local" name="startdate" value="{{ start }}"></div></div>
   <div class="form-row"><label for="enddate">Ends</label><div><input id="enddate" type="datetime-local" name="enddate" value="{{ end }}"><span class="help">Leave empty to never expire.</span></div></div>
   {% set form = {'message': a.message if a else ''} %}
   <div class="form-row"><label for="message">Message</label><div>{% include "editor_widget.html" %}</div></div>

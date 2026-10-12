@@ -2,7 +2,7 @@
 {% import "macros.html" as m %}
 {% block mcp %}
 <section class="box">
-  <div class="box-head"><h2>Appeal from {{ appeal.username }}</h2><span class="right small">{{ appeal.status|capitalize }}</span></div>
+  <div class="box-head"><h2>Appeal from {{ appeal.username }}</h2><span class="right"><span class="chip {{ 'chip-warn' if appeal.status == 'pending' else ('chip-ok' if appeal.status == 'accepted' else 'chip-bad') }}">{{ appeal.status|capitalize }}</span></span></div>
   <div class="kv">
     <div>Member</div><div><a href="{{ url_user(appeal.uid) }}">{{ appeal.username }}</a> · <a href="/modcp/member/{{ appeal.uid }}">moderation history</a></div>
     <div>Ban</div><div>{{ appeal.ban_reason or 'No reason given' }}{% if appeal.banned_by %} (by {{ appeal.banned_by }}){% endif %}, since {{ appeal.ban_dateline|date('date') }}{% if still_banned %} · {% if ban_lifts %}lifts {{ ban_lifts|date }}{% else %}permanent{% endif %}{% else %} · no longer banned{% endif %}</div>
@@ -16,11 +16,11 @@
   <div class="box-head"><h2>Decide</h2></div>
   <div class="box-body"><textarea name="response" rows="3" maxlength="2000" placeholder="Response to the member (required when rejecting)" aria-label="Response"></textarea></div>
   <div class="box-foot actions flush">
-    <button class="btn small" name="decision" value="accept">Accept and lift the ban</button>
-    <button class="btn secondary small" name="decision" value="reject">Reject</button>
+    <button class="btn" name="decision" value="accept">Accept and lift the ban</button>
+    <button class="btn btn-ghost" name="decision" value="reject">Reject</button>
   </div>
 </form>
 {% endif %}
 {% if earlier %}<section class="box"><div class="box-head"><h2>Earlier appeals</h2></div>
-<table class="grid"><tbody>{% for a in earlier %}<tr><td><a href="/modcp/appeals/{{ a.id }}">{{ a.created|date('date') }}</a></td><td>{{ a.status|capitalize }}</td><td class="small">{{ a.response }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+<table class="grid"><tbody>{% for a in earlier %}<tr><td><a href="/modcp/appeals/{{ a.id }}">{{ a.created|date('date') }}</a></td><td><span class="chip {{ 'chip-ok' if a.status == 'accepted' else ('chip-warn' if a.status == 'pending' else 'chip-bad') }}">{{ a.status|capitalize }}</span></td><td class="small">{{ a.response }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 {% endblock %}
