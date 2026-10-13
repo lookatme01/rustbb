@@ -11,7 +11,7 @@
   <select name="sort" aria-label="Sort">{% for s in [('regdate','Newest'),('username','Username'),('postnum','Posts'),('lastactive','Last active'),('reputation','Reputation')] %}<option value="{{ s[0] }}"{% if q.sort == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}</select>
   <button class="btn btn-ghost">Search</button>
 </form>
-<nav class="mf-filters" aria-label="Quick filters">{% for p in pills %}<a href="/admin/users?{{ qs }}&amp;flag={{ p.key }}"{% if p.key == q.flag %} aria-current="page"{% endif %}>{{ p.label }}<span class="n">{{ p.n|num }}</span></a>{% endfor %}</nav>
+<div class="seg-bar"><nav class="seg" aria-label="Quick filters">{% for p in pills %}<a href="/admin/users?{{ qs }}&amp;flag={{ p.key }}"{% if p.key == q.flag %} aria-current="page"{% endif %}>{{ p.label }}<span class="n">{{ p.n|num }}</span></a>{% endfor %}</nav></div>
 <div class="acp-table-wrap">
 <table class="grid acp-users"><thead><tr><th>Member</th><th>Flags</th><th>Group</th><th>Joined</th><th>Last active</th><th class="num">Posts</th></tr></thead><tbody>
 {% for u in users %}<tr>

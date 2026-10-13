@@ -65,10 +65,10 @@
 {% endmacro %}
 
 {% macro timeline(events, kinds, filter, base) %}
-<div class="mf-filters" aria-label="Show">
+<div class="seg-bar"><nav class="seg" aria-label="Show">
   <a href="{{ base }}"{% if not filter %} aria-current="page"{% endif %}>All</a>
   {% for k in kinds %}<a href="{{ base }}{{ '&' if '?' in base else '?' }}type={{ k.key }}"{% if filter == k.key %} aria-current="page"{% endif %}>{{ k.label }}</a>{% endfor %}
-</div>
+</nav></div>
 <div>
 {% for e in events %}<div class="mf-ev{% if e.retracted_by %} retracted{% endif %}">
   <span class="when">{{ e.when|date }}</span>

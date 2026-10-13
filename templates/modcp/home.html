@@ -42,7 +42,7 @@
           {% elif i.kind == 'appeal' %}
             <a class="btn btn-sm" href="{{ i.url }}">Review appeal</a>
           {% else %}
-            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn btn-sm" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn btn-danger btn-sm" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
+            <form method="post" action="/modcp/modqueue">{{ m.csrf_field() }}<input type="hidden" name="back" value="/modcp"><input type="hidden" name="kind" value="{{ 'threads' if i.kind == 'thread' else 'posts' }}"><button class="btn btn-sm" name="approve" value="{{ i.id }}" data-act="approve">Approve</button> <button class="btn btn-ghost btn-sm" name="delete" value="{{ i.id }}" data-act="delete">Delete</button></form>
           {% endif %}
         </div>
       </li>
@@ -59,7 +59,7 @@
     </section>
     <section class="card"><div class="box-head"><h2>Latest actions</h2><span class="right"><a href="/modcp/modlogs">Moderator log</a></span></div>
       {% for l in logs %}
-      <div class="inbox-row"><span class="inbox-who"><span>{% if l.username %}<a href="{{ url_user(l.uid) }}">{{ l.username }}</a>{% endif %} {{ l.action }}{% if l.tid %} <a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% endif %}</span></span><span class="soft small nowrap">{{ l.dateline|date }}</span></div>
+      <div class="inbox-row"><span class="inbox-who"><span>{% if l.username %}<strong><a href="{{ url_user(l.uid) }}">{{ l.username }}</a></strong> · {% endif %}{{ l.action }}{% if l.tid %} <a href="/thread/{{ l.tid }}">{{ l.subject or ('Thread #' ~ l.tid) }}</a>{% endif %}</span></span><span class="soft small nowrap">{{ l.dateline|date }}</span></div>
       {% else %}<div class="empty">No moderator actions have been logged.</div>{% endfor %}
     </section>
   </div>

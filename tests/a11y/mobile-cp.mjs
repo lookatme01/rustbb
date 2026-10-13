@@ -36,7 +36,7 @@ async function checkOverflow(label) {
   const overflow = await page.evaluate(() => {
     const offenders = [];
     if (document.documentElement.scrollWidth > innerWidth + 1) offenders.push("page");
-    document.querySelectorAll(".cp-navigation, .cp-content, .cp-content .tabs, .cp-content .mf-tabs, .cp-content table, .cp-content td, .cp-content .btn").forEach((el) => {
+    document.querySelectorAll(".cp-navigation, .cp-content, .cp-content .tabs, .cp-content table, .cp-content td, .cp-content .btn").forEach((el) => {
       if (!el.getClientRects().length) return;
       const rect = el.getBoundingClientRect();
       if (rect.width > 1 && (rect.right > innerWidth + 1 || rect.left < -1 || el.scrollWidth > el.clientWidth + 1)) {

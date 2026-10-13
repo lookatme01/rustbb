@@ -115,8 +115,8 @@
       });
     });
 
-    // Turn CP tables into labeled records on phones, retaining their table semantics.
-    $$(".cp-content table.grid").forEach((table) => {
+    // Turn CP tables (and public tables marked stack-phone) into labeled records on phones, retaining their table semantics.
+    $$(".cp-content table.grid, table.grid.stack-phone").forEach((table) => {
       const headers = $$("thead tr:first-child > th", table);
       // Complex matrices keep their original column relationships.
       if ($$("[rowspan], thead [colspan]", table).length) return;

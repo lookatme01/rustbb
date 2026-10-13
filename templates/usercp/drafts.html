@@ -6,6 +6,6 @@
 <table class="grid"><thead><tr><th>Draft</th><th>Saved</th><th></th></tr></thead><tbody>
 {% for d in drafts %}<tr><td><a href="{{ d.url }}"><strong>{{ d.subject }}</strong></a><br><span class="small muted">{{ d.context }}</span></td><td class="small">{{ d.dateline|date }}</td><td class="num"><input type="checkbox" name="ids" value="{{ d.did }}" aria-label="Select"></td></tr>{% else %}<tr><td colspan="3" class="empty">You have no saved drafts.</td></tr>{% endfor %}
 </tbody></table>
-{% if drafts %}<div class="box-foot"><button class="btn btn-ghost btn-sm" type="submit">Delete selected</button></div>{% endif %}
+{% if drafts %}<div class="box-foot"><button class="btn btn-danger btn-sm" type="submit">Delete selected</button></div>{% endif %}
 </form>
 {% endblock %}

@@ -6,6 +6,6 @@
 <table class="grid"><thead><tr><th>File</th><th>Post</th><th class="num">Size</th><th class="num">Downloads</th><th></th></tr></thead><tbody>
 {% for a in list %}<tr><td><a href="/attachment/{{ a.aid }}">{{ a.filename }}</a></td><td>{% if a.tid %}<a href="/post/{{ a.pid }}">{{ a.subject }}</a>{% else %}<span class="faint">Not attached yet</span>{% endif %}</td><td class="num">{{ a.size|bytes }}</td><td class="num">{{ a.downloads }}</td><td class="num"><input type="checkbox" name="ids" value="{{ a.aid }}" aria-label="Select"></td></tr>{% else %}<tr><td colspan="5" class="empty">You haven't uploaded any attachments.</td></tr>{% endfor %}
 </tbody></table>
-{% if list %}<div class="box-foot"><button class="btn btn-ghost btn-sm" type="submit">Delete selected</button></div>{% endif %}
+{% if list %}<div class="box-foot"><button class="btn btn-danger btn-sm" type="submit">Delete selected</button></div>{% endif %}
 </form>
 {% endblock %}

@@ -62,7 +62,7 @@
 <section class="card thread-list rise" aria-labelledby="threads-title">
   <div class="card-head"><h2 id="threads-title">Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
   {% for a in announcements %}
-  <div class="thread-row">
+  <div class="thread-row{% if is_mod %} with-check{% endif %}">
     <span class="face size-40" aria-hidden="true">{{ m.icon('megaphone') }}</span>
     <div class="thread-main"><div class="thread-title"><span class="chip chip-solid">Announcement</span> <a class="subject" href="/announcement/{{ a.aid }}">{{ a.subject }}</a></div><div class="thread-meta"><span>{{ a.startdate|date }}</span></div></div>
     <div class="thread-stats"></div><div></div>{% if is_mod %}<div></div>{% endif %}

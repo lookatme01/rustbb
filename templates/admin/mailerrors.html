@@ -8,6 +8,6 @@
 <table class="grid"><thead><tr><th>To</th><th>Subject</th><th>Queued</th><th class="num">Attempts</th><th>Last error</th></tr></thead><tbody>
 {% for r in rows %}<tr><td class="small">{{ r[1] }}</td><td>{{ r[2] }}</td><td class="small">{{ r[3]|date }}</td><td class="num">{{ r[4] }}</td><td class="small muted">{{ r[5]|truncate_chars(80) }}</td></tr>{% else %}<tr><td colspan="5" class="empty">The mail queue is empty.</td></tr>{% endfor %}
 </tbody></table>
-{% if rows %}<div class="box-foot"><button class="btn btn-ghost" name="action" value="retry">Retry failed</button><button class="btn btn-ghost" name="action" value="clear">Delete failed</button></div>{% endif %}
+{% if rows %}<div class="box-foot"><button class="btn btn-ghost" name="action" value="retry">Retry failed</button><button class="btn btn-danger" name="action" value="clear">Delete failed</button></div>{% endif %}
 </form>
 {% endblock %}
