@@ -190,7 +190,7 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
         return ctx
             .render(
                 "login_2fa.html",
-                minijinja::context! { title => "Two-Factor Authentication", pending => format!("{token}.{sig}"), return_to => f.return_to, errors => Vec::<String>::new() },
+                minijinja::context! { title => "Two-factor authentication", pending => format!("{token}.{sig}"), return_to => f.return_to, errors => Vec::<String>::new() },
             )
             .await;
     }
@@ -317,7 +317,7 @@ pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<
         return ctx
             .render(
                 "login_2fa.html",
-                minijinja::context! { title => "Two-Factor Authentication", pending => f.pending, return_to => f.return_to, errors => vec!["The code you entered is incorrect."] },
+                minijinja::context! { title => "Two-factor authentication", pending => f.pending, return_to => f.return_to, errors => vec!["The code you entered is incorrect."] },
             )
             .await;
     }
@@ -778,7 +778,7 @@ pub async fn activate(ctx: Ctx, Query(q): Query<ActivateQuery>) -> AppResult<Res
         return ctx
             .render(
                 "activate.html",
-                minijinja::context! { title => "Activate Account" },
+                minijinja::context! { title => "Activate account" },
             )
             .await;
     }
@@ -804,7 +804,7 @@ pub struct EmailOnly {
 pub async fn resend_form(ctx: Ctx) -> AppResult<Response> {
     ctx.render(
         "resend_activation.html",
-        minijinja::context! { title => "Resend Activation Email" },
+        minijinja::context! { title => "Resend activation email" },
     )
     .await
 }
@@ -824,7 +824,7 @@ pub async fn resend_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppRes
 pub async fn lostpw_form(ctx: Ctx) -> AppResult<Response> {
     ctx.render(
         "lostpw.html",
-        minijinja::context! { title => "Lost Password Recovery" },
+        minijinja::context! { title => "Lost password recovery" },
     )
     .await
 }
@@ -845,7 +845,7 @@ pub async fn lostpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppRes
 }
 
 pub async fn resetpw_form(ctx: Ctx, Query(q): Query<ActivateQuery>) -> AppResult<Response> {
-    ctx.render("resetpw.html", minijinja::context! { title => "Reset Password", uid => q.uid, code => q.code, errors => Vec::<String>::new() }).await
+    ctx.render("resetpw.html", minijinja::context! { title => "Reset password", uid => q.uid, code => q.code, errors => Vec::<String>::new() }).await
 }
 
 #[derive(Deserialize)]
@@ -881,7 +881,7 @@ pub async fn resetpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ResetForm>) -> AppRe
         (f.password != f.password2).then(|| "The passwords you entered do not match.".to_string())
     });
     if let Some(e) = err {
-        return ctx.render("resetpw.html", minijinja::context! { title => "Reset Password", uid => f.uid, code => f.code, errors => vec![e] }).await;
+        return ctx.render("resetpw.html", minijinja::context! { title => "Reset password", uid => f.uid, code => f.code, errors => vec![e] }).await;
     }
     // Hash before the transaction: it is slow, and the code is only consumed if all succeeds.
     let h = auth::hash_password(&f.password).await?;
@@ -1213,7 +1213,7 @@ pub async fn email_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             "This user has chosen not to receive emails from other members.",
         ));
     }
-    ctx.render("email_user.html", minijinja::context! { title => format!("Send Email to {username}"), username => username, uid => uid }).await
+    ctx.render("email_user.html", minijinja::context! { title => format!("Send email to {username}"), username => username, uid => uid }).await
 }
 
 #[derive(Deserialize)]

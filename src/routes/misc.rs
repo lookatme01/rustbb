@@ -396,7 +396,7 @@ pub async fn help(ctx: Ctx) -> AppResult<Response> {
     ctx.allow_guest_cache(&[]);
     ctx.render(
         "help.html",
-        minijinja::context! { title => "Help Documents", sections => out },
+        minijinja::context! { title => "Help documents", sections => out },
     )
     .await
 }
@@ -424,7 +424,7 @@ pub async fn rules(ctx: Ctx) -> AppResult<Response> {
     ctx.allow_guest_cache(&[]);
     ctx.render(
         "page.html",
-        minijinja::context! { title => "Forum Rules", html => html },
+        minijinja::context! { title => "Forum rules", html => html },
     )
     .await
 }
@@ -441,7 +441,7 @@ pub async fn privacy(ctx: Ctx) -> AppResult<Response> {
     let html = crate::render::parse_with(&ctx.cache, &ctx.app.plugins, &Default::default(), &text);
     ctx.render(
         "page.html",
-        minijinja::context! { title => "Privacy Policy", html => html },
+        minijinja::context! { title => "Privacy policy", html => html },
     )
     .await
 }
@@ -461,7 +461,7 @@ pub async fn contact_form(ctx: Ctx) -> AppResult<Response> {
     } else {
         None
     };
-    ctx.render("contact.html", minijinja::context! { title => "Contact Us", captcha => captcha, errors => Vec::<String>::new(), form => minijinja::context!{} }).await
+    ctx.render("contact.html", minijinja::context! { title => "Contact us", captcha => captcha, errors => Vec::<String>::new(), form => minijinja::context!{} }).await
 }
 
 #[derive(Deserialize)]
@@ -513,7 +513,7 @@ pub async fn contact_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ContactForm>) -> App
             None
         };
         return ctx
-            .render("contact.html", minijinja::context! { title => "Contact Us", captcha => captcha, errors => errors, form => minijinja::context!{ subject => &f.subject, message => &f.message, email => &f.email } })
+            .render("contact.html", minijinja::context! { title => "Contact us", captcha => captcha, errors => errors, form => minijinja::context!{ subject => &f.subject, message => &f.message, email => &f.email } })
             .await;
     }
     let s = ctx.settings();

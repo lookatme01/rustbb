@@ -25,32 +25,32 @@ pub struct SettingDef {
 pub static GROUPS: &[SettingGroup] = &[
     SettingGroup {
         name: "general",
-        title: "General Configuration",
+        title: "General configuration",
         description: "Board name, URL, contact details and closing the board.",
     },
     SettingGroup {
         name: "datetime",
-        title: "Date and Time Formats",
+        title: "Date and time formats",
         description: "Default date/time formats and timezone.",
     },
     SettingGroup {
         name: "forumhome",
-        title: "Forum Home Options",
+        title: "Forum home options",
         description: "What is shown on the board index.",
     },
     SettingGroup {
         name: "forumdisplay",
-        title: "Forum Display Options",
+        title: "Forum display options",
         description: "Thread listing behaviour.",
     },
     SettingGroup {
         name: "showthread",
-        title: "Show Thread Options",
+        title: "Show thread options",
         description: "Thread display behaviour.",
     },
     SettingGroup {
         name: "member",
-        title: "User Registration and Profile Options",
+        title: "User registration and profile options",
         description: "Registration, login and profile rules.",
     },
     SettingGroup {
@@ -60,22 +60,22 @@ pub static GROUPS: &[SettingGroup] = &[
     },
     SettingGroup {
         name: "attachments",
-        title: "Attachment Settings",
+        title: "Attachment settings",
         description: "Uploads and thumbnails.",
     },
     SettingGroup {
         name: "pm",
-        title: "Private Messaging",
+        title: "Private messaging",
         description: "Private messaging system.",
     },
     SettingGroup {
         name: "search",
-        title: "Search System",
+        title: "Search system",
         description: "Search behaviour and flood control.",
     },
     SettingGroup {
         name: "memberlist",
-        title: "Member List",
+        title: "Member list",
         description: "Member list options.",
     },
     SettingGroup {
@@ -85,12 +85,12 @@ pub static GROUPS: &[SettingGroup] = &[
     },
     SettingGroup {
         name: "warning",
-        title: "Warning System",
+        title: "Warning system",
         description: "Warning system.",
     },
     SettingGroup {
         name: "online",
-        title: "Who's Online",
+        title: "Who's online",
         description: "Online tracking.",
     },
     SettingGroup {
@@ -105,12 +105,12 @@ pub static GROUPS: &[SettingGroup] = &[
     },
     SettingGroup {
         name: "mail",
-        title: "Mail Settings",
+        title: "Mail settings",
         description: "Outgoing email transport.",
     },
     SettingGroup {
         name: "security",
-        title: "Security & Anti-Spam",
+        title: "Security & anti-spam",
         description: "Captcha, security questions, rate limits.",
     },
     SettingGroup {
@@ -120,12 +120,12 @@ pub static GROUPS: &[SettingGroup] = &[
     },
     SettingGroup {
         name: "contact",
-        title: "Contact Page",
+        title: "Contact page",
         description: "Contact form.",
     },
     SettingGroup {
         name: "images",
-        title: "Remote Images",
+        title: "Remote images",
         description: "An image proxy for pictures linked from other sites, so readers' IP addresses aren't revealed to them.",
     },
     SettingGroup {
@@ -135,7 +135,7 @@ pub static GROUPS: &[SettingGroup] = &[
     },
     SettingGroup {
         name: "system",
-        title: "System Account",
+        title: "System account",
         description: "What the built-in System account does automatically.",
     },
 ];

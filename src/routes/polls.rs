@@ -242,7 +242,7 @@ pub async fn results(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
     let view = build_view(&ctx, &t, &fp, p, true).await?;
     ctx.render(
         "poll_results.html",
-        minijinja::context! { title => "Poll Results", poll => view, thread => &t, thread_url => url_thread(tid as i64, Some(&t.subject)), breadcrumb => crate::routes::forumdisplay::breadcrumb(&ctx, forum.fid) },
+        minijinja::context! { title => "Poll results", poll => view, thread => &t, thread_url => url_thread(tid as i64, Some(&t.subject)), breadcrumb => crate::routes::forumdisplay::breadcrumb(&ctx, forum.fid) },
     )
     .await
 }
@@ -263,7 +263,7 @@ pub async fn edit_form(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
         .ok_or_else(|| AppError::not_found("poll"))?;
     ctx.render(
         "poll_form.html",
-        minijinja::context! { title => "Edit Poll", edit => true, thread => &t, question => p.question, options => p.options.join("\n"), votes => p.votes, multiple => p.multiple, public => p.public, closed => p.closed, timeout => if p.timeout > 0 { (p.timeout - now()).max(0) / 86400 + 1 } else { 0 }, maxoptions => p.maxoptions },
+        minijinja::context! { title => "Edit poll", edit => true, thread => &t, question => p.question, options => p.options.join("\n"), votes => p.votes, multiple => p.multiple, public => p.public, closed => p.closed, timeout => if p.timeout > 0 { (p.timeout - now()).max(0) / 86400 + 1 } else { 0 }, maxoptions => p.maxoptions },
     )
     .await
 }
@@ -383,7 +383,7 @@ pub async fn new_form(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
     {
         return Err(AppError::no_perm());
     }
-    ctx.render("poll_form.html", minijinja::context! { title => "Post a Poll", edit => false, thread => &t, question => "", options => "", timeout => 0 }).await
+    ctx.render("poll_form.html", minijinja::context! { title => "Post a poll", edit => false, thread => &t, question => "", options => "", timeout => 0 }).await
 }
 
 pub async fn new_save(

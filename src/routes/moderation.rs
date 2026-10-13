@@ -222,7 +222,7 @@ fn action_label(a: &str) -> String {
 async fn move_form(ctx: &Ctx, tids: &[i32], fid: i32) -> AppResult<Response> {
     ctx.render(
         "moderation/move.html",
-        minijinja::context! { title => "Move / Copy Threads", tids => tids, fid => fid, forums => crate::routes::forumdisplay::forum_jump(ctx), breadcrumb => crate::routes::forumdisplay::breadcrumb(ctx, fid) },
+        minijinja::context! { title => "Move / copy threads", tids => tids, fid => fid, forums => crate::routes::forumdisplay::forum_jump(ctx), breadcrumb => crate::routes::forumdisplay::breadcrumb(ctx, fid) },
     )
     .await
 }
@@ -300,13 +300,13 @@ pub async fn thread_tool(
             require(&ctx, &threads, |m| m.canmanagethreads)?;
             ctx.render(
                 "moderation/merge.html",
-                minijinja::context! { title => "Merge Threads", thread => &t, thread_url => &turl },
+                minijinja::context! { title => "Merge threads", thread => &t, thread_url => &turl },
             )
             .await
         }
         "edit" => {
             require(&ctx, &threads, |m| m.canmanagethreads)?;
-            ctx.render("moderation/editthread.html", minijinja::context! { title => "Edit Thread", thread => &t, thread_url => &turl, prefixes => ctx.cache.prefixes_for(t.fid, &[]) }).await
+            ctx.render("moderation/editthread.html", minijinja::context! { title => "Edit thread", thread => &t, thread_url => &turl, prefixes => ctx.cache.prefixes_for(t.fid, &[]) }).await
         }
         "editpoll" => Ok(Redirect::to(&format!("/thread/{tid}/poll/edit")).into_response()),
         "log" => Ok(Redirect::to(&format!("/modcp/modlogs?tid={tid}")).into_response()),
@@ -392,14 +392,14 @@ pub async fn inline_posts(ctx: Ctx, CsrfForm(f): CsrfForm<InlineForm>) -> AppRes
             return ctx
                 .render(
                     "moderation/split.html",
-                    minijinja::context! { title => "Split Thread", thread => &t, thread_url => &turl, pids => pids, forums => crate::routes::forumdisplay::forum_jump(&ctx) },
+                    minijinja::context! { title => "Split thread", thread => &t, thread_url => &turl, pids => pids, forums => crate::routes::forumdisplay::forum_jump(&ctx) },
                 )
                 .await;
         }
         "moveposts" => {
             need(mp.canmanagethreads)?;
             drop(uow);
-            return ctx.render("moderation/moveposts.html", minijinja::context! { title => "Move Posts", thread => &t, thread_url => &turl, pids => pids }).await;
+            return ctx.render("moderation/moveposts.html", minijinja::context! { title => "Move posts", thread => &t, thread_url => &turl, pids => pids }).await;
         }
         a if a.starts_with("tool:") => {
             need(mp.canusecustomtools)?;

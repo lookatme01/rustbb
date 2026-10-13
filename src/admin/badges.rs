@@ -76,7 +76,7 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<BidQ>) -> AppResult<Response> {
         &ctx,
         "admin/badge_edit.html",
         "users",
-        if b.is_some() { "Edit Badge" } else { "Add Badge" },
+        if b.is_some() { "Edit badge" } else { "Add badge" },
         minijinja::context! { b => b, reqs => req_items, icons => crate::badges::ICONS, colors => crate::badges::COLORS },
     )
     .await

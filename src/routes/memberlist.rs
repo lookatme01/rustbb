@@ -123,7 +123,7 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
     ctx.allow_guest_cache(&["board".to_string()]);
     ctx.render(
         "memberlist.html",
-        minijinja::context! { title => "Member List", members => list, pagination => pg, sort => sort, order => order.to_lowercase(), username => q.username, website => q.website, letter => letter, groups => groups, gid => q.gid, total => total },
+        minijinja::context! { title => "Members", members => list, pagination => pg, sort => sort, order => order.to_lowercase(), username => q.username, website => q.website, letter => letter, groups => groups, gid => q.gid, total => total },
     )
     .await
 }
@@ -187,5 +187,5 @@ pub async fn showteam(ctx: Ctx) -> AppResult<Response> {
         .map(|(fid, n, uid, g, d)| minijinja::context! { uid => uid, formatted => ctx.cache.format_name(&n, g, d), forum => ctx.cache.forum(fid).map(|f| f.name.clone()), fid => fid })
         .collect();
     ctx.allow_guest_cache(&["board".to_string()]);
-    ctx.render("showteam.html", minijinja::context! { title => "Forum Team", sections => sections, moderators => moderators }).await
+    ctx.render("showteam.html", minijinja::context! { title => "Forum team", sections => sections, moderators => moderators }).await
 }

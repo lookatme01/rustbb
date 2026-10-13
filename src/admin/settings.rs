@@ -41,7 +41,7 @@ pub async fn index(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
         &ctx,
         "admin/settings_index.html",
         "settings",
-        "Board Settings",
+        "Board settings",
         minijinja::context! { groups => groups, q => q.q, results => results },
     )
     .await

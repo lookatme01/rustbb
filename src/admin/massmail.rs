@@ -44,7 +44,7 @@ pub async fn list(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/massmail.html",
         "users",
-        "Mass Mail",
+        "Mass mail",
         minijinja::context! { rows => rows },
     )
     .await
@@ -56,7 +56,7 @@ pub async fn form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/massmail_new.html",
         "users",
-        "New Mass Mail",
+        "New mass mail",
         minijinja::context! { groups => crate::admin::users::sorted_groups(&ctx) },
     )
     .await

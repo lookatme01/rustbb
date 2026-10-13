@@ -80,7 +80,7 @@ pub async fn stats(ctx: Ctx) -> AppResult<Response> {
     ctx.render(
         "stats.html",
         minijinja::context! {
-            title => "Forum Statistics", base => base.clone(), data => data.clone(),
+            title => "Forum statistics", base => base.clone(), data => data.clone(),
             posts_per_day => format!("{:.2}", base["posts"].as_f64().unwrap_or(0.0) / days),
             threads_per_day => format!("{:.2}", base["threads"].as_f64().unwrap_or(0.0) / days),
             members_per_day => format!("{:.2}", users / days),

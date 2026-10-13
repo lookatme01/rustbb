@@ -663,7 +663,7 @@ async fn settings_page(ctx: Ctx) -> AppResult<Response> {
             "usercp/pgp.html",
             minijinja::context! {
                 title => "Encryption & identity", ucp_active => "pgp",
-                breadcrumb => vec![("User Control Panel".to_string(), "/usercp".to_string())],
+                breadcrumb => vec![("User CP".to_string(), "/usercp".to_string())],
                 board => board_id(&ctx), uid => me.uid,
             },
         )
@@ -685,7 +685,7 @@ async fn verify_page(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             "pm/verify.html",
             minijinja::context! {
                 title => "Verify identity",
-                breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())],
+                breadcrumb => vec![("Messages".to_string(), "/pm".to_string())],
                 folders => crate::routes::private::folder_list(&me),
                 me_author => authors.get(&me.uid), them => authors.get(&uid),
                 them_uid => uid, board => board_id(&ctx), self_view => uid == me.uid,

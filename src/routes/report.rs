@@ -86,7 +86,7 @@ pub async fn form(ctx: Ctx, Query(q): Query<ReportQuery>) -> AppResult<Response>
         .filter(|r| r.appliesto == "all" || r.appliesto.split(',').any(|a| a.trim() == q.r#type))
         .cloned()
         .collect();
-    ctx.render("report.html", minijinja::context! { title => "Report Content", kind => q.r#type, id => q.id, desc => desc, encrypted => encrypted, reasons => reasons }).await
+    ctx.render("report.html", minijinja::context! { title => "Report content", kind => q.r#type, id => q.id, desc => desc, encrypted => encrypted, reasons => reasons }).await
 }
 
 #[derive(Deserialize, Default)]

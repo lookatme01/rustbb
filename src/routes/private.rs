@@ -203,7 +203,7 @@ pub async fn folder(ctx: Ctx, Query(q): Query<FolderQuery>) -> AppResult<Respons
     let (used, quota) = usage(&ctx, &me);
     ctx.render(
         "pm/folder.html",
-        minijinja::context! { title => fname.clone(), breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())], folder => fid, folder_name => fname, folders => folders, messages => list, pagination => pg, used => used, quota => quota, search => search },
+        minijinja::context! { title => fname.clone(), breadcrumb => vec![("Messages".to_string(), "/pm".to_string())], folder => fid, folder_name => fname, folders => folders, messages => list, pagination => pg, used => used, quota => quota, search => search },
     )
     .await
 }
@@ -233,7 +233,7 @@ async fn compose_page(
         .render(
             "pm/compose.html",
             minijinja::context! {
-                title => "Compose Message", breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())],
+                title => "Compose message", breadcrumb => vec![("Messages".to_string(), "/pm".to_string())],
                 form => minijinja::context!{ to => to, bcc => bcc, subject => subject, message => message, pmid => pmid, pgp_mode => pgp.mode, as_system => as_system },
                 can_send_as_system => ctx.perms.canpostassystem,
                 errors => errors, preview => preview, folders => folder_list(me), smilies => crate::routes::posting::clickable_smilies(ctx),
@@ -1153,7 +1153,7 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
         .render(
             "pm/read.html",
             minijinja::context! {
-                title => &pm.subject, breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())],
+                title => &pm.subject, breadcrumb => vec![("Messages".to_string(), "/pm".to_string())],
                 pm => &pm, html => html, author => author, to => to_names, folders => folder_list(&me),
                 system_name => s.get("bbname"), pgp => pgp, sender_has_key => sender_has_key,
                 from_system => pm.fromid == 0 || ctx.cache.is_system(pm.fromid), can_contact => s.bool("contact"),
@@ -1253,7 +1253,7 @@ pub async fn folders(ctx: Ctx) -> AppResult<Response> {
         .filter(|f| f.id >= 5)
         .map(|f| (f.id, f.name.clone()))
         .collect();
-    ctx.render("pm/folders.html", minijinja::context! { title => "Manage Folders", breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())], custom => custom, folders => folder_list(&me) }).await
+    ctx.render("pm/folders.html", minijinja::context! { title => "Manage folders", breadcrumb => vec![("Messages".to_string(), "/pm".to_string())], custom => custom, folders => folder_list(&me) }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -1330,7 +1330,7 @@ pub async fn tracking(ctx: Ctx) -> AppResult<Response> {
     .fetch_all(&ctx.app.db)
     .await?;
     let (read, unread): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.3 == 2);
-    ctx.render("pm/tracking.html", minijinja::context! { title => "Message Tracking", breadcrumb => vec![("Private Messages".to_string(), "/pm".to_string())], read => read, unread => unread, folders => folder_list(&me) }).await
+    ctx.render("pm/tracking.html", minijinja::context! { title => "Message tracking", breadcrumb => vec![("Messages".to_string(), "/pm".to_string())], read => read, unread => unread, folders => folder_list(&me) }).await
 }
 
 pub async fn tracking_action(ctx: Ctx, CsrfForm(f): CsrfForm<ActionForm>) -> AppResult<Response> {

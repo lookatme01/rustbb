@@ -215,7 +215,7 @@ pub async fn detail(ctx: Ctx, Path(rid): Path<i32>) -> AppResult<Response> {
         "modcp/report.html",
         minijinja::context! {
             title => format!("Report #{rid}"), mcp_active => "reports",
-            breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string()), ("Reported content".to_string(), "/modcp/reports".to_string())],
+            breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string()), ("Reports".to_string(), "/modcp/reports".to_string())],
             report => minijinja::context! {
                 rid => r.rid, what => what, link => link, open => r.reportstatus == 0, reason_title => reason_title, comment => &r.reason,
                 reports => r.reports, dateline => r.dateline, lastreport => r.lastreport,

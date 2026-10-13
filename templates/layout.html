@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% if title and title != bb.bbname %}{{ title }} — {% endif %}{{ bb.bbname }}</title>
+<title>{% if title and title != bb.bbname %}{{ title }}{% if breadcrumb and breadcrumb[0][1] in ["/usercp", "/modcp", "/admin", "/pm"] %} · {{ breadcrumb[0][0] }}{% endif %} — {% endif %}{{ bb.bbname }}</title>
 {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
 <meta name="csrf-token" content="{{ csrf }}">
 <link rel="stylesheet" href="{{ asset('css/tokens.css') }}">

@@ -89,7 +89,7 @@ async fn page(
     title: &str,
     extra: minijinja::Value,
 ) -> AppResult<Response> {
-    let base = minijinja::context! { title => title, ucp_active => active, breadcrumb => vec![("User Control Panel".to_string(), "/usercp".to_string())] };
+    let base = minijinja::context! { title => title, ucp_active => active, breadcrumb => vec![("User CP".to_string(), "/usercp".to_string())] };
     ctx.render(name, minijinja::value::merge_maps([base, extra]))
         .await
 }
@@ -135,7 +135,7 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/home.html",
         "home",
-        "User Control Panel",
+        "Overview",
         minijinja::context! { user => &me, subscribed => rows, latest => latest, checks => checks, attention => attention, restricted => restricted },
     )
     .await
@@ -305,7 +305,7 @@ pub async fn profile_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/profile.html",
         "profile",
-        "Edit Profile",
+        "Profile",
         minijinja::context! { user => &me, fields => fields, values => values, errors => Vec::<String>::new(),
             bday => bd.first().cloned().unwrap_or_default(), bmonth => bd.get(1).cloned().unwrap_or_default(), byear => bd.get(2).cloned().unwrap_or_default(),
             can_title => ctx.perms.cancustomtitle, can_website => ctx.perms.canchangewebsite, allowaway => ctx.settings().bool("allowaway") },
@@ -424,7 +424,7 @@ pub async fn profile_save(ctx: Ctx, CsrfForm(f): CsrfForm<ProfileForm>) -> AppRe
             .iter()
             .filter(|x| field_editable(&ctx, x))
             .collect();
-        return page(&ctx, "usercp/profile.html", "profile", "Edit Profile", minijinja::context! { user => &me, fields => fields, values => values, errors => errors, can_title => ctx.perms.cancustomtitle, can_website => ctx.perms.canchangewebsite, allowaway => ctx.settings().bool("allowaway") }).await;
+        return page(&ctx, "usercp/profile.html", "profile", "Profile", minijinja::context! { user => &me, fields => fields, values => values, errors => errors, can_title => ctx.perms.cancustomtitle, can_website => ctx.perms.canchangewebsite, allowaway => ctx.settings().bool("allowaway") }).await;
     }
     let away = f.away && ctx.settings().bool("allowaway");
     sqlx::query(
@@ -452,7 +452,7 @@ pub async fn profile_save(ctx: Ctx, CsrfForm(f): CsrfForm<ProfileForm>) -> AppRe
 pub async fn signature_form(ctx: Ctx) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     let preview = crate::render::signature_html(&ctx, me.uid, &me.signature);
-    page(&ctx, "usercp/signature.html", "signature", "Edit Signature", minijinja::context! { signature => &me.signature, preview => preview, errors => Vec::<String>::new(), allowed => sig_allowed(&ctx, &me) }).await
+    page(&ctx, "usercp/signature.html", "signature", "Edit signature", minijinja::context! { signature => &me.signature, preview => preview, errors => Vec::<String>::new(), allowed => sig_allowed(&ctx, &me) }).await
 }
 
 fn sig_allowed(ctx: &Ctx, me: &User) -> bool {
@@ -491,7 +491,7 @@ pub async fn signature_save(ctx: Ctx, CsrfForm(f): CsrfForm<SigForm>) -> AppResu
     }
     if !f.preview.is_empty() || !errors.is_empty() {
         let preview = crate::render::signature_html(&ctx, me.uid, &sig);
-        return page(&ctx, "usercp/signature.html", "signature", "Edit Signature", minijinja::context! { signature => sig, preview => preview, errors => errors, allowed => true }).await;
+        return page(&ctx, "usercp/signature.html", "signature", "Edit signature", minijinja::context! { signature => sig, preview => preview, errors => errors, allowed => true }).await;
     }
     sqlx::query("UPDATE users SET signature = $2 WHERE uid = $1")
         .bind(me.uid)
@@ -517,7 +517,7 @@ pub async fn avatar_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/avatar.html",
         "avatar",
-        "Change Avatar",
+        "Change avatar",
         minijinja::context! { user => &me, can_upload => ctx.perms.canuploadavatars, remote => s.bool("allowremoteavatars"), gravatar => s.bool("allowgravatar"), maxsize => s.int("avatarsize"), maxdims => s.get("maxavatardims") },
     )
     .await
@@ -670,7 +670,7 @@ pub async fn email_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/email.html",
         "email",
-        "Change Email",
+        "Change email",
         minijinja::context! { email => &me.email, errors => Vec::<String>::new() },
     )
     .await
@@ -717,7 +717,7 @@ pub async fn email_save(ctx: Ctx, CsrfForm(f): CsrfForm<EmailChange>) -> AppResu
             &ctx,
             "usercp/email.html",
             "email",
-            "Change Email",
+            "Change email",
             minijinja::context! { email => &me.email, errors => errors },
         )
         .await;
@@ -752,7 +752,7 @@ pub async fn password_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/password.html",
         "password",
-        "Change Password",
+        "Change password",
         minijinja::context! { errors => Vec::<String>::new() },
     )
     .await
@@ -785,7 +785,7 @@ pub async fn password_save(ctx: Ctx, CsrfForm(f): CsrfForm<PwChange>) -> AppResu
             &ctx,
             "usercp/password.html",
             "password",
-            "Change Password",
+            "Change password",
             minijinja::context! { errors => errors },
         )
         .await;
@@ -814,7 +814,7 @@ pub async fn username_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/username.html",
         "username",
-        "Change Username",
+        "Change username",
         minijinja::context! { username => &me.username, errors => Vec::<String>::new() },
     )
     .await
@@ -912,7 +912,7 @@ pub async fn username_save(ctx: Ctx, CsrfForm(f): CsrfForm<NameChange>) -> AppRe
             &ctx,
             "usercp/username.html",
             "username",
-            "Change Username",
+            "Change username",
             minijinja::context! { username => &me.username, errors => errors },
         )
         .await;
@@ -941,7 +941,7 @@ pub async fn options_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/options.html",
         "options",
-        "Edit Options",
+        "Preferences",
         minijinja::context! { user => &me, tpp_options => tpp, ppp_options => ppp, timezones => crate::routes::member::timezones(), can_invisible => ctx.perms.canbeinvisible },
     )
     .await
@@ -1123,7 +1123,7 @@ pub async fn subscriptions(
         .into_iter()
         .filter(|tid| !threads.iter().any(|t| t.tid == *tid))
         .collect();
-    page(&ctx, "usercp/subscriptions.html", "subscriptions", "Thread Subscriptions", minijinja::context! { threads => threads, unavailable => unavailable, notif => notif.into_iter().map(|(k, v)| (k.to_string(), v)).collect::<HashMap<_, _>>(), pagination => pg }).await
+    page(&ctx, "usercp/subscriptions.html", "subscriptions", "Subscriptions", minijinja::context! { threads => threads, unavailable => unavailable, notif => notif.into_iter().map(|(k, v)| (k.to_string(), v)).collect::<HashMap<_, _>>(), pagination => pg }).await
 }
 
 #[derive(Deserialize)]
@@ -1187,7 +1187,7 @@ pub async fn forum_subscriptions(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/forumsubs.html",
         "forumsubscriptions",
-        "Forum Subscriptions",
+        "Forum subscriptions",
         minijinja::context! { forums => forums },
     )
     .await
@@ -1234,7 +1234,7 @@ pub async fn drafts(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/drafts.html",
         "drafts",
-        "Saved Drafts",
+        "Drafts",
         minijinja::context! { drafts => list },
     )
     .await
@@ -1271,7 +1271,7 @@ pub async fn attachments(ctx: Ctx) -> AppResult<Response> {
         .into_iter()
         .map(|(aid, name, size, dl, date, pid, tid, subj)| minijinja::context! { aid => aid, filename => name, size => size, downloads => dl, dateline => date, pid => pid, tid => tid, subject => subj })
         .collect();
-    page(&ctx, "usercp/attachments.html", "attachments", "Manage Attachments", minijinja::context! { list => list, used => used, quota => quota, percent => if quota > 0 { used * 100 / quota } else { 0 } }).await
+    page(&ctx, "usercp/attachments.html", "attachments", "Attachments", minijinja::context! { list => list, used => used, quota => quota, percent => if quota > 0 { used * 100 / quota } else { 0 } }).await
 }
 
 pub async fn attachments_delete(ctx: Ctx, CsrfForm(f): CsrfForm<IdsForm>) -> AppResult<Response> {
@@ -1324,7 +1324,7 @@ pub async fn lists(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/lists.html",
         "lists",
-        "Friends and Ignore List",
+        "Friends & ignored",
         minijinja::context! { buddies => buddies, ignored => ignored, requests => requests },
     )
     .await
@@ -1436,7 +1436,7 @@ pub async fn notepad(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/notepad.html",
         "notepad",
-        "Personal Notepad",
+        "Notepad",
         minijinja::context! { notepad => &me.notepad },
     )
     .await
@@ -1478,7 +1478,7 @@ pub async fn badges(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/badges.html",
         "badges",
-        "Your Badges",
+        "Your badges",
         minijinja::context! { badges => list, on_posts => on_posts },
     )
     .await
@@ -1768,7 +1768,7 @@ pub async fn security(ctx: Ctx) -> AppResult<Response> {
             .unwrap_or_default();
         (secret, qr, uri)
     };
-    page(&ctx, "usercp/security.html", "security", "Security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions, api_tokens => api_tokens, passkeys => passkeys, passkeys_unavailable => passkeys_unavailable, passkeys_max => crate::passkeys::MAX_PER_MEMBER }).await
+    page(&ctx, "usercp/security.html", "security", "Sign-in & security", minijinja::context! { enabled => enabled, secret => secret, qr => qr, uri => uri, sessions => sessions, api_tokens => api_tokens, passkeys => passkeys, passkeys_unavailable => passkeys_unavailable, passkeys_max => crate::passkeys::MAX_PER_MEMBER }).await
 }
 
 #[derive(Deserialize)]
@@ -1900,7 +1900,7 @@ pub async fn usergroups(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/usergroups.html",
         "usergroups",
-        "Group Memberships",
+        "Groups",
         minijinja::context! { joinable => joinable, pending => pending, leading => leading, displaygroups => displaygroups, displaygroup => me.display_group() },
     )
     .await
@@ -2071,7 +2071,7 @@ pub async fn delete_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "usercp/delete.html",
         "delete",
-        "Delete Account",
+        "Delete account",
         minijinja::context! {},
     )
     .await

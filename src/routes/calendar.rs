@@ -470,7 +470,7 @@ pub async fn add_form(
     } else {
         q.date
     };
-    ctx.render("calendar_form.html", minijinja::context! { title => "Add Event", cal => &cal, e => minijinja::Value::UNDEFINED, date => date, enddate => "", starttime => "", endtime => "", repeat => "none", interval => 1, until => "", form => minijinja::context!{ message => "" } }).await
+    ctx.render("calendar_form.html", minijinja::context! { title => "Add event", cal => &cal, e => minijinja::Value::UNDEFINED, date => date, enddate => "", starttime => "", endtime => "", repeat => "none", interval => 1, until => "", form => minijinja::context!{ message => "" } }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -635,7 +635,7 @@ pub async fn edit_form(ctx: Ctx, Path(eid): Path<i32>) -> AppResult<Response> {
         .unwrap_or_default();
     ctx.render(
         "calendar_form.html",
-        minijinja::context! { title => "Edit Event", cal => &cal, e => &e, date => fmt_d(e.starttime), enddate => if e.endtime > 0 { fmt_d(e.endtime) } else { String::new() },
+        minijinja::context! { title => "Edit event", cal => &cal, e => &e, date => fmt_d(e.starttime), enddate => if e.endtime > 0 { fmt_d(e.endtime) } else { String::new() },
             starttime => fmt_t(e.starttime), endtime => if e.endtime > 0 { fmt_t(e.endtime) } else { String::new() },
             repeat => e.repeats.0["type"].as_str().unwrap_or("none"), interval => e.repeats.0["interval"].as_i64().unwrap_or(1), until => until, form => minijinja::context!{ message => &e.description } },
     )

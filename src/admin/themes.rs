@@ -77,7 +77,7 @@ pub async fn list(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/themes.html",
         "themes",
-        "Themes",
+        "Themes & templates",
         minijinja::context! { all_themes => themes },
     )
     .await
@@ -101,7 +101,7 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<TidQ>) -> AppResult<Response> {
         &ctx,
         "admin/theme_edit.html",
         "themes",
-        if theme.is_some() { "Edit Theme" } else { "Add Theme" },
+        if theme.is_some() { "Edit theme" } else { "Add theme" },
         minijinja::context! { th => theme, props => props, all_themes => ctx.cache.themes.to_vec(), groups => crate::admin::users::sorted_groups(&ctx) },
     )
     .await

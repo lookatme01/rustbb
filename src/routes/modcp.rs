@@ -365,7 +365,7 @@ pub async fn home(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "modcp/home.html",
         "home",
-        "Moderator Control Panel",
+        "Inbox",
         minijinja::context! {
             items => items, watch => watch, logs => logs,
             can_reports => can_reports, rep_n => rep_n, rep_mine => rep_mine, rep_oldest => rep_oldest, rep_old => rep_oldest > 0 && t - rep_oldest > 2 * 86_400,
@@ -450,7 +450,7 @@ pub async fn reports(ctx: Ctx, Query(q): Query<ReportsQuery>) -> AppResult<Respo
         &ctx,
         "modcp/reports.html",
         "reports",
-        "Reported Content",
+        "Reports",
         minijinja::context! { reports => list, pagination => pg, status => status },
     )
     .await
@@ -579,7 +579,7 @@ pub async fn modqueue(ctx: Ctx, Query(q): Query<QueueQuery>) -> AppResult<Respon
         &ctx,
         "modcp/modqueue.html",
         "modqueue",
-        "Moderation Queue",
+        "Approval queue",
         minijinja::context! { kind => kind, items => items },
     )
     .await
@@ -785,7 +785,7 @@ pub async fn modlogs(ctx: Ctx, Query(q): Query<LogQuery>) -> AppResult<Response>
         &ctx,
         "modcp/modlogs.html",
         "modlogs",
-        "Moderator Logs",
+        "Moderator log",
         minijinja::context! { logs => logs, older => older, newest => newest },
     )
     .await
@@ -860,7 +860,7 @@ pub async fn announcement_form(ctx: Ctx, Query(q): Query<AnnQuery>) -> AppResult
         &ctx,
         "modcp/announcement_form.html",
         "announcements",
-        "Edit Announcement",
+        "Edit announcement",
         minijinja::context! { a => &a, forums => forums, can_global => can_announce(&ctx, -1),
             can_post_as_system => ctx.perms.canpostassystem, by_system => a.as_ref().map(|x| ctx.cache.is_system(x.uid)).unwrap_or(false), start => fmt(a.as_ref().map(|x| x.startdate).unwrap_or(now())), end => fmt(a.as_ref().map(|x| x.enddate).unwrap_or(0)), fid => q.fid.unwrap_or(-1) },
     )
@@ -1042,7 +1042,7 @@ pub async fn finduser(ctx: Ctx, Query(q): Query<FindQuery>) -> AppResult<Respons
         &ctx,
         "modcp/finduser.html",
         "finduser",
-        "Find Users",
+        "Find a member",
         minijinja::context! { list => list, username => q.username },
     )
     .await
@@ -1093,7 +1093,7 @@ pub async fn editprofile_form(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Respo
         &ctx,
         "modcp/editprofile.html",
         "finduser",
-        &format!("Edit Profile: {}", user.username),
+        &format!("Edit profile: {}", user.username),
         minijinja::context! { user => &user, fields => fields, values => values },
     )
     .await
@@ -1205,7 +1205,7 @@ pub async fn banning(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "modcp/banning.html",
         "banning",
-        "Banned Users",
+        "Banned",
         minijinja::context! { bans => rows },
     )
     .await
@@ -1236,7 +1236,7 @@ pub async fn ban_form(ctx: Ctx, Query(q): Query<UidQuery>) -> AppResult<Response
         &ctx,
         "modcp/ban.html",
         "banning",
-        "Ban User",
+        "Ban a user",
         minijinja::context! { user => user, groups => banned_groups },
     )
     .await
@@ -1537,7 +1537,7 @@ pub async fn ipsearch(ctx: Ctx, Query(q): Query<IpQuery>) -> AppResult<Response>
         &ctx,
         "modcp/ipsearch.html",
         "ipsearch",
-        "IP Search",
+        "IP search",
         minijinja::context! { ip => ip, users => users, posts => posts },
     )
     .await
@@ -1559,7 +1559,7 @@ pub async fn warninglogs(ctx: Ctx, Query(q): Query<LogQuery>) -> AppResult<Respo
         &ctx,
         "modcp/warninglogs.html",
         "warninglogs",
-        "Warning Logs",
+        "Warnings",
         minijinja::context! { warnings => rows },
     )
     .await
@@ -1576,7 +1576,7 @@ pub async fn delayed(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "modcp/delayed.html",
         "delayed",
-        "Scheduled Moderation",
+        "Scheduled actions",
         minijinja::context! { rows => rows },
     )
     .await

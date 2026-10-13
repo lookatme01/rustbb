@@ -179,7 +179,7 @@ async fn render_verification(ctx: &Ctx, return_to: &str, error: &str) -> AppResu
     ctx.render(
         "admin/verify.html",
         minijinja::context! {
-            title => "Admin CP Login", return_to => return_to,
+            title => "Admin CP login", return_to => return_to,
             needs_2fa => !me.totp_secret.is_empty(), passkeys => passkeys, error => error,
         },
     )

@@ -467,7 +467,10 @@ pub async fn results(
         row.ok_or_else(|| AppError::user("The search results have expired. Please search again."))?;
     // Thread listings (what's new, unread, ...) are stored with their title.
     let listing = params["listing"].as_str().map(str::to_string);
-    let title = listing.clone().unwrap_or_else(|| "Search Results".into());
+    let title = listing
+        .clone()
+        .or_else(|| params["title"].as_str().map(str::to_string))
+        .unwrap_or_else(|| "Search results".into());
     if owner != ctx.uid() && owner != 0 {
         return Err(AppError::no_perm());
     }
@@ -699,6 +702,18 @@ pub async fn unread_threads(ctx: Ctx) -> AppResult<Response> {
     .await
 }
 
+/// Heading for a member's own thread/post list: "Posts by NAME", or the bare noun if the member is gone.
+async fn member_listing_title(ctx: &Ctx, uid: i32, noun: &str) -> AppResult<String> {
+    let name: Option<String> = sqlx::query_scalar("SELECT username FROM users WHERE uid = $1")
+        .bind(uid)
+        .fetch_optional(&ctx.app.db)
+        .await?;
+    Ok(match name {
+        Some(n) => format!("{noun} by {n}"),
+        None => noun.to_string(),
+    })
+}
+
 pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let (fids, own_only) = searchable_forums(&ctx);
     let tids: Vec<i32> = sqlx::query_scalar(
@@ -716,7 +731,15 @@ pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response>
             "This member has not started any threads you can see.",
         ));
     }
-    let sid = store(&ctx, "threads", tids, "", serde_json::json!({})).await?;
+    let title = member_listing_title(&ctx, uid, "Threads").await?;
+    let sid = store(
+        &ctx,
+        "threads",
+        tids,
+        "",
+        serde_json::json!({ "title": title }),
+    )
+    .await?;
     Ok(Redirect::to(&format!("/search/results/{sid}")).into_response())
 }
 
@@ -736,6 +759,14 @@ pub async fn user_posts(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     if pids.is_empty() {
         return Err(AppError::user("This member has no posts you can see."));
     }
-    let sid = store(&ctx, "posts", pids, "", serde_json::json!({})).await?;
+    let title = member_listing_title(&ctx, uid, "Posts").await?;
+    let sid = store(
+        &ctx,
+        "posts",
+        pids,
+        "",
+        serde_json::json!({ "title": title }),
+    )
+    .await?;
     Ok(Redirect::to(&format!("/search/results/{sid}")).into_response())
 }

@@ -864,7 +864,7 @@ pub async fn edit_history(ctx: Ctx, Path(pid): Path<i32>) -> AppResult<Response>
         .collect();
     ctx.render(
         "edit_history.html",
-        minijinja::context! { title => "Edit History", post => &post, thread => &thread, edits => edits, thread_url => url_thread(thread.tid as i64, Some(&thread.subject)) },
+        minijinja::context! { title => "Edit history", post => &post, thread => &thread, edits => edits, thread_url => url_thread(thread.tid as i64, Some(&thread.subject)) },
     )
     .await
 }
@@ -890,7 +890,7 @@ pub async fn whoposted(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
         .collect();
     ctx.render(
         "whoposted.html",
-        minijinja::context! { title => "Who Posted?", thread => thread, list => list, total => total },
+        minijinja::context! { title => "Who posted?", thread => thread, list => list, total => total },
     )
     .await
 }
@@ -903,7 +903,7 @@ pub async fn sendthread_form(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Respon
     }
     let (thread, _, _) = check_thread(&ctx, tid).await?;
     let subject = format!("Thought you might like: {}", thread.subject);
-    ctx.render("sendthread.html", minijinja::context! { title => "Send Thread to a Friend", thread => thread, subject => subject }).await
+    ctx.render("sendthread.html", minijinja::context! { title => "Send thread to a friend", thread => thread, subject => subject }).await
 }
 
 #[derive(Deserialize)]

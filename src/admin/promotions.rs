@@ -73,7 +73,7 @@ pub async fn list(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/promotions.html",
         "users",
-        "Group Promotions",
+        "Promotions",
         minijinja::context! { list => list },
     )
     .await
@@ -105,7 +105,7 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<PidQ>) -> AppResult<Response> {
         &ctx,
         "admin/promotion_edit.html",
         "users",
-        if row.is_some() { "Edit Promotion" } else { "Add Promotion" },
+        if row.is_some() { "Edit promotion" } else { "Add promotion" },
         minijinja::context! { p => row, reqs => req_items, groups => crate::admin::users::sorted_groups(&ctx) },
     )
     .await
@@ -208,7 +208,7 @@ pub async fn logs(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/promotion_logs.html",
         "users",
-        "Promotion Logs",
+        "Promotion log",
         minijinja::context! { rows => rows },
     )
     .await

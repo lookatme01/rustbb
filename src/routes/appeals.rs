@@ -283,7 +283,7 @@ pub async fn queue(ctx: Ctx) -> AppResult<Response> {
     ctx.render(
         "modcp/appeals.html",
         minijinja::context! {
-            title => "Ban Appeals", mcp_active => "appeals", breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string())],
+            title => "Ban appeals", mcp_active => "appeals", breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string())],
             pending => pending.into_iter().map(|r| appeal_view(r, &n)).collect::<Vec<_>>(),
             decided => decided.into_iter().map(|r| appeal_view(r, &n)).collect::<Vec<_>>(),
         },

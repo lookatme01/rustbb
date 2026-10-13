@@ -61,7 +61,7 @@ pub async fn tree(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/forums.html",
         "forums",
-        "Forum Management",
+        "Forums & permissions",
         minijinja::context! { forums => forums },
     )
     .await
@@ -146,7 +146,7 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<EditQ>) -> AppResult<Response> 
         &ctx,
         "admin/forum_edit.html",
         "forums",
-        if forum.is_some() { "Edit Forum" } else { "Add Forum" },
+        if forum.is_some() { "Edit forum" } else { "Add forum" },
         minijinja::context! { forum => forum, parents => parents, pid => q.pid.unwrap_or(0), kind => if q.r#type == "c" { "c" } else { "f" }, all_themes => ctx.cache.themes.to_vec(), password_set => password_set },
     )
     .await
@@ -648,7 +648,7 @@ pub async fn moderator_edit(ctx: Ctx, Path(mid): Path<i32>) -> AppResult<Respons
         &ctx,
         "admin/moderator_edit.html",
         "forums",
-        "Moderator Permissions",
+        "Moderator permissions",
         minijinja::context! { mo => &m, items => items, forum => ctx.cache.forum(m.fid).cloned() },
     )
     .await

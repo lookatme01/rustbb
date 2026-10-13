@@ -6,7 +6,7 @@
   <details class="cp-navigation" open>
     <summary><span>Mod CP menu</span><span class="cp-current small muted"></span></summary>
   <nav class="sidenav" aria-label="Mod CP">
-    <h3>Inbox</h3>
+    <h3>Queue</h3>
     <a href="/modcp"{% if mcp_active == 'home' %} class="active" aria-current="page"{% endif %}>Inbox</a>
     <a href="/modcp/reports"{% if mcp_active == 'reports' %} class="active" aria-current="page"{% endif %}>Reports{% if report_count %}<span class="count">{{ report_count }}</span>{% endif %}</a>
     <a href="/modcp/modqueue"{% if mcp_active == 'modqueue' %} class="active" aria-current="page"{% endif %}>Approval queue{% if modqueue_count %}<span class="count">{{ modqueue_count }}</span>{% endif %}</a>

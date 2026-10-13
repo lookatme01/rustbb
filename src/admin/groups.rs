@@ -45,7 +45,7 @@ pub async fn list(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/groups.html",
         "users",
-        "User Groups",
+        "User groups",
         minijinja::context! { groups => rows },
     )
     .await

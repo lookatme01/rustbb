@@ -128,7 +128,7 @@ pub async fn online(ctx: Ctx) -> AppResult<Response> {
     let summary = crate::routes::index::online_summary(&ctx).await?;
     ctx.render(
         "online.html",
-        minijinja::context! { title => "Who's Online", list => list, summary => summary },
+        minijinja::context! { title => "Who's online", list => list, summary => summary },
     )
     .await
 }
@@ -151,7 +151,7 @@ pub async fn online_today(ctx: Ctx) -> AppResult<Response> {
         .collect();
     ctx.render(
         "online_today.html",
-        minijinja::context! { title => "Online Today", list => list, total => total },
+        minijinja::context! { title => "Online today", list => list, total => total },
     )
     .await
 }

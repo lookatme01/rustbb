@@ -89,7 +89,7 @@ pub async fn health(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/health.html",
         "tools",
-        "System Health",
+        "System health",
         minijinja::context! { tables => tables, active => conns.0, total_conns => conns.1, cache_hit => cache_hit, uploads => uploads as i64, pool_size => pool.0, pool_idle => pool.1,
             activity_buffer => ctx.app.activity.len(), view_buffer => ctx.app.thread_views.len(), live_subscribers => ctx.app.live.subscribers(), node => &ctx.app.node_id,
             uptime => crate::routes::member::format_duration(now() - ctx.app.started), version => env!("CARGO_PKG_VERSION") },
@@ -106,7 +106,7 @@ pub async fn tasks(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/tasks.html",
         "tools",
-        "Scheduled Tasks",
+        "Scheduled tasks",
         minijinja::context! { tasks => rows, logs => logs },
     )
     .await
@@ -161,7 +161,7 @@ pub async fn recount(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/recount.html",
         "tools",
-        "Recount & Rebuild",
+        "Recount & rebuild",
         minijinja::context! {},
     )
     .await
@@ -261,7 +261,7 @@ pub async fn cache(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/cache.html",
         "tools",
-        "Cache Manager",
+        "Cache manager",
         minijinja::context! { parts => parts, parser_rev => c.parser_rev },
     )
     .await
@@ -313,7 +313,7 @@ pub async fn adminlog(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {
         &ctx,
         "admin/adminlog.html",
         "tools",
-        "Admin Log",
+        "Admin log",
         minijinja::context! { rows => rows, pagination => pg },
     )
     .await
@@ -353,7 +353,7 @@ pub async fn systemlog(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> 
         &ctx,
         "admin/systemlog.html",
         "tools",
-        "System Log",
+        "System log",
         minijinja::context! { rows => rows, pagination => pg },
     )
     .await
@@ -371,7 +371,7 @@ pub async fn erasurelog(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/erasurelog.html",
         "tools",
-        "Erasure Log",
+        "Erasure log",
         minijinja::context! { rows => rows },
     )
     .await
@@ -398,7 +398,7 @@ pub async fn maillogs(ctx: Ctx, Query(q): Query<PageQ>) -> AppResult<Response> {
         &ctx,
         "admin/maillogs.html",
         "tools",
-        "Mail Logs",
+        "Mail log",
         minijinja::context! { rows => rows, pagination => pg },
     )
     .await
@@ -412,7 +412,7 @@ pub async fn mailerrors(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/mailerrors.html",
         "tools",
-        "Mail Queue",
+        "Mail queue",
         minijinja::context! { rows => rows, handler => ctx.settings().get("mail_handler") },
     )
     .await
@@ -488,7 +488,7 @@ pub async fn spamlog(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/spamlog.html",
         "tools",
-        "Spam Log",
+        "Spam log",
         minijinja::context! { rows => rows },
     )
     .await
@@ -536,7 +536,7 @@ pub async fn backup_page(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/backup.html",
         "tools",
-        "Database Backup",
+        "Database backup",
         minijinja::context! { available => pg_dump_path().is_some() },
     )
     .await

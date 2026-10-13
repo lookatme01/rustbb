@@ -199,7 +199,7 @@ pub async fn new_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/user_new.html",
         "users",
-        "Add User",
+        "Add user",
         minijinja::context! { groups => sorted_groups(&ctx) },
     )
     .await
@@ -878,7 +878,7 @@ pub async fn awaiting(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/awaiting.html",
         "users",
-        "Awaiting Activation",
+        "Awaiting activation",
         minijinja::context! { rows => rows },
     )
     .await
@@ -948,7 +948,7 @@ pub async fn merge_form(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/user_merge.html",
         "users",
-        "Merge Users",
+        "Merge users",
         minijinja::context! {},
     )
     .await
@@ -1075,7 +1075,7 @@ pub async fn adminperms(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "admin/adminperms.html",
         "users",
-        "Admin Permissions",
+        "Admin permissions",
         minijinja::context! { list => list },
     )
     .await
@@ -1095,7 +1095,7 @@ pub async fn adminperms_edit(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Respon
         &ctx,
         "admin/adminperms_edit.html",
         "users",
-        &format!("Admin Permissions: {}", user.username),
+        &format!("Admin permissions: {}", user.username),
         minijinja::context! { user => &user, items => items },
     )
     .await

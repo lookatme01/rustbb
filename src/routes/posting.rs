@@ -168,7 +168,7 @@ async fn render_editor(
     let is_mod = ctx.is_mod(fid);
     let attachments = attachments_for_hash(ctx, &posthash, pid).await?;
     let page = minijinja::context! {
-        title => match mode { "newthread" => format!("Post New Thread in {}", forum.name), "newreply" => "Post Reply".to_string(), _ => "Edit Post".to_string() },
+        title => match mode { "newthread" => format!("Post new thread in {}", forum.name), "newreply" => "Post reply".to_string(), _ => "Edit post".to_string() },
         mode => mode,
         forum => &forum,
         forum_url => url_forum(fid as i64, Some(&forum.name)),
