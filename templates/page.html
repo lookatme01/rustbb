@@ -1,7 +1,9 @@
 {% extends "layout.html" %}
 {% block content %}
+<div class="mw-760">
 <header class="page-head">
   <div class="grow"><h1>{{ title }}</h1>{% if subtitle %}<p class="lede">{{ subtitle }}</p>{% endif %}</div>
 </header>
-<section class="card mw-760"><div class="box-body post-body">{{ html|safe }}</div></section>
+<section class="card"><div class="box-body post-body">{{ html|safe }}</div></section>
+</div>
 {% endblock %}

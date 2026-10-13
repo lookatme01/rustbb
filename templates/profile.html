@@ -100,7 +100,7 @@
     <div class="kv">
       {% if user.website %}<div>Website</div><div><a href="{{ user.website }}" rel="nofollow ugc noopener" target="_blank">{{ user.website }}</a></div>{% endif %}
       {% if birthday %}<div>Birthday</div><div>{{ birthday }}{% if age %} ({{ age }} years old){% endif %}</div>{% endif %}
-      {% for f in fields %}<div>{{ f[0] }}</div><div>{{ f[1]|safe }}</div>{% endfor %}
+      {% for f in fields %}<div>{{ f[0] }}</div><div class="kv-prose">{{ f[1]|safe }}</div>{% endfor %}
       {% if not user.website and not birthday and not fields %}<div>—</div><div class="soft">This member hasn't added any details yet.</div>{% endif %}
     </div>
   </section>

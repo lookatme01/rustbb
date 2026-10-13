@@ -1739,7 +1739,12 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
 .m-12 { margin: 12px; } .ml-12 { margin-left: 12px; } .mt-6 { margin-top: 6px; } .mb-6 { margin-bottom: 6px; } .m-0-12-8 { margin: 0 12px 8px; }
 .w-full { width: 100%; } .w-40 { width: 40px; } .w-70 { width: 70px; } .w-80 { width: 80px; } .w-90 { width: 90px; } .w-100 { width: 100px; } .w-120 { width: 120px; } .w-160 { width: 160px; }
 .minw-170 { min-width: 170px; }
+/* Narrow columns for standalone forms and reading pages: centred, so they don't leave a dead strip on the right. */
 .mw-520 { max-width: 520px; } .mw-640 { max-width: 640px; } .mw-720 { max-width: 720px; } .mw-760 { max-width: 760px; }
+.mw-520, .mw-640, .mw-720, .mw-760 { margin-inline: auto; }
+/* Too narrow for a label column: stack the label above its field. */
+.mw-520 .form-row { grid-template-columns: minmax(0, 1fr); }
+.mw-520 .form-row > label, .mw-520 .form-row > .label { padding-top: 0; }
 .big-glyph { font-size: 1.3rem; }
 .cal-arrow { margin: 0 8px; font-size: 1.3rem; }
 .hour-row { display: grid; grid-template-columns: 40px 1fr 70px; align-items: center; gap: 8px; font-size: var(--text-xs); }
@@ -1756,9 +1761,10 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
    negative margin cancels it. Links inside sentences keep their text size (WCAG's inline exception). */
 .cat-head h2 a, .card-head h2 a, .card-head h3 a, .box-head h2 a, .box-head h3 a,
 .post-name a.name, .post-facts a, .thread-meta a, .lp-text a, .metric b a, .portal-search > a,
-.online-summary a, .kv a, .box-sub a, .forum-name a, .award-card h3 a,
+.online-summary a, .kv > :not(.kv-prose) a, .box-sub a, .award-card h3 a,
 :is(.box-head, .card-head, .box-foot, table.grid td, .portal-grid .box-body) a:where(:not(.btn, .btn-ghost, .btn-quiet, .chip, .award, .mycode_mention, .seg a)) { padding: 14px 8px; margin: -14px -8px; }
-.stat b a, .kv a { display: inline-block; min-width: var(--tap); }
+/* Member-written field values (.kv-prose) are sentences: their links and mentions keep their text size. */
+.stat b a, .kv > :not(.kv-prose) a { display: inline-block; min-width: var(--tap); }
 .stat b a { padding-block: 4px; margin-block: -4px; }
 .icon-choices label { min-width: var(--tap); justify-content: center; }
 .footer-links a { min-width: var(--tap); justify-content: center; padding-inline: 8px; margin-inline: -8px; }
