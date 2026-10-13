@@ -173,6 +173,14 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "general",
+        "bbintro",
+        "Welcome text",
+        "One or two sentences shown to visitors above the forum list. Say what the board is about and who it's for.",
+        "textarea",
+        ""
+    ),
+    s!(
+        "general",
         "bburl",
         "Board URL",
         "The full URL of the board, without trailing slash.",

@@ -657,7 +657,7 @@ pub async fn new_posts(ctx: Ctx) -> AppResult<Response> {
         &ctx,
         "t.lastpost > $4",
         since,
-        ("What's new", "Nothing new since your last visit."),
+        ("Latest", "Nothing new since your last visit."),
     )
     .await
 }

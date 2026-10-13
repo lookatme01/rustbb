@@ -271,6 +271,8 @@ mod tests {
             defaultsortby: String::new(),
             defaultsortorder: String::new(),
             password_version: 0,
+            icon: String::new(),
+            tone: -1,
         }
     }
 

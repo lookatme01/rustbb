@@ -507,6 +507,11 @@ pub async fn install(
                     "How do notifications work?",
                     "Mention someone with @username (or @\"Name With Spaces\") and they will receive an alert. You are also alerted when someone quotes you, replies to a thread you subscribe to, sends you a private message or gives you reputation.",
                 ),
+                (
+                    "Keyboard shortcuts",
+                    "Move through forum and thread lists without the mouse.",
+                    "On the board index, a forum, or any list of threads:\n\n[list]\n[*][b]j[/b] — next forum or thread\n[*][b]k[/b] — previous forum or thread\n[*][b]n[/b] — next one with new posts\n[*][b]Enter[/b] — open it\n[/list]\n\nShortcuts are ignored while you are typing in a box, so they never get in the way of writing a post. In the editor, [b]Ctrl+B[/b], [b]Ctrl+I[/b] and [b]Ctrl+U[/b] (⌘ on a Mac) make text bold, italic or underlined, and [b]Ctrl+Enter[/b] posts.",
+                ),
             ],
         ),
     ];

@@ -48,15 +48,16 @@
           <a href="{{ url_user(me.uid, me.username) }}">{{ t("Your profile") }}</a>
           <a href="/usercp">{{ t("User CP") }}</a>
           <a href="/usercp/activity">{{ t("Account activity") }}</a>
-          <a href="/usercp/subscriptions">{{ t("Subscriptions") }}</a>
+          <a href="/usercp/subscriptions">{{ t("Following") }}</a>
           {% if can_modcp %}<a href="/modcp">{{ t("Mod CP") }}{% if modqueue_count or report_count %} <span class="badge">{{ modqueue_count + report_count }}</span>{% endif %}</a>{% endif %}
           {% if is_admin %}<a href="/admin">{{ t("Admin CP") }}</a>{% endif %}
+          {% if bb.enablehelp == '1' %}<a href="/help">{{ t("Help") }}</a>{% endif %}
           <form method="post" action="/member/logout"><input type="hidden" name="my_post_key" value="{{ csrf }}"><button type="submit">{{ t("Log Out") }}</button></form>
         </div>
       </details>
     {% else %}
       <a class="btn btn-quiet" href="/member/login?return_to={{ current_url|urlenc }}">{{ t("Log in") }}</a>
-      {% if bb.disableregs != '1' %}<a class="btn account-join" href="/member/register">{{ t("Register") }}</a>{% endif %}
+      {% if bb.disableregs != '1' %}<a class="btn account-join" href="/member/register">{{ t("Join") }}</a>{% endif %}
     {% endif %}
     </div>
   </div>
@@ -90,17 +91,18 @@
 <footer class="site-footer">
   <div class="wrap">
     <div class="footer-links">
+      {# Help first: it is where a new member looks when they are stuck. #}
+      {% if bb.enablehelp == '1' %}<a class="footer-help" href="/help">{{ t("Help") }}</a>{% endif %}
+      <a href="/rules">{{ t("Rules") }}</a>
+      {% if bb.contact == '1' %}<a href="/contact">{{ t("Contact Us") }}</a>{% endif %}
+      {% if bb.enableshowteam == '1' %}<a href="/team">{{ t("Forum Team") }}</a>{% endif %}
       {% if perms.canviewmemberlist and bb.enablememberlist == '1' %}<a href="/members">{{ t("Members") }}</a>{% endif %}
       {% if perms.canviewcalendar and bb.enablecalendar == '1' %}<a href="/calendar">{{ t("Calendar") }}</a>{% endif %}
       {% if bb.portal == '1' %}<a href="/portal">{{ t("Portal") }}</a>{% endif %}
-      {% if bb.enablehelp == '1' %}<a href="/help">{{ t("Help") }}</a>{% endif %}
-      {% if bb.contact == '1' %}<a href="/contact">{{ t("Contact Us") }}</a>{% endif %}
-      <a href="/rules">{{ t("Rules") }}</a>
-      <a href="/privacy">{{ t("Privacy") }}</a>
-      {% if bb.enablearchive == '1' %}<a href="/archive">{{ t("Lite mode") }}</a>{% endif %}
-      {% if bb.enablesyndication == '1' %}<a href="/syndication">RSS</a>{% endif %}
       {% if bb.statsenabled == '1' %}<a href="/stats">{{ t("Statistics") }}</a>{% endif %}
-      {% if bb.enableshowteam == '1' %}<a href="/team">{{ t("Forum Team") }}</a>{% endif %}
+      {% if bb.enablearchive == '1' %}<a href="/archive">{{ t("Text-only version") }}</a>{% endif %}
+      {% if bb.enablesyndication == '1' %}<a href="/syndication">{{ t("RSS feeds") }}</a>{% endif %}
+      <a href="/privacy">{{ t("Privacy") }}</a>
       <div class="prefs">
         {% if themes|length > 1 %}
         <form method="post" action="/theme/0" class="js-theme-form"><input type="hidden" name="my_post_key" value="{{ csrf }}">

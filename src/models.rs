@@ -142,6 +142,30 @@ pub struct UserGroup {
     pub is_system: bool,
 }
 
+/// Glyphs an admin can pick for a forum (rendered by the theme; see `Forum::icon`).
+pub const FORUM_ICONS: &[&str] = &[
+    "chat",
+    "megaphone",
+    "help",
+    "book",
+    "star",
+    "heart",
+    "leaf",
+    "flame",
+    "bolt",
+    "users",
+    "shield",
+    "trophy",
+    "sparkle",
+    "calendar",
+    "code",
+    "camera",
+    "music",
+    "globe",
+    "gear",
+    "rocket",
+];
+
 /// Forum configuration (no counters — those are read live from the DB).
 #[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
 pub struct Forum {
@@ -182,6 +206,10 @@ pub struct Forum {
     pub defaultdatecut: i32,
     pub defaultsortby: String,
     pub defaultsortorder: String,
+    /// One of `FORUM_ICONS`, or '' to use the first letter of the name.
+    pub icon: String,
+    /// Index into the theme's tone palette (0..=5), or -1 to inherit (see `Cache::forum_tone`).
+    pub tone: i16,
 }
 
 impl Forum {

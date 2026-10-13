@@ -65,7 +65,8 @@
 {% if is_mod %}
 <form id="inlinemod-posts" method="post" action="/moderation/posts" class="actions">{{ m.csrf_field() }}<input type="hidden" name="tid" value="{{ thread.tid }}">
   <label for="postmod" class="small">Selected posts (<span class="js-selcount">0</span>):</label>
-  <select name="action" id="postmod">
+  <select name="action" id="postmod" required>
+    <option value="" selected disabled>Choose an action…</option>
     {% if modperms.canapproveunapproveposts %}<option value="approve">Approve</option><option value="unapprove">Unapprove</option>{% endif %}
     {% if modperms.cansoftdeleteposts %}<option value="softdelete">Soft delete</option>{% endif %}
     {% if modperms.canrestoreposts %}<option value="restore">Restore</option>{% endif %}
@@ -77,7 +78,8 @@
 </form>
 <form method="post" action="/moderation/thread/{{ thread.tid }}" class="actions">{{ m.csrf_field() }}
   <label for="threadmod" class="small">Thread tools:</label>
-  <select name="action" id="threadmod">
+  <select name="action" id="threadmod" required>
+    <option value="" selected disabled>Choose an action…</option>
     {% if modperms.canopenclosethreads %}<option value="{{ 'open' if thread.closed == '1' else 'close' }}">{{ 'Open' if thread.closed == '1' else 'Close' }} thread</option>{% endif %}
     {% if modperms.canstickunstickthreads %}<option value="{{ 'unstick' if thread.sticky else 'stick' }}">{{ 'Unstick' if thread.sticky else 'Stick' }} thread</option>{% endif %}
     {% if modperms.canapproveunapprovethreads %}<option value="{{ 'unapprove' if thread.visible == 1 else 'approve' }}">{{ 'Unapprove' if thread.visible == 1 else 'Approve' }} thread</option>{% endif %}

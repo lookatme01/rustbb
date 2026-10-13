@@ -82,6 +82,7 @@ pub fn router() -> Router<App> {
         .route("/forum/{fid}/password", post(misc::forum_password))
         .route("/forum/{fid}/subscribe", post(misc::subscribe_forum))
         .route("/markread", post(misc::mark_all_read))
+        .route("/markread/undo", post(misc::mark_all_read_undo))
         .route("/thread/{tid}", get(showthread::showthread))
         .route("/thread/{tid}/lastpost", get(showthread::lastpost))
         .route("/thread/{tid}/newpost", get(showthread::newpost))

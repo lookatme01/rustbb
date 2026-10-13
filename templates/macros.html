@@ -33,27 +33,38 @@
    The fill is never the only signal; rows also bold the title and show a "New" chip. #}
 {% macro status_icon(unread=false, closed=false) %}<svg class="status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if closed %}<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 1 1 8 0v3"/>{% else %}<path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/>{% endif %}</svg><span class="sr-only">{{ "New posts. " if unread else "" }}</span>{% endmacro %}
 
+{# A forum's identity tile: the admin's glyph, else the first letter of its name, in the forum's tone.
+   It fills in when there is something new; the row also bolds the name, shows a "New" chip and
+   tells screen readers. #}
+{% macro forum_tile(f, cls='') %}<span class="ficon forum-icon{% if f.linkto %} is-link{% endif %}{% if cls %} {{ cls }}{% endif %}" aria-hidden="true">{% if f.linkto %}{{ icon('link') }}{% elif f.icon %}{{ forum_glyph(f.icon) }}{% else %}<span class="monogram">{{ (f.name or '?')[:1]|upper }}</span>{% endif %}{% if not f.open and not f.linkto %}<span class="pip">{{ icon('lock') }}</span>{% endif %}</span>{% endmacro %}
+
+{# Glyphs an admin can pick for a forum (names in src/models.rs FORUM_ICONS). #}
+{% macro forum_glyph(name) %}{% if name in ['calendar', 'chat', 'star', 'flame', 'heart', 'users', 'shield', 'trophy', 'sparkle', 'bolt', 'leaf'] %}{{ badge_icon(name) }}{% elif name == 'megaphone' %}{{ icon('megaphone') }}{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if name == 'help' %}<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 1 1 3.6 2.4c-.7.3-1.1.9-1.1 1.6v.5M12 17h.01"/>{% elif name == 'book' %}<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>{% elif name == 'code' %}<path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/>{% elif name == 'camera' %}<path d="M3 8a2 2 0 0 1 2-2h2l2-3h6l2 3h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>{% elif name == 'music' %}<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>{% elif name == 'globe' %}<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/>{% elif name == 'gear' %}<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>{% elif name == 'rocket' %}<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1z"/><path d="M12 15l-3-3a22 22 0 0 1 2-4A13 13 0 0 1 22 2c0 2.7-.8 7.5-6 11a22 22 0 0 1-4 2z"/><path d="M9 12H4s.6-3 2-4c1.6-1 5 0 5 0M12 15v5s3-.6 4-2c1-1.6 0-5 0-5"/>{% else %}<path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/>{% endif %}</svg>{% endif %}{% endmacro %}
+
+{# One stop per row for keyboards: the forum link covers the row, and the last post is a single
+   link that names its subject, author and date. Moderator and sub-forum links stay reachable. #}
 {% macro forum_row(f) %}
-<div class="forum-row{% if f.unread %} unread{% endif %}">
-  <span class="ficon forum-icon{% if f.linkto %} is-link{% elif not f.open %} is-locked{% endif %}" title="{{ 'New posts' if f.unread else 'No new posts' }}">{{ icon('link' if f.linkto else ('lock' if not f.open else 'chat')) }}</span>
-  <div>
-    <div class="forum-name"><a href="{{ f.url }}">{{ f.name }}</a><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% if f.unread %}<span class="chip chip-new">New<span class="sr-only"> posts</span></span>{% endif %}{% if f.unapproved %} <span class="tag" title="Awaiting moderation">{{ f.unapproved }} unapproved</span>{% endif %}{% if f.viewers %} <span class="viewers">{{ f.viewers }} viewing</span>{% endif %}</div>
+<div class="forum-row tone-{{ f.tone }}{% if f.unread %} unread{% endif %}">
+  {{ forum_tile(f) }}
+  <div class="forum-main">
+    <div class="forum-name"><a href="{{ f.url }}">{{ f.name }}{% if f.unread %}<span class="sr-only"> ({{ t("new posts") }})</span>{% elif f.linkto %}<span class="sr-only"> ({{ t("link to another site") }})</span>{% elif not f.open %}<span class="sr-only"> ({{ t("closed") }})</span>{% endif %}</a>{% if f.unread %}<span class="chip chip-new" aria-hidden="true">{{ t("New") }}</span>{% endif %}{% if f.unapproved %}<span class="tag" title="{{ t('Awaiting moderation') }}">{{ t("{n} unapproved", n=f.unapproved) }}</span>{% endif %}{% if f.viewers %}<span class="viewers">{{ t("{n} viewing", n=f.viewers) }}</span>{% endif %}<svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
     {% if f.description and bb.showdescriptions == '1' %}<div class="forum-desc">{{ f.description|safe }}</div>{% endif %}
-    {% if f.subforums %}<div class="subforums">{% for s in f.subforums %}<a class="chip{% if s.unread %} unread{% endif %}" href="{{ s.url }}">{{ s.name }}{% if s.unread %}<span class="sr-only"> (new posts)</span>{% endif %}</a>{% endfor %}</div>{% endif %}
-    {% if f.moderators %}<div class="moderators">Moderated by {% for m in f.moderators %}{% if m[2] %}{{ m[1]|safe }}{% else %}<a href="{{ url_user(m[0]) }}">{{ m[1]|safe }}</a>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+    {% if not f.linkto %}<div class="forum-counts" aria-hidden="true">{{ f.threads|num }} {{ f.threads|plural(t("thread"), t("threads")) }} · {{ f.posts|num }} {{ f.posts|plural(t("post"), t("posts")) }}</div>{% endif %}
+    {% if f.subforums %}<div class="subforums">{% for s in f.subforums %}<a class="chip{% if s.unread %} unread{% endif %}" href="{{ s.url }}">{{ s.name }}{% if s.unread %}<span class="sr-only"> ({{ t("new posts") }})</span>{% endif %}</a>{% endfor %}</div>{% endif %}
+    {% if f.moderators %}<div class="moderators">{{ t("Moderated by") }} {% for m in f.moderators %}{% if m[2] %}{{ m[1]|safe }}{% else %}<a href="{{ url_user(m[0]) }}">{{ m[1]|safe }}</a>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   </div>
-  {% if f.linkto %}<div class="forum-stats"></div><div class="lastpost"><span class="none">Link to another site</span></div>
+  {% if f.linkto %}<div class="forum-stats"></div><div class="lastpost"><span class="none">{{ t("Link to another site") }}</span></div>
   {% else %}
-  <div class="forum-stats"><div><b>{{ f.threads|num }}</b>{{ f.threads|plural("thread","threads") }}</div><div><b>{{ f.posts|num }}</b>{{ f.posts|plural("post","posts") }}</div></div>
+  <div class="forum-stats"><div><b>{{ f.threads|num }}</b>{{ f.threads|plural(t("thread"), t("threads")) }}</div><div><b>{{ f.posts|num }}</b>{{ f.posts|plural(t("post"), t("posts")) }}</div></div>
   <div class="lastpost">
     {% if f.lastpost %}
       {{ face(f.lastpost.avatar, f.lastpost.username, f.lastpost.uid, 36) }}
       <div class="lp-text">
-        <a class="subject" href="{{ f.lastpost.url }}" title="{{ f.lastpost.subject }}">{{ f.lastpost.subject }}</a>
-        <span><span class="by">{{ userlink(f.lastpost.uid, f.lastpost.username) }}</span> · {{ f.lastpost.dateline|date }}</span>
+        <a class="subject" href="{{ f.lastpost.url }}" title="{{ f.lastpost.subject }}" aria-label="{{ t('Latest: {subject}, by {name}, {date}', subject=f.lastpost.subject, name=f.lastpost.username or t('Guest'), date=f.lastpost.dateline|date('datetime')) }}">{{ f.lastpost.subject }}</a>
+        <span><span class="by">{{ f.lastpost.username or t("Guest") }}</span> · {{ f.lastpost.dateline|date }}</span>
       </div>
-    {% elif f.password %}<span class="none">Password protected</span>
-    {% else %}<span class="none">No posts yet</span>{% endif %}
+    {% elif f.password %}<span class="none">{{ t("Password protected") }}</span>
+    {% else %}<span class="none">{{ t("No posts yet") }}</span>{% endif %}
   </div>
   {% endif %}
 </div>

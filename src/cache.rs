@@ -119,7 +119,7 @@ impl Cache {
             }
             "forums" => {
                 let rows: Vec<Forum> = sqlx::query_as(
-                    "SELECT fid, name, description, linkto, type, pid, parentlist, disporder, active, open, allowhtml, allowmycode, allowsmilies, allowimgcode, allowvideocode, allowpicons, allowtratings, usepostcounts, usethreadcounts, requireprefix, password, showinjump, style, overridestyle, rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder, password_version FROM forums ORDER BY disporder, fid",
+                    "SELECT fid, name, description, linkto, type, pid, parentlist, disporder, active, open, allowhtml, allowmycode, allowsmilies, allowimgcode, allowvideocode, allowpicons, allowtratings, usepostcounts, usethreadcounts, requireprefix, password, showinjump, style, overridestyle, rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder, password_version, icon, tone FROM forums ORDER BY disporder, fid",
                 )
                 .fetch_all(db)
                 .await?;
@@ -380,6 +380,25 @@ impl Cache {
         self.forums.iter().filter(move |f| f.pid == pid)
     }
 
+    /// The palette slot a forum is drawn in: its own or its nearest ancestor's choice, else a
+    /// stable pick from the top-level forum, so a category and its forums share a colour.
+    pub fn forum_tone(&self, fid: i32) -> i32 {
+        let Some(f) = self.forum(fid) else {
+            return fid.rem_euclid(6);
+        };
+        let path = if f.parentlist.is_empty() {
+            vec![fid]
+        } else {
+            f.parentlist.clone()
+        };
+        path.iter()
+            .rev()
+            .filter_map(|id| self.forum(*id))
+            .find(|a| (0..=5).contains(&a.tone))
+            .map(|a| a.tone as i32)
+            .unwrap_or_else(|| path[0].rem_euclid(6))
+    }
+
     /// All descendants of a forum (not including itself).
     pub fn descendants(&self, fid: i32) -> Vec<i32> {
         self.forums
@@ -592,7 +611,7 @@ impl Cache {
         let name = crate::util::escape_html(username);
         match self.groups.get(&gid) {
             Some(g) if g.namestyle.contains("{username}") => {
-                g.namestyle.replace("{username}", &name)
+                soften_name_color(&g.namestyle).replace("{username}", &name)
             }
             _ => name,
         }
@@ -610,5 +629,32 @@ impl Cache {
                 !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             })
             .collect()
+    }
+}
+
+/// Group name styles are admin-written colours that often fail contrast on the theme's canvas
+/// (bright red on off-white). Moving `color:` into `--gc` lets the stylesheet mix it toward the
+/// text colour, which darkens it in light mode and lightens it in dark mode.
+fn soften_name_color(style: &str) -> std::borrow::Cow<'_, str> {
+    static COLOR: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#"(?i)([;"'\s])color\s*:"#).unwrap());
+    COLOR.replace_all(style, "${1}--gc:")
+}
+
+#[cfg(test)]
+mod name_color_tests {
+    use super::soften_name_color;
+
+    #[test]
+    fn moves_text_colour_only() {
+        assert_eq!(
+            soften_name_color(r#"<span style="color: #FF2E2E;">{username}</span>"#),
+            r#"<span style="--gc: #FF2E2E;">{username}</span>"#
+        );
+        assert_eq!(
+            soften_name_color(r#"<span style="background-color:#eee;color:red">{username}</span>"#),
+            r#"<span style="background-color:#eee;--gc:red">{username}</span>"#
+        );
+        assert_eq!(soften_name_color("<b>{username}</b>"), "<b>{username}</b>");
     }
 }

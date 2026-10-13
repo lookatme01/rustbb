@@ -39,6 +39,10 @@ pub struct ForumNode {
     pub moderators: Vec<(i32, String, bool)>,
     pub viewers: i64,
     pub password: bool,
+    /// Admin-chosen glyph name from `FORUM_ICONS`, or '' for the first letter of the name.
+    pub icon: String,
+    /// Palette slot (0..=5) for the forum's colour, inherited from its category when unset.
+    pub tone: i32,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -47,6 +51,7 @@ pub struct SubForum {
     pub name: String,
     pub url: String,
     pub unread: bool,
+    pub tone: i32,
 }
 
 pub async fn load_counters(ctx: &Ctx) -> AppResult<HashMap<i32, ForumCounters>> {
@@ -187,6 +192,8 @@ fn build_level(
             is_category: f.is_category(),
             open: f.open,
             password: f.has_password(),
+            icon: f.icon.clone(),
+            tone: cache.forum_tone(f.fid),
             moderators: mods.get(&f.fid).cloned().unwrap_or_default(),
             viewers: viewers.get(&f.fid).copied().unwrap_or(0),
             ..Default::default()
@@ -251,6 +258,7 @@ fn build_level(
                     fid: s.fid,
                     name: s.name.clone(),
                     url: url_forum(s.fid as i64, Some(&s.name)),
+                    tone: cache.forum_tone(s.fid),
                     // Same gate as the totals above: no activity hints from forums whose
                     // threads the viewer cannot read in full.
                     unread: ctx.uid() > 0
@@ -392,8 +400,8 @@ async fn compute_online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
         }
     }
     let users: Vec<(i32, String, i32, i32, bool)> = sqlx::query_as(
-        // System is always listed (first) but never counted: it has no session.
-        "SELECT uid, username, usergroup, displaygroup, invisible FROM users WHERE uid = ANY($1) OR is_system ORDER BY is_system DESC, lower(username)",
+        // Only people with a session: the System account would be a face the count doesn't include.
+        "SELECT uid, username, usergroup, displaygroup, invisible FROM users WHERE uid = ANY($1) AND NOT is_system ORDER BY lower(username)",
     )
     .bind(&uids)
     .fetch_all(&ctx.app.db)

@@ -245,9 +245,13 @@ table.grid tfoot td { background: var(--surface-2); font-weight: var(--w-strong)
   background: var(--t, var(--t0)); color: var(--c, var(--l0)); transition: transform var(--dur-slow) var(--ease); }
 .ficon svg, .forum-icon svg { width: 22px; height: 22px; }
 .ficon.on, .unread > .forum-icon { background: var(--c, var(--l0)); color: var(--canvas); }
-.ficon.on svg path, .unread > .forum-icon svg path { fill: currentColor; }
-.forum-icon.is-locked, .forum-icon.is-link { background: var(--surface-3); color: var(--soft); }
-.unread > .forum-icon.is-locked, .unread > .forum-icon.is-link { background: var(--soft); color: var(--canvas); }
+.forum-icon .monogram { font-size: 21px; font-weight: var(--w-heading); line-height: 1; letter-spacing: -.02em; }
+.forum-head .forum-icon .monogram { font-size: 26px; }
+.forum-icon.is-link { background: var(--surface-3); color: var(--soft); }
+.unread > .forum-icon.is-link { background: var(--soft); color: var(--canvas); }
+/* a closed forum keeps its colour and wears a small lock */
+.forum-icon .pip { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); color: var(--soft); box-shadow: 0 0 0 1px var(--rule); }
+.forum-icon .pip svg { width: 12px; height: 12px; }
 
 /* 18. type */
 .h1 { margin: 0; font-size: var(--h1); font-weight: var(--w-display); line-height: 1.08; letter-spacing: var(--track-display); }
@@ -339,6 +343,9 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .usermenu .menu form { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--rule); }
 .usermenu .menu .badge { margin-left: auto; }
 .name-system { font-weight: 700; }
+/* Group colours (moved to --gc by the server) are pulled toward the text colour so they pass contrast
+   on either canvas: darker in light mode, lighter in dark mode. */
+[style*="--gc"] { color: color-mix(in oklab, var(--gc) 68%, var(--ink)); }
 .name-system::after { content: "BOT"; display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 5px; vertical-align: 1px; background: var(--brand); color: var(--brand-ink); font-size: .6rem; font-weight: 750; letter-spacing: .05em; line-height: 1.4; }
 
 /* ================================================================== page furniture */
@@ -349,6 +356,9 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .page-head, .thread-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 20px; margin: 0 0 28px; }
 .page-head .grow, .thread-head .grow { flex: 1 1 420px; min-width: 0; }
 .page-head h1, .thread-head h1 { margin: 0; overflow-wrap: anywhere; }
+.index-head h1 a { color: var(--brand); text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: .12em; text-decoration-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+.index-head h1 a:hover { text-decoration-color: currentColor; }
+.index-head .eyebrow { color: var(--brand); }
 .page-head .actions, .thread-head .actions { margin: 0; }
 .page-head form { display: inline; }
 .listing-head { margin-bottom: 18px; }
@@ -373,6 +383,7 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .site-footer { padding: 32px 0 36px; font-size: var(--text-sm); color: var(--soft); }
 .footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 28px; padding-bottom: 20px; }
 .footer-links a { display: inline-flex; align-items: center; min-height: var(--tap); }
+.footer-links .footer-help { color: var(--ink); font-weight: var(--w-strong); }
 .footer-links .prefs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .footer-links form { display: inline-flex; }
 .footer-links select { height: var(--tap); font-size: var(--text-sm); background-color: var(--surface); }
@@ -425,7 +436,7 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .cat-head h2 a:hover { text-decoration: none; }
 .cat-head .desc { font-size: var(--text-sm); color: var(--soft); }
 .cat-head .desc p { display: inline; margin: 0; }
-.cat-head .collapse-toggle { margin-left: auto; }
+.cat-head .collapse-toggle { order: 1; margin-left: auto; }
 .cat.collapsed > .forum-list { display: none; }
 .forum-list { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-card); box-shadow: var(--shadow); overflow: hidden; }
 
@@ -443,6 +454,7 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .forum-row:hover .go, .forum-row:focus-within .go { opacity: 1; transform: none; }
 .forum-desc { margin-top: 3px; font-size: var(--text-sm); color: var(--soft); }
 .forum-desc p { margin: 0; }
+.forum-counts { display: none; margin-top: 4px; font-size: var(--text-xs); color: var(--faint); }
 .subforums { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .subforums .chip::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--c, var(--faint)); }
 .subforums .chip.unread { font-weight: 750; }
@@ -462,11 +474,6 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .lastpost .none { color: var(--faint); }
 
 /* board totals and who's online */
-.metrics { display: flex; flex-wrap: wrap; margin: 0 0 24px; }
-.metric { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; padding: 24px 28px; border-right: 1px solid var(--rule); min-width: 0; }
-.metric:last-child { border-right: 0; }
-.metric span { font-size: var(--text-xs); color: var(--faint); }
-.metric b { font-size: 32px; font-weight: var(--w-heading); line-height: 1.15; letter-spacing: -.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .online-card .card-head h2 { display: flex; align-items: center; gap: 12px; }
 .online-card .body { display: flex; flex-direction: column; gap: 14px; padding: 20px 26px 24px; }
 .online-summary { font-size: var(--text-sm); color: var(--soft); }
@@ -474,6 +481,12 @@ main > .notice.ok { animation: slide-down .35s var(--ease); }
 .person { display: inline-flex; align-items: center; gap: 8px; height: var(--tap); padding: 0 14px 0 6px; border-radius: var(--r-pill); background: var(--canvas); font-size: var(--text-sm); font-weight: var(--w-label); color: var(--ink); transition: background var(--dur) var(--ease), transform var(--dur-fast) var(--ease); }
 .person .face { --size: 30px; }
 a.person:hover { background: var(--surface-3); text-decoration: none; transform: var(--lift); }
+.board-totals { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 32px; margin: 0; padding: 16px 26px 18px; border-top: 1px solid var(--rule); font-size: var(--text-sm); }
+.board-totals > div { display: flex; align-items: baseline; gap: 8px; }
+.board-totals dt { color: var(--faint); font-size: var(--text-xs); }
+.board-totals dd { margin: 0; font-weight: var(--w-strong); font-variant-numeric: tabular-nums; }
+.board-totals .newest { align-items: center; margin-right: auto; }
+.board-totals .newest .person { background: var(--brand-wash); }
 
 /* ================================================================== thread lists (forum view, search, subscriptions) */
 .thread-list { margin: 0 0 8px; }
@@ -535,25 +548,25 @@ a.person:hover { background: var(--surface-3); text-decoration: none; transform:
 .post:target, .post.is-new { box-shadow: 0 0 0 2px var(--brand), var(--shadow); }
 .post-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; }
 .post-head > a:first-child { border-radius: 50%; }
-.post-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 240px; }
+.post-who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; min-width: 0; flex: 1 1 240px; }
+.post-who > .post-name { flex-basis: 100%; }
 .post-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .post-name .name { font-size: var(--text-read); font-weight: 700; overflow-wrap: anywhere; }
-.post-name .stars { display: inline-flex; gap: 1px; }
-.post-name .stars img { width: 12px; height: 12px; }
-.post-name .groupimage { max-height: 22px; width: auto; }
 .post-facts { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 0; font-size: var(--text-xs); color: var(--faint); }
 .post-facts > div { display: inline-flex; gap: 4px; }
 .post-facts > div + div::before { content: "·"; margin-right: 2px; }
 .post-facts dt { display: inline; }
 .post-facts dd { display: inline; margin: 0; color: var(--soft); }
 .post-facts a { color: inherit; }
-.post-who .awards, .post-who .mf-flags { margin-top: 6px; }
+.post-who .awards, .post-who .mf-flags { margin: 0; }
 .post-when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; font-size: var(--text-xs); color: var(--faint); }
 .post-when a { display: inline-flex; align-items: center; min-height: var(--tap); margin-block: -12px; }
 .post-when .num { font-weight: var(--w-label); }
 .post-when .state { color: var(--warn); font-weight: var(--w-strong); }
 .post-body { display: flow-root; font-size: var(--text-read); line-height: var(--leading-read); letter-spacing: -.003em; overflow-wrap: anywhere; }
 .post-body > :first-child { margin-top: 0; }
+/* a comfortable measure: about 75 characters a line, however wide the card */
+.post > .post-body, .post > .signature { max-width: 75ch; }
 .post-body > :last-child { margin-bottom: 0; }
 .post-body p { margin: 0 0 14px; }
 .post-body img:not(.smilie) { border-radius: var(--r-ctl); }
@@ -1565,6 +1578,7 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .usermenu summary { padding-right: 6px; }
   .forum-row { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 260px); }
   .forum-row .forum-stats { display: none; }
+  .forum-counts { display: block; }
 }
 @media (max-width: 980px) {
   .thread-row { grid-template-columns: 40px minmax(0, 1fr) minmax(0, 200px); }
@@ -1573,7 +1587,6 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .with-sidebar { grid-template-columns: minmax(0, 1fr); }
   .sidenav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
   .sidenav h3 { flex: 1 1 100%; margin: 8px 4px 2px; }
-  .metric { padding: 20px 22px; }
 }
 @media (max-width: 860px) {
   .site-header .tabs { display: none; }
@@ -1596,10 +1609,16 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .forum-row .lastpost { grid-column: 2; }
   .forum-row .lastpost .face { --size: 28px; }
   .go { display: none; }
-  .metric { flex-basis: 50%; padding: 16px 18px; border-bottom: 1px solid var(--rule); }
-  .metric:nth-child(2n) { border-right: 0; }
-  .metric b { font-size: 24px; }
   .online-card .body { padding: 16px 18px 20px; }
+  /* forum page: the title, then one row of actions, then the threads */
+  .forum-head .ficon { display: none; }
+  .forum-head .actions { width: 100%; flex-wrap: nowrap; }
+  .forum-head .actions form .btn { width: var(--tap); padding: 0; justify-content: center; }
+  .forum-head .actions form .btn .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .forum-head .actions > .btn:last-child { margin-left: auto; }
+  .board-totals { gap: 10px 20px; padding: 14px 18px 16px; }
+  .board-totals .newest { flex-basis: 100%; }
+  .cat-head .desc { order: 2; flex-basis: 100%; }
   .thread-row, .thread-row.with-check { grid-template-columns: 32px minmax(0, 1fr); gap: 4px 12px; padding: 16px 18px; }
   .thread-row.with-check { grid-template-columns: 32px minmax(0, 1fr) var(--tap); }
   .thread-row .face { --size: 32px; }
@@ -1610,7 +1629,14 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .jump { justify-content: flex-start; flex-wrap: wrap; }
   .postlist { gap: 14px; }
   .post { gap: 14px; padding: 18px 18px 14px; border-radius: var(--r-inner); }
-  .post-when { flex-basis: 100%; margin-left: 0; }
+  /* avatar beside a full-width name row; the number and date share the facts row */
+  .post-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
+  .post-head > :first-child { grid-row: 1 / span 4; align-self: start; }
+  .post-who { display: contents; }
+  .post-who > * { grid-column: 2 / -1; }
+  .post-who > .post-name { grid-row: 1; }
+  .post-who > .post-facts { grid-column: 2; grid-row: 2; }
+  .post-when { grid-column: 3; grid-row: 2; margin-left: 0; }
   .post-tools { margin-left: 0; }
   .quickreply { padding: 18px; }
   .profile-cover { height: 120px; }
@@ -1648,6 +1674,10 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
   .dow-short { display: inline; }
   .devbar-route { max-width: 100%; margin-left: 0; }
   .footer-links .prefs { margin-left: 0; }
+  /* two even columns instead of a ragged wrap */
+  .footer-links { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .footer-links .prefs { grid-column: 1 / -1; margin-top: 8px; }
+  .footer-links > a { justify-self: start; }
   .site-footer { padding-bottom: 100px; }
   .dock {
     display: flex; position: fixed; left: 8px; right: 8px; bottom: 10px; z-index: 50; justify-content: space-around; gap: 0;
@@ -1760,7 +1790,7 @@ a.award:hover { background: color-mix(in srgb, var(--tone) 20%, var(--surface));
    doesn't see: vertical padding on an inline box doesn't move the line, and on blocks a matching
    negative margin cancels it. Links inside sentences keep their text size (WCAG's inline exception). */
 .cat-head h2 a, .card-head h2 a, .card-head h3 a, .box-head h2 a, .box-head h3 a,
-.post-name a.name, .post-facts a, .thread-meta a, .lp-text a, .metric b a, .portal-search > a,
+.post-name a.name, .post-facts a, .thread-meta a, .lp-text a, .portal-search > a,
 .online-summary a, .kv > :not(.kv-prose) a, .box-sub a, .award-card h3 a,
 :is(.box-head, .card-head, .box-foot, table.grid td, .portal-grid .box-body) a:where(:not(.btn, .btn-ghost, .btn-quiet, .chip, .award, .mycode_mention, .seg a)) { padding: 14px 8px; margin: -14px -8px; }
 /* Member-written field values (.kv-prose) are sentences: their links and mentions keep their text size. */

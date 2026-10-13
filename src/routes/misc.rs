@@ -10,7 +10,7 @@ use axum::Json;
 use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Deserialize, Default)]
 pub struct Empty {}
@@ -45,25 +45,137 @@ pub async fn mark_forum_read(
     ))
 }
 
+/// The most unread markers an undo is willing to restore.
+const MARK_ALL_UNDO_MAX_ITEMS: usize = 2000;
+/// The longest previous-marker list we put in the undo cookie (cookies are about 4 KB).
+const MARK_ALL_UNDO_MAX_BYTES: usize = 3000;
+
+#[derive(sqlx::FromRow)]
+struct ReadMarker {
+    fid: i32,
+    dateline: i64,
+}
+
 pub async fn mark_all_read(ctx: Ctx, CsrfForm(_): CsrfForm<Empty>) -> AppResult<Response> {
     // Only this member's own state changes; cached guest pages stay valid.
     ctx.write_scope(vec![]);
     let me = ctx.require_login()?;
     let fids: Vec<i32> = ctx.cache.forums.iter().map(|f| f.fid).collect();
+    let t = now();
+    let mut tx = ctx.app.db.begin().await?;
+    // Keep the markers and last visit as they were, so the undo can put them back.
+    let prev: Vec<ReadMarker> =
+        sqlx::query_as("SELECT fid, dateline FROM forumsread WHERE uid = $1")
+            .bind(me.uid)
+            .fetch_all(&mut *tx)
+            .await?;
+    let old_lastvisit: i64 = sqlx::query_scalar("SELECT lastvisit FROM users WHERE uid = $1")
+        .bind(me.uid)
+        .fetch_one(&mut *tx)
+        .await?;
     sqlx::query(
         "INSERT INTO forumsread (fid, uid, dateline) SELECT f, $2, $3 FROM UNNEST($1::int[]) f ON CONFLICT (uid, fid) DO UPDATE SET dateline = $3",
     )
     .bind(&fids)
     .bind(me.uid)
-    .bind(now())
-    .execute(&ctx.app.db)
+    .bind(t)
+    .execute(&mut *tx)
     .await?;
     sqlx::query("UPDATE users SET lastvisit = $2 WHERE uid = $1")
         .bind(me.uid)
-        .bind(now())
-        .execute(&ctx.app.db)
+        .bind(t)
+        .execute(&mut *tx)
         .await?;
-    Ok(ctx.redirect("/", "All the forums have been marked as read."))
+    tx.commit().await?;
+    let msg = "All the forums have been marked as read.";
+    let prev_encoded = prev
+        .iter()
+        .map(|m| format!("{}:{}", m.fid, m.dateline))
+        .collect::<Vec<_>>()
+        .join(",");
+    if prev_encoded.len() > MARK_ALL_UNDO_MAX_BYTES {
+        return Ok(ctx.redirect("/", msg));
+    }
+    Ok(ctx.redirect_undo(
+        "/",
+        msg,
+        "/markread/undo",
+        &[
+            ("at", t.to_string()),
+            ("prev", prev_encoded),
+            ("lastvisit", old_lastvisit.to_string()),
+        ],
+    ))
+}
+
+#[derive(Deserialize, Default)]
+pub struct MarkAllUndoForm {
+    /// The time of the mark-all being undone.
+    #[serde(default, deserialize_with = "de::i64")]
+    pub at: i64,
+    /// `fid:dateline` pairs from before the mark-all; see [`parse_read_markers`].
+    #[serde(default, deserialize_with = "de::string")]
+    pub prev: String,
+    #[serde(default, deserialize_with = "de::i64")]
+    pub lastvisit: i64,
+}
+
+/// Undo a "Mark all read" by restoring the member's markers and last visit. Rows and fields
+/// the member has touched since (their value is no longer the mark time) are left alone.
+pub async fn mark_all_read_undo(
+    ctx: Ctx,
+    CsrfForm(f): CsrfForm<MarkAllUndoForm>,
+) -> AppResult<Response> {
+    ctx.write_scope(vec![]);
+    let me = ctx.require_login()?;
+    let prev = parse_read_markers(&f.prev, f.at);
+    let prev_fids: Vec<i32> = prev.iter().map(|(fid, _)| *fid).collect();
+    let prev_datelines: Vec<i64> = prev.iter().map(|(_, dateline)| *dateline).collect();
+    let lastvisit = f.lastvisit.min(f.at);
+    let mut tx = ctx.app.db.begin().await?;
+    // Markers the mark-all created (no earlier row for that forum) go again.
+    sqlx::query(
+        "DELETE FROM forumsread WHERE uid = $1 AND dateline = $2 AND fid <> ALL($3::int[])",
+    )
+    .bind(me.uid)
+    .bind(f.at)
+    .bind(&prev_fids)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE forumsread r SET dateline = p.dateline FROM UNNEST($2::int[], $3::bigint[]) AS p(fid, dateline) WHERE r.uid = $1 AND r.fid = p.fid AND r.dateline = $4",
+    )
+    .bind(me.uid)
+    .bind(&prev_fids)
+    .bind(&prev_datelines)
+    .bind(f.at)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("UPDATE users SET lastvisit = $3 WHERE uid = $1 AND lastvisit = $2")
+        .bind(me.uid)
+        .bind(f.at)
+        .bind(lastvisit)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(ctx.redirect("/", "Your unread markers are back."))
+}
+
+/// Parse the `fid:dateline,...` list that [`mark_all_read`] puts in the undo form. Malformed
+/// items are skipped, datelines are capped at `at` (the time of the mark), each forum is
+/// kept once, and at most 2000 items are returned.
+pub fn parse_read_markers(s: &str, at: i64) -> Vec<(i32, i64)> {
+    let mut seen = HashSet::new();
+    s.split(',')
+        .filter_map(|item| {
+            let (fid, dateline) = item.split_once(':')?;
+            let fid: i32 = fid.parse().ok()?;
+            let dateline: i64 = dateline.parse().ok()?;
+            Some((fid, dateline.min(at)))
+        })
+        .filter(|(fid, _)| seen.insert(*fid))
+        .take(MARK_ALL_UNDO_MAX_ITEMS)
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -759,5 +871,31 @@ pub async fn legacy_member(Query(q): Query<LegacyQuery>) -> Response {
         (Some("register"), _) => Redirect::permanent("/member/register").into_response(),
         (Some("lostpw"), _) => Redirect::permanent("/member/lostpw").into_response(),
         _ => Redirect::permanent("/").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_read_markers;
+
+    #[test]
+    fn read_markers_skip_malformed_items_and_cap_datelines() {
+        let got = parse_read_markers("3:100,x:1,4:,5:200,:7,-2:50,6:9999999999999999999", 150);
+        assert_eq!(got, vec![(3, 100), (5, 150), (-2, 50)]);
+    }
+
+    #[test]
+    fn read_markers_keep_the_first_entry_per_forum() {
+        assert_eq!(parse_read_markers("3:1,3:2,4:3", 10), vec![(3, 1), (4, 3)]);
+        assert!(parse_read_markers("", 10).is_empty());
+    }
+
+    #[test]
+    fn read_markers_stop_at_the_item_cap() {
+        let s = (0..2500)
+            .map(|i| format!("{i}:1"))
+            .collect::<Vec<_>>()
+            .join(",");
+        assert_eq!(parse_read_markers(&s, 10).len(), 2000);
     }
 }

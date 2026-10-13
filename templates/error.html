@@ -16,7 +16,7 @@
     {% endif %}
     <div class="error-actions">
       <a class="btn{% if show_login and not me %} btn-ghost{% endif %}" href="/">Board index</a>
-      {% if perms.cansearch %}<a class="btn btn-ghost" href="{{ '/search/new' if me else '/search/today' }}">What's new</a>{% endif %}
+      {% if perms.cansearch %}<a class="btn btn-ghost" href="{{ '/search/new' if me else '/search/today' }}">Latest</a>{% endif %}
     </div>
   </div>
 </div>

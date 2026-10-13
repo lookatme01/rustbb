@@ -147,7 +147,7 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<EditQ>) -> AppResult<Response> 
         "admin/forum_edit.html",
         "forums",
         if forum.is_some() { "Edit forum" } else { "Add forum" },
-        minijinja::context! { forum => forum, parents => parents, pid => q.pid.unwrap_or(0), kind => if q.r#type == "c" { "c" } else { "f" }, all_themes => ctx.cache.themes.to_vec(), password_set => password_set },
+        minijinja::context! { forum => forum, parents => parents, pid => q.pid.unwrap_or(0), kind => if q.r#type == "c" { "c" } else { "f" }, all_themes => ctx.cache.themes.to_vec(), password_set => password_set, forum_icons => crate::models::FORUM_ICONS },
     )
     .await
 }
@@ -171,6 +171,19 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
             "A forum cannot be moved into one of its own subforums.",
         ));
     }
+    // An unknown glyph or an out-of-range tone quietly falls back to the automatic pick.
+    let icon = s(fl.get("icon")).trim().to_string();
+    let icon = if crate::models::FORUM_ICONS.contains(&icon.as_str()) {
+        icon
+    } else {
+        String::new()
+    };
+    let tone = s(fl.get("tone"))
+        .trim()
+        .parse::<i16>()
+        .ok()
+        .filter(|t| (-1..=5).contains(t))
+        .unwrap_or(-1);
     let password = s(fl.get("password"));
     let clear_pw = b(fl.get("clearpassword"));
     // Forum passwords are stored as Argon2id verifiers; hash before the transaction (it is slow).
@@ -186,7 +199,8 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
             "UPDATE forums SET name = $2, description = $3, linkto = $4, type = $5, pid = $6, disporder = $7, active = $8, open = $9,
                 allowhtml = $10, allowmycode = $11, allowsmilies = $12, allowimgcode = $13, allowvideocode = $14, allowpicons = $15, allowtratings = $16,
                 usepostcounts = $17, usethreadcounts = $18, requireprefix = $19, showinjump = $20, style = $21, overridestyle = $22,
-                rulestype = $23, rulestitle = $24, rules = $25, defaultdatecut = $26, defaultsortby = $27, defaultsortorder = $28
+                rulestype = $23, rulestitle = $24, rules = $25, defaultdatecut = $26, defaultsortby = $27, defaultsortorder = $28,
+                icon = $29, tone = $30
              WHERE fid = $1",
         )
         .bind(fid)
@@ -217,6 +231,8 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
         .bind(i(fl.get("defaultdatecut")))
         .bind(s(fl.get("defaultsortby")))
         .bind(s(fl.get("defaultsortorder")))
+        .bind(&icon)
+        .bind(tone)
         .execute(&mut *tx)
         .await?;
         fid
@@ -224,8 +240,8 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
         sqlx::query_scalar(
             "INSERT INTO forums (name, description, linkto, type, pid, disporder, active, open, allowhtml, allowmycode, allowsmilies, allowimgcode,
                 allowvideocode, allowpicons, allowtratings, usepostcounts, usethreadcounts, requireprefix, showinjump, style, overridestyle,
-                rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING fid",
+                rulestype, rulestitle, rules, defaultdatecut, defaultsortby, defaultsortorder, icon, tone)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING fid",
         )
         .bind(&name)
         .bind(s(fl.get("description")))
@@ -254,6 +270,8 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(form): CsrfForm<AnyForm>) -> AppResult
         .bind(i(fl.get("defaultdatecut")))
         .bind(s(fl.get("defaultsortby")))
         .bind(s(fl.get("defaultsortorder")))
+        .bind(&icon)
+        .bind(tone)
         .fetch_one(&mut *tx)
         .await?
     };

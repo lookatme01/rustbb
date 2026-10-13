@@ -165,9 +165,33 @@
       const key = "rbb.collapse." + box.dataset.collapse;
       const btn = $(".collapse-toggle", box);
       if (!btn) return;
-      const apply = (c) => { box.classList.toggle("collapsed", c); btn.setAttribute("aria-expanded", String(!c)); };
+      const apply = (c) => {
+        box.classList.toggle("collapsed", c);
+        btn.setAttribute("aria-expanded", String(!c));
+        const label = c ? btn.dataset.labelExpand : btn.dataset.labelCollapse;
+        if (label) btn.setAttribute("aria-label", label);
+      };
       apply(store.get(key) === "1");
       btn.addEventListener("click", () => { const c = !box.classList.contains("collapsed"); apply(c); c ? store.set(key, "1") : store.del(key); });
+    });
+
+    // Row shortcuts on forum and thread lists: j / k step through rows, n jumps to the next one
+    // with new posts. Ignored while typing or with a modifier held.
+    const rowLinks = () => $$(".forum-name > a, .thread-title a.subject").filter((a) => a.offsetParent);
+    document.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !["j", "k", "n"].includes(e.key)) return;
+      const t = e.target;
+      if (t.closest && t.closest("input, textarea, select, [contenteditable], dialog, details[open]")) return;
+      const links = rowLinks();
+      if (!links.length) return;
+      const at = links.findIndex((a) => a === document.activeElement);
+      let next;
+      if (e.key === "n") next = links.slice(at + 1).find((a) => a.closest(".unread"));
+      else next = links[e.key === "j" ? Math.min(at + 1, links.length - 1) : Math.max(at - 1, 0)];
+      if (!next) return;
+      e.preventDefault();
+      next.focus();
+      next.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     });
 
     // Confirm dialogs.

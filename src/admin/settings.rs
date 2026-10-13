@@ -133,6 +133,11 @@ pub async fn save(
                 "The board URL must start with http:// or https://.",
             ));
         }
+        if d.name == "bbintro" && value.chars().count() > 300 {
+            return Err(AppError::user(
+                "The welcome text can be at most 300 characters.",
+            ));
+        }
         if d.name == "imageproxy_url"
             && !value.trim().is_empty()
             && !(value.trim().starts_with("https://") || value.trim().starts_with("http://"))

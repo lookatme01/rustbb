@@ -1,5 +1,6 @@
 {# expects: p (PostView), thread, is_mod, modperms, reaction_types #}
-{# One card per post, author on top. Each card stands alone, so a post linked on its own still says who wrote it. #}
+{# One card per post, author on top. Each card stands alone, so a post linked on its own still says who wrote it.
+   Rank stars and group images are left out: the title chip already says who someone is. #}
 <article class="post{% if p.visible == 0 %} unapproved{% elif p.visible == -1 %} deleted{% endif %}{% if p.ignored %} ignored-post{% endif %}" id="pid{{ p.pid }}" data-pid="{{ p.pid }}" aria-labelledby="pid{{ p.pid }}-by">
   {% set a = p.author %}
   {% set uname = a.username if a else (p.username or 'Guest') %}
@@ -10,8 +11,6 @@
         {% if a %}<a class="name" href="{{ url_user(a.uid, a.username) }}">{{ a.formatted|safe }}</a>{% else %}<span class="name">{{ uname }}</span>{% endif %}
         {% if thread and p.uid and p.uid == thread.uid %}<span class="chip">Original poster</span>{% endif %}
         {% if a and a.usertitle %}<span class="chip">{{ a.usertitle }}</span>{% endif %}
-        {% if a and a.stars %}<span class="stars" role="img" aria-label="{{ a.stars }} stars">{% for i in range(a.stars) %}<img src="{{ a.starimage }}" alt="">{% endfor %}</span>{% endif %}
-        {% if a and a.groupimage %}<img class="groupimage" src="{{ a.groupimage }}" alt="{{ a.grouptitle }}">{% endif %}
         {% if a and a.away %}<span class="tag">Away</span>{% endif %}
         {% if a and a.online %}<span class="sr-only">(online)</span>{% endif %}
       </div>

@@ -531,6 +531,7 @@ pub async fn forumdisplay(
         minijinja::context! {
             title => &forum.name,
             forum => &forum,
+            tone => ctx.cache.forum_tone(fid),
             forum_url => url_forum(fid as i64, Some(&forum.name)),
             breadcrumb => breadcrumb(&ctx, fid),
             subforums => subforums,

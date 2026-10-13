@@ -513,14 +513,6 @@ fn apply_branding(
         ));
     }
     set("banner", banner);
-    set(
-        "hero_title",
-        s(fl.get("hero_title")).trim().chars().take(80).collect(),
-    );
-    set(
-        "hero_text",
-        s(fl.get("hero_text")).trim().chars().take(240).collect(),
-    );
     let logo = s(fl.get("logo")).trim().to_string();
     if !logo.is_empty() && !valid_banner(&logo) {
         return Err(AppError::user(

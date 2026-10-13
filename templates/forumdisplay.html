@@ -1,17 +1,17 @@
 {% extends "layout.html" %}
 {% import "macros.html" as m %}
-{% block tone %}tone-{{ (forum.parentlist[0] if forum.parentlist else forum.fid) % 6 }}{% endblock %}
+{% block tone %}tone-{{ tone }}{% endblock %}
 {% block content %}
 <header class="page-head forum-head rise">
-  <span class="ficon on" aria-hidden="true">{{ m.icon('chat') }}</span>
+  {{ m.forum_tile(forum) }}
   <div class="grow">
     <h1 class="h1">{{ forum.name }}</h1>
     {% if forum.description %}<p class="lede">{{ forum.description|safe }}</p>{% endif %}
   </div>
   <div class="actions">
     {% if me %}
-    <form method="post" action="/forum/{{ forum.fid }}/subscribe">{{ m.csrf_field() }}<button class="btn btn-ghost" type="submit" aria-pressed="{{ 'true' if subscribed else 'false' }}">{{ m.icon('check' if subscribed else 'bell') }}{{ 'Following' if subscribed else 'Follow forum' }}</button></form>
-    <form method="post" action="/forum/{{ forum.fid }}/markread">{{ m.csrf_field() }}<button class="btn btn-quiet" type="submit">{{ m.icon('check') }}Mark read</button></form>
+    <form method="post" action="/forum/{{ forum.fid }}/subscribe">{{ m.csrf_field() }}<button class="btn btn-ghost" type="submit" aria-pressed="{{ 'true' if subscribed else 'false' }}">{{ m.icon('bell') }}<span class="label">{{ 'Following' if subscribed else 'Follow forum' }}</span></button></form>
+    <form method="post" action="/forum/{{ forum.fid }}/markread">{{ m.csrf_field() }}<button class="btn btn-quiet" type="submit">{{ m.icon('check') }}<span class="label">Mark read</span></button></form>
     {% endif %}
     {% if can_post %}<a class="btn" href="/newthread/{{ forum.fid }}">{{ m.icon('plus') }}{{ t("New Thread") }}</a>{% endif %}
   </div>
@@ -35,13 +35,14 @@
 <div class="card"><div class="empty">You can see this forum but you do not have permission to read its threads.{% if not me %} <a href="/member/login?return_to={{ current_url|urlenc }}">Log in</a> to see more.{% endif %}</div></div>
 {% endif %}
 {% if not forum.is_category and fperms.canviewthreads and not (total == 0 and subforums and not announcements) %}
-<div class="toolbar">
-  {{ m.pagination(pagination) }}
-  <span class="spacer"></span>
+{% if pagination.pages > 1 %}<div class="toolbar">{{ m.pagination(pagination) }}</div>{% endif %}
+
+<section class="card thread-list rise" aria-labelledby="threads-title">
   {% set sort_labels = {'lastpost':'Last post','started':'Start date','subject':'Subject','starter':'Author','replies':'Replies','views':'Views','rating':'Rating'} %}
   {% set filtered = (sortby and sortby != 'lastpost') or order == 'asc' or datecut or prefix %}
+  <div class="card-head"><h2 id="threads-title">Threads</h2><div class="right head-tools"><span class="soft">{{ total|num }} {{ total|plural("thread","threads") }}</span>
   <details class="popmenu down">
-    <summary class="btn btn-ghost">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
+    <summary class="btn btn-ghost btn-sm">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
     <div class="menu">
   <form method="get" action="{{ forum_url }}" class="filters menu-form">
     {% if prefixes %}<select name="prefix" aria-label="Prefix"><option value="0">Any prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
@@ -56,11 +57,7 @@
     {% if filtered %}<a class="menu-reset" href="{{ forum_url }}">Reset</a>{% endif %}
   </form>
     </div>
-  </details>
-</div>
-
-<section class="card thread-list rise" aria-labelledby="threads-title">
-  <div class="card-head"><h2 id="threads-title">Threads</h2><span class="right">{{ total|num }} {{ total|plural("thread","threads") }}</span></div>
+  </details></div></div>
   {% for a in announcements %}
   <div class="thread-row{% if is_mod %} with-check{% endif %}">
     <span class="face size-40" aria-hidden="true">{{ m.icon('megaphone') }}</span>
@@ -82,7 +79,8 @@
 <form id="inlinemod" method="post" action="/moderation/threads" class="actions">
   {{ m.csrf_field() }}<input type="hidden" name="fid" value="{{ forum.fid }}">
   <label for="modaction" class="small">Inline moderation (<span class="js-selcount">0</span> selected):</label>
-  <select name="action" id="modaction">
+  <select name="action" id="modaction" required>
+    <option value="" selected disabled>Choose an action…</option>
     {% if modperms.canopenclosethreads %}<option value="close">Close threads</option><option value="open">Open threads</option>{% endif %}
     {% if modperms.canstickunstickthreads %}<option value="stick">Stick threads</option><option value="unstick">Unstick threads</option>{% endif %}
     {% if modperms.canapproveunapprovethreads %}<option value="approve">Approve threads</option><option value="unapprove">Unapprove threads</option>{% endif %}
