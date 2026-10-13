@@ -1787,7 +1787,7 @@ a.daynum, .calendar a.wk { min-width: var(--tap); min-height: var(--tap); line-h
 
 /* last stragglers from the tap-target sweep */
 table.grid td.num a:not(.btn) { display: inline-block; min-width: var(--tap); padding-block: 12px; margin-block: -12px; text-align: right; }
-.box-head a.right, .card-head a.right { display: inline-flex; justify-content: center; min-width: var(--tap); }
+.box-head a.right, .card-head a.right { display: inline-flex; justify-content: center; min-width: var(--tap); margin-left: auto; margin-right: -8px; }
 p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-block: -12px; }
 .thread-title > a.subject { padding-block: 11px; margin-block: -11px; }
 .inbox-who > a { display: inline-block; padding-block: 11px; margin-block: -11px; }
