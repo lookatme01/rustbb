@@ -204,6 +204,7 @@ fn numeric_bounds(name: &str) -> (i64, i64) {
         "minnamelength" => (1, 100),
         "maxnamelength" => (3, 255),
         "ratelimit_requests" => (10, 100_000),
+        "captchapowbits" => (8, 24),
         _ => (-1_000_000_000_000, 1_000_000_000_000),
     }
 }

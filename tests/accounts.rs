@@ -774,3 +774,138 @@ async fn deleting_an_account_removes_its_votes_and_ratings_and_fixes_the_tallies
         assert_eq!(left, 0, "{table}");
     }
 }
+
+fn solve_pow(hash: &str, bits: u32) -> String {
+    use sha2::{Digest, Sha256};
+    (0u64..)
+        .map(|n| n.to_string())
+        .find(|n| {
+            let d = Sha256::digest(format!("{hash}:{n}").as_bytes());
+            u32::from_be_bytes([d[0], d[1], d[2], d[3]]).leading_zeros() >= bits
+        })
+        .unwrap()
+}
+
+#[tokio::test]
+async fn captcha_forms_can_require_a_proof_of_work_from_the_browser() {
+    let t = test_app!();
+    for (k, v) in [
+        ("contact", "1"),
+        ("captchaimage", "1"),
+        ("captchapow", "0"),
+        ("captchapowbits", "8"),
+        ("ratelimit_requests", "0"),
+    ] {
+        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+            .bind(k)
+            .bind(v)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let c = t.client();
+    // Off: the page does not mention it.
+    let page = c.get("/contact").await;
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert!(!page.body.contains("data-pow-bits") && !page.body.contains("captcha-pow.mjs"));
+
+    sqlx::query("UPDATE settings SET value = '1' WHERE name = 'captchapow'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let hash_of = |body: &str| {
+        let m = "name=\"captcha_hash\" value=\"";
+        let i = body.find(m).expect("a captcha on the page") + m.len();
+        body[i..i + body[i..].find('"').unwrap()].to_string()
+    };
+    let page = c.get("/contact").await;
+    assert!(page.body.contains("data-pow-bits=\"8\"") && page.body.contains("captcha-pow.mjs"));
+    let key = common::form_key(&page.body);
+    let digits = |hash: String| {
+        let pool = t.db.pool.clone();
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT imagestring FROM captcha WHERE imagehash = $1")
+                .bind(hash)
+                .fetch_one(&pool)
+                .await
+                .expect("the captcha row exists")
+        }
+    };
+    let submit = |hash: String, answer: String, key: String| {
+        let c = &c;
+        async move {
+            c.post_form(
+                "/contact",
+                &[
+                    ("my_post_key", key.as_str()),
+                    ("subject", "Hello there"),
+                    ("message", "A message that is long enough."),
+                    ("email", "guest@example.test"),
+                    ("captcha_hash", hash.as_str()),
+                    ("captcha", answer.as_str()),
+                ],
+            )
+            .await
+        }
+    };
+    // The right digits without a nonce are refused for the missing proof of work, and the captcha
+    // is not used up by that (the digits are still valid afterwards).
+    let hash = hash_of(&page.body);
+    let right = digits(hash.clone()).await;
+    let r = submit(hash.clone(), right.clone(), key.clone()).await;
+    assert!(
+        r.body.contains("did not complete the security check"),
+        "{}",
+        r.body
+    );
+    // The right digits with a valid nonce get past both checks.
+    let hash = hash_of(&c.get("/contact").await.body);
+    let right = digits(hash.clone()).await;
+    let r = submit(
+        hash.clone(),
+        format!("{right}~{}", solve_pow(&hash, 8)),
+        key.clone(),
+    )
+    .await;
+    assert!(
+        !r.body.contains("security check") && !r.body.contains("incorrect"),
+        "{}",
+        r.body
+    );
+    // A valid nonce does not excuse wrong digits. (Look the digits up first: a try uses the captcha up.)
+    let hash = hash_of(&c.get("/contact").await.body);
+    let truth = digits(hash.clone()).await;
+    let wrong = if truth == "000000" {
+        "111111"
+    } else {
+        "000000"
+    };
+    let r = submit(
+        hash.clone(),
+        format!("{wrong}~{}", solve_pow(&hash, 8)),
+        key.clone(),
+    )
+    .await;
+    assert!(r.body.contains("incorrect"), "{}", r.body);
+}
+
+#[test]
+fn proof_of_work_nonces_are_checked_strictly() {
+    let hash = "0123456789abcdef0123456789abcdef";
+    let nonce = solve_pow(hash, 12);
+    assert!(rbb::routes::captcha::pow_valid(hash, &nonce, 12));
+    assert!(
+        !rbb::routes::captcha::pow_valid("fedcba9876543210fedcba9876543210", &nonce, 12)
+            || solve_pow("fedcba9876543210fedcba9876543210", 12) == nonce
+    );
+    // Only plain decimal numbers of a sane length are accepted.
+    for bad in ["", "abc", "12 3", "-5", "1e3", "1234567890123", "0x10"] {
+        assert!(!rbb::routes::captcha::pow_valid(hash, bad, 0), "{bad:?}");
+    }
+    assert!(
+        rbb::routes::captcha::pow_valid(hash, "7", 0),
+        "zero bits accepts any number"
+    );
+}

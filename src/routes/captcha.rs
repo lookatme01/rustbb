@@ -26,8 +26,32 @@ pub async fn new_captcha(ctx: &Ctx) -> AppResult<String> {
     Ok(hash)
 }
 
+/// Whether `nonce` solves the proof-of-work for `hash`: SHA-256 of "<hash>:<nonce>" must start
+/// with at least `bits` zero bits. The nonce is a plain decimal number, as the page produces.
+pub fn pow_valid(hash: &str, nonce: &str, bits: u32) -> bool {
+    use sha2::{Digest, Sha256};
+    if nonce.is_empty() || nonce.len() > 12 || !nonce.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+    let digest = Sha256::digest(format!("{hash}:{nonce}").as_bytes());
+    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]).leading_zeros() >= bits
+}
+
 /// Verify and consume a captcha answer.
+///
+/// With proof-of-work on, the page appends its nonce to the typed digits ("123456~48151"); that is
+/// checked first, without touching the captcha, so a missing or wrong nonce costs nothing.
 pub async fn check(ctx: &Ctx, hash: &str, answer: &str) -> AppResult<()> {
+    let (answer, nonce) = answer.split_once('~').unwrap_or((answer, ""));
+    let s = ctx.settings();
+    if s.bool("captchapow") {
+        let bits = s.int("captchapowbits").clamp(8, 24) as u32;
+        if !pow_valid(hash, nonce, bits) {
+            return Err(AppError::user(
+                "Your browser did not complete the security check. Please enable JavaScript, reload the page and try again.",
+            ));
+        }
+    }
     let row: Option<(String,)> = sqlx::query_as(
         "DELETE FROM captcha WHERE imagehash = $1 AND dateline > $2 RETURNING imagestring",
     )

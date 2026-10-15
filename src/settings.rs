@@ -1349,6 +1349,22 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "security",
+        "captchapow",
+        "Captcha Proof of Work",
+        "Also make every browser solve a small computational puzzle (a few tenths of a second) before a captcha form is accepted. It makes mass sign-ups cost CPU time per account; it needs JavaScript and does not stop an attacker willing to pay that time.",
+        "yesno",
+        "0"
+    ),
+    s!(
+        "security",
+        "captchapowbits",
+        "Proof of Work Difficulty (bits)",
+        "Leading zero bits the puzzle needs, 8 to 24. Each extra bit doubles the work: 18 takes a browser roughly a quarter of a second, 22 a few seconds.",
+        "numeric",
+        "18"
+    ),
+    s!(
+        "security",
         "acp2fa",
         "Require 2FA for Admin CP",
         "Administrators must set up TOTP two-factor authentication to use the Admin CP.",
