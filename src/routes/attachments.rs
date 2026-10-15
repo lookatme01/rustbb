@@ -117,7 +117,14 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     ctx.check_csrf(&key)?;
     let upload = file.ok_or_else(|| AppError::user("No file was uploaded."))?;
     let filename = upload.file_name.clone();
-    let size = upload.size as i64;
+    let mut size = upload.size as i64;
+    // Photos carry their GPS position and device in EXIF, and attachments are served exactly as
+    // stored: take it out (losslessly) before anything is kept.
+    if s.bool("attachstripmeta")
+        && let Some(new_size) = strip_jpeg_metadata(upload.path(), &filename).await
+    {
+        size = new_size;
+    }
     // Editing an existing post: must be allowed to edit it.
     if pid > 0 {
         let post: Post =
@@ -305,6 +312,21 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
         }
     };
     Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(size), "visible": visible, "is_image": is_image})).into_response())
+}
+
+/// Rewrite an uploaded JPEG without its metadata. Returns the new size, or `None` when the file
+/// is not a JPEG (by name and content) or could not be rewritten: the original is kept then.
+async fn strip_jpeg_metadata(path: &std::path::Path, filename: &str) -> Option<i64> {
+    let ext = filename.rsplit('.').next()?.to_ascii_lowercase();
+    if !matches!(ext.as_str(), "jpg" | "jpeg" | "jpe") {
+        return None;
+    }
+    let data = tokio::fs::read(path).await.ok()?;
+    let stripped = tokio::task::spawn_blocking(move || crate::infra::jpeg::strip_metadata(&data))
+        .await
+        .ok()??;
+    tokio::fs::write(path, &stripped).await.ok()?;
+    Some(stripped.len() as i64)
 }
 
 #[derive(Deserialize, Default)]

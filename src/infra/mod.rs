@@ -2,6 +2,7 @@
 //! outside world. Use cases depend on these; these never depend on HTTP handlers.
 
 pub mod cluster;
+pub mod jpeg;
 pub mod metrics;
 pub mod migrations;
 pub mod observe;

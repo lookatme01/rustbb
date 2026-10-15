@@ -947,6 +947,14 @@ pub static DEFS: &[SettingDef] = &[
         "numeric",
         "300"
     ),
+    s!(
+        "attachments",
+        "attachstripmeta",
+        "Strip Photo Metadata",
+        "Remove the GPS position, camera details, timestamps and embedded thumbnail (EXIF) from uploaded JPEG photos. The picture itself is not re-encoded or changed; its rotation is kept.",
+        "yesno",
+        "1"
+    ),
     // pm
     s!(
         "pm",

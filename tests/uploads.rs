@@ -829,3 +829,95 @@ async fn a_failed_upload_does_not_leave_its_files_in_storage() {
         "the stored file was cleaned up"
     );
 }
+
+/// A real JPEG with a fake EXIF block (a GPS string inside) spliced in after the SOI marker.
+fn geotagged_jpeg() -> Vec<u8> {
+    let img = image::RgbImage::from_fn(32, 20, |x, y| {
+        image::Rgb([(x * 7) as u8, (y * 11) as u8, 60])
+    });
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut out, image::ImageFormat::Jpeg)
+        .unwrap();
+    let jpeg = out.into_inner();
+    let body = b"Exif\0\0GPSLATITUDE-51.5N-LONGITUDE-0.12W-SecretPhone";
+    let mut v = jpeg[..2].to_vec();
+    v.extend_from_slice(&[0xFF, 0xE1]);
+    v.extend_from_slice(&((body.len() + 2) as u16).to_be_bytes());
+    v.extend_from_slice(body);
+    v.extend_from_slice(&jpeg[2..]);
+    v
+}
+
+async fn upload_photo(t: &common::TestApp, c: &common::Client, bytes: &[u8]) -> (i64, Vec<u8>) {
+    let csrf = c.csrf();
+    let (ct, body) = multipart(
+        &[
+            ("my_post_key", &csrf),
+            ("posthash", "0123456789abcdefPHO"),
+            ("fid", "3"),
+        ],
+        Some(("holiday.jpg", bytes)),
+    );
+    let r = c
+        .request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    let aid = serde_json::from_str::<serde_json::Value>(&r.body).unwrap()["aid"]
+        .as_i64()
+        .unwrap();
+    let stored: i64 = sqlx::query_scalar("SELECT filesize FROM attachments WHERE aid = $1")
+        .bind(aid as i32)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let d = c.get(&format!("/attachment/{aid}")).await;
+    assert_eq!(d.status, 200);
+    (stored, d.bytes)
+}
+
+#[tokio::test]
+async fn uploaded_photos_lose_their_gps_data_unless_the_setting_is_off() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enableattachments', '1') ON CONFLICT (name) DO UPDATE SET value = '1'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let original = geotagged_jpeg();
+    let has = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).any(|w| w == needle);
+    assert!(has(&original, b"SecretPhone"));
+    let c = t.login_as(1).await;
+    let (size, served) = upload_photo(&t, &c, &original).await;
+    assert!(
+        !has(&served, b"GPSLATITUDE") && !has(&served, b"SecretPhone"),
+        "metadata survived"
+    );
+    assert_eq!(
+        size as usize,
+        served.len(),
+        "the recorded size is the stored size"
+    );
+    assert!(served.len() < original.len());
+    assert!(
+        image::load_from_memory(&served).is_ok(),
+        "the photo still decodes"
+    );
+    // Switched off, the file is kept exactly as uploaded.
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('attachstripmeta', '0') ON CONFLICT (name) DO UPDATE SET value = '0'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let (_, kept) = upload_photo(&t, &c, &original).await;
+    assert_eq!(kept, original);
+}
