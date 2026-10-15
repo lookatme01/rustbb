@@ -311,7 +311,9 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
         }
         "userpruning" => {
             let n = sqlx::query(
-                "DELETE FROM users WHERE usergroup = 5 AND regdate < $1 AND postnum = 0",
+                "DELETE FROM users u WHERE usergroup = 5 AND regdate < $1 AND postnum = 0
+                 AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.uid = u.uid)
+                 AND NOT EXISTS (SELECT 1 FROM threads t WHERE t.uid = u.uid)",
             )
             .bind(t - 30 * 86400)
             .execute(db)
@@ -319,10 +321,14 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
             .rows_affected();
             if n > 0 {
                 sqlx::query(
-                    "UPDATE counters SET numusers = (SELECT COUNT(*) FROM users) WHERE id = 1",
+                    "UPDATE counters SET numusers = (SELECT COUNT(*) FROM users),
+                     lastuid = COALESCE((SELECT MAX(uid) FROM users WHERE NOT is_system), 0) WHERE id = 1",
                 )
                 .execute(db)
                 .await?;
+                sqlx::query("UPDATE counters SET lastusername = COALESCE((SELECT username FROM users WHERE uid = counters.lastuid), '') WHERE id = 1")
+                    .execute(db)
+                    .await?;
             }
             Ran::new(n > 0, format!("pruned {n} unactivated users"))
         }
