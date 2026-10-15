@@ -10,9 +10,9 @@
   authz  replay every /admin, /modcp and /moderation page and form as a guest and as the plain
          member given with --member (same password as the admin): anything but a clean denial
          (401/403/404, or a redirect to the login page) is reported
-         Expected on a healthy board: POST /moderation/threads answers 422 (the placeholder action
-         "x" is rejected as invalid before permissions are looked at; real actions give 403) and
-         POST /admin/themes/N/banner answers 400 (it only takes multipart bodies).
+         Two benign responses are expected and not reported: POST /moderation/threads answering 422
+         (the placeholder action "x" is rejected as invalid before permissions are looked at; real
+         actions give 403) and POST /admin/themes/N/banner answering 400 (multipart bodies only).
 
 A 5xx means a handler failed where it should have said "invalid input" (400/422). The `forms`
 mode submits destructive actions (deletes, merges, password changes), so only ever point this at
@@ -256,6 +256,14 @@ def fuzz_authz(admin, password, member_name, member_password):
     def clean(code, loc):
         return code in (401, 403, 404) or (code in (301, 302, 303, 307, 308) and ("/member/login" in loc or loc in ("/", "")))
 
+    # Known, benign: the placeholder action "x" is rejected as invalid before permissions are
+    # looked at (real actions get 403), and the banner upload only takes multipart bodies.
+    def expected(method, path, code):
+        return method == "POST" and (
+            (path == "/moderation/threads" and code == 422)
+            or (re.fullmatch(r"/admin/themes/\d+/banner", path) and code == 400)
+        )
+
     flags = []
     for who, c in (("guest", guest), ("member", member)):
         for p in spages:
@@ -270,7 +278,7 @@ def fuzz_authz(admin, password, member_name, member_password):
             if not any(n == "my_post_key" for n, _ in data):
                 data.append(("my_post_key", k))
             code, _, loc = c.form(action, data)
-            if not clean(code, loc):
+            if not clean(code, loc) and not expected("POST", action, code):
                 flags.append((who, "POST", action, code, loc))
     print(f"authz: {len(flags)} responses that were not a clean denial")
     seen = set()

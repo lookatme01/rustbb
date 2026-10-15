@@ -1024,20 +1024,7 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
     .bind(dst)
     .fetch_all(&mut *tx)
     .await?;
-    if !shared_polls.is_empty() {
-        sqlx::query(
-            "UPDATE polls p SET
-                votes = (SELECT COALESCE(array_agg(COALESCE(c.n, 0)::int ORDER BY i), '{}')
-                         FROM generate_series(1, COALESCE(array_length(p.options, 1), 0)) i
-                         LEFT JOIN (SELECT voteoption, COUNT(*) n FROM pollvotes WHERE pid = p.pid GROUP BY voteoption) c
-                           ON c.voteoption = i),
-                numvotes = (SELECT COUNT(DISTINCT uid) FROM pollvotes WHERE pid = p.pid)
-             WHERE p.pid = ANY($1)",
-        )
-        .bind(&shared_polls)
-        .execute(&mut *tx)
-        .await?;
-    }
+    crate::ops::recompute_poll_tallies(&mut tx, &shared_polls).await?;
     // Thread ratings are one per member and thread; keep the destination's and move the rest.
     let rated: Vec<i32> = sqlx::query_scalar(
         "DELETE FROM threadratings WHERE uid = $1 AND tid IN (SELECT tid FROM threadratings WHERE uid = $2) RETURNING tid",
@@ -1051,16 +1038,7 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
         .bind(dst)
         .execute(&mut *tx)
         .await?;
-    if !rated.is_empty() {
-        sqlx::query(
-            "UPDATE threads t SET numratings = (SELECT COUNT(*) FROM threadratings WHERE tid = t.tid),
-                totalratings = (SELECT COALESCE(SUM(rating), 0) FROM threadratings WHERE tid = t.tid)
-             WHERE t.tid = ANY($1)",
-        )
-        .bind(&rated)
-        .execute(&mut *tx)
-        .await?;
-    }
+    crate::ops::recompute_thread_ratings(&mut tx, &rated).await?;
     for sql in [
         "UPDATE privatemessages SET uid = $2 WHERE uid = $1",
         "UPDATE privatemessages SET fromid = $2 WHERE fromid = $1",

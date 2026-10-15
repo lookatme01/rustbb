@@ -2179,6 +2179,24 @@ pub async fn delete_user_with(
         .execute(&mut *tx)
         .await?;
     sqlx::query("UPDATE users SET buddylist = array_remove(buddylist, $1), ignorelist = array_remove(ignorelist, $1) WHERE $1 = ANY(buddylist) OR $1 = ANY(ignorelist)").bind(uid).execute(&mut *tx).await?;
+    // What the member did to other people's content: their votes and ratings go (and the tallies
+    // they were part of are rebuilt), reputation they gave stays but loses its giver. None of
+    // these tables has a foreign key to users, so they would otherwise point at nobody.
+    let polls: Vec<i32> = sqlx::query_scalar("DELETE FROM pollvotes WHERE uid = $1 RETURNING pid")
+        .bind(uid)
+        .fetch_all(&mut *tx)
+        .await?;
+    crate::ops::recompute_poll_tallies(&mut tx, &polls).await?;
+    let rated: Vec<i32> =
+        sqlx::query_scalar("DELETE FROM threadratings WHERE uid = $1 RETURNING tid")
+            .bind(uid)
+            .fetch_all(&mut *tx)
+            .await?;
+    crate::ops::recompute_thread_ratings(&mut tx, &rated).await?;
+    sqlx::query("UPDATE reputation SET adduid = 0 WHERE adduid = $1")
+        .bind(uid)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM users WHERE uid = $1")
         .bind(uid)
         .execute(&mut *tx)

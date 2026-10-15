@@ -153,10 +153,11 @@ There are also end-to-end scripts in `tests/*.sh` that poke a running board at
 running board and reports every 5xx. It submits destructive actions, so point it at a throwaway
 board only; the script's header explains how to set one up.
 
-`scripts/soak-http.py` has members and moderators work a seeded scratch board at random, all at
-once; afterwards run `rbb check`, look for "deadlock" in the server log and run
-`psql "$DATABASE_URL" -f scripts/integrity.sql` (dangling references in tables without foreign
-keys). All three should come back clean.
+`scripts/soak.sh [seconds]` runs all of that in one go: it sets up its own scratch board on a free
+port, replays the staff pages as a guest and a member, fuzzes GET parameters, the API and every
+form, lets members and moderators work the board at random all at once (`scripts/soak-http.py`),
+then checks the counters (`rbb check`), dangling references (`scripts/integrity.sql`) and the
+server log. It exits non-zero on any problem, and the nightly workflow runs it.
 
 ## License
 

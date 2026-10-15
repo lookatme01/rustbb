@@ -1,6 +1,7 @@
 name: nightly
 
-# Longer-running gates: fuzzing the untrusted-input boundaries and the performance budgets.
+# Longer-running gates: fuzzing the untrusted-input boundaries, a concurrent resilience soak and
+# the performance budgets.
 # Also run before every release (tags v*) and on demand.
 on:
   schedule:
@@ -88,3 +89,28 @@ jobs:
         with:
           name: load-server-log
           path: server.log
+
+  resilience:
+    # Hostile input, access control and a concurrent soak against a scratch board (see
+    # scripts/soak.sh): no 5xx, no deadlocks turning into errors, counters and references intact.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: rbb
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rbb" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      E2E_SERVER_URL: postgres://rbb@localhost:5432
+      PSQL: psql
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: cargo build --locked
+      - name: Soak for five minutes
+        run: scripts/soak.sh 300

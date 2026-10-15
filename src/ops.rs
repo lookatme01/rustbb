@@ -82,6 +82,42 @@ pub async fn thread_contrib(c: &mut PgConnection, tid: i32) -> AppResult<(i32, C
     ))
 }
 
+/// Rebuild the vote tallies of polls from their votes (after votes were removed or reassigned).
+pub async fn recompute_poll_tallies(c: &mut PgConnection, pids: &[i32]) -> AppResult<()> {
+    if pids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE polls p SET
+            votes = (SELECT COALESCE(array_agg(COALESCE(c.n, 0)::int ORDER BY i), '{}')
+                     FROM generate_series(1, COALESCE(array_length(p.options, 1), 0)) i
+                     LEFT JOIN (SELECT voteoption, COUNT(*) n FROM pollvotes WHERE pid = p.pid GROUP BY voteoption) c
+                       ON c.voteoption = i),
+            numvotes = (SELECT COUNT(DISTINCT uid) FROM pollvotes WHERE pid = p.pid)
+         WHERE p.pid = ANY($1)",
+    )
+    .bind(pids)
+    .execute(&mut *c)
+    .await?;
+    Ok(())
+}
+
+/// Rebuild threads' rating totals from their ratings.
+pub async fn recompute_thread_ratings(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
+    if tids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE threads t SET numratings = (SELECT COUNT(*) FROM threadratings WHERE tid = t.tid),
+            totalratings = (SELECT COALESCE(SUM(rating), 0) FROM threadratings WHERE tid = t.tid)
+         WHERE t.tid = ANY($1)",
+    )
+    .bind(tids)
+    .execute(&mut *c)
+    .await?;
+    Ok(())
+}
+
 /// Lock forum rows in id order. Every operation that updates several forums takes them through
 /// here first, so two of them cannot each hold one forum while waiting for the other's.
 ///

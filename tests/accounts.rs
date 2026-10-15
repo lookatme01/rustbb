@@ -691,3 +691,86 @@ async fn the_captcha_image_is_a_png_that_does_not_spell_out_its_code() {
         .unwrap();
     assert!(!img.bytes.windows(code.len()).any(|w| w == code.as_bytes()));
 }
+
+#[tokio::test]
+async fn deleting_an_account_removes_its_votes_and_ratings_and_fixes_the_tallies() {
+    let t = test_app!();
+    let leaver = t.create_user("leaver", "Passw0rd-leaver").await;
+    let stayer = t.create_user("stayer", "Passw0rd-stayer").await;
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible, numratings, totalratings) VALUES ($1, 'Rated', 1, 'admin', 1, 1, 1, 2, 9) RETURNING tid",
+    )
+    .bind(fid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let poll: i32 = sqlx::query_scalar(
+        "INSERT INTO polls (tid, question, dateline, options, votes, numvotes) VALUES ($1, 'Q', 1, '{A,B}', '{1,1}', 2) RETURNING pid",
+    )
+    .bind(tid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    for (uid, option) in [(leaver, 1), (stayer, 2)] {
+        sqlx::query(
+            "INSERT INTO pollvotes (pid, uid, voteoption, dateline) VALUES ($1, $2, $3, 1)",
+        )
+        .bind(poll)
+        .bind(uid)
+        .bind(option)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    }
+    for (uid, rating) in [(leaver, 4), (stayer, 5)] {
+        sqlx::query("INSERT INTO threadratings (tid, uid, rating) VALUES ($1, $2, $3)")
+            .bind(tid)
+            .bind(uid)
+            .bind(rating)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    // Reputation the leaver gave to the stayer: it stays, anonymously.
+    sqlx::query("INSERT INTO reputation (uid, adduid, reputation, dateline) VALUES ($1, $2, 1, 1)")
+        .bind(stayer)
+        .bind(leaver)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    rbb::routes::usercp::delete_user(&t.app, leaver, false)
+        .await
+        .unwrap();
+    let (votes, numvotes): (Vec<i32>, i32) =
+        sqlx::query_as("SELECT votes, numvotes FROM polls WHERE pid = $1")
+            .bind(poll)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!((votes, numvotes), (vec![0, 1], 1));
+    let (n, total): (i32, i32) =
+        sqlx::query_as("SELECT numratings, totalratings FROM threads WHERE tid = $1")
+            .bind(tid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!((n, total), (1, 5));
+    let giver: i32 = sqlx::query_scalar("SELECT adduid FROM reputation WHERE uid = $1")
+        .bind(stayer)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(giver, 0);
+    for table in ["pollvotes", "threadratings"] {
+        let left: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE uid = $1"))
+            .bind(leaver)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(left, 0, "{table}");
+    }
+}

@@ -19,7 +19,8 @@ DATABASE_URL to pick random ids and to clear the login throttle, so never point 
 import importlib.util, os, random, re, subprocess, sys, threading, time, collections
 spec = importlib.util.spec_from_file_location("fz", "scripts/fuzz-http.py"); fz = importlib.util.module_from_spec(spec); spec.loader.exec_module(fz)
 PORT = open(sys.argv[1]).read().strip(); BASE = f"http://127.0.0.1:{PORT}"; DURATION = int(sys.argv[2])
-PSQL = "/opt/homebrew/opt/postgresql@17/bin/psql"; DB = os.environ["DATABASE_URL"]
+import shutil
+PSQL = os.environ.get("PSQL") or shutil.which("psql") or "/opt/homebrew/opt/postgresql@17/bin/psql"; DB = os.environ["DATABASE_URL"]
 def q(sql): return [r for r in subprocess.run([PSQL, DB, "-Atc", sql], capture_output=True, text=True).stdout.split("\n") if r]
 ids = {"tids": [], "pids": [], "fids": []}
 def refresh():
@@ -142,3 +143,6 @@ byop = collections.defaultdict(dict)
 for (op, cls), n in sorted(stats.items()): byop[op][f"{cls}xx"] = n
 for op, d in byop.items(): print(f"  {op:12} {d}")
 print("client errors:", dict(errors))
+server_errors = sum(n for (_, cls), n in stats.items() if cls == 5)
+print(f"{server_errors} server errors (5xx)")
+sys.exit(1 if server_errors or errors else 0)
