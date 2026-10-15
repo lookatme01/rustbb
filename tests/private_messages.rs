@@ -339,3 +339,84 @@ async fn reports_without_a_snapshot_say_so() {
         .await;
     assert!(r.body.contains("No copy of this message was kept"));
 }
+
+#[tokio::test]
+async fn reopening_a_draft_keeps_its_bcc_recipients() {
+    let t = test_app!();
+    t.create_user("visible", "Passw0rd-visible").await;
+    t.create_user("blind", "Passw0rd-blind").await;
+    let c = t.login_as(1).await;
+    let r = c
+        .post_form(
+            "/pm/send",
+            &[
+                ("to", "visible"),
+                ("bcc", "blind"),
+                ("subject", "Draft"),
+                ("message", "Body text"),
+                ("savedraft", "1"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let pmid: i32 = sqlx::query_scalar("SELECT pmid FROM privatemessages WHERE folder = 3")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let page = c.get(&format!("/pm/send?pmid={pmid}&mode=draft")).await;
+    assert_eq!(page.status, 200);
+    assert!(
+        page.body.contains("blind"),
+        "the BCC recipient is back in the form"
+    );
+}
+
+#[tokio::test]
+async fn cancelling_does_not_delete_a_message_that_was_already_read() {
+    let t = test_app!();
+    let to = t.create_user("reader", "Passw0rd-reader").await;
+    let sender = t.login_as(1).await;
+    let r = sender
+        .post_form(
+            "/pm/send",
+            &[
+                ("to", "reader"),
+                ("subject", "Tracked"),
+                ("message", "Body text"),
+                ("savecopy", "1"),
+                ("receipt", "1"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let pmid: i32 = sqlx::query_scalar("SELECT pmid FROM privatemessages WHERE uid = $1")
+        .bind(to)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let reader = t.login_as(to).await;
+    assert_eq!(reader.get(&format!("/pm/read/{pmid}")).await.status, 200);
+    // The recipient marks it unread again; the sender's receipt still says it was read.
+    sqlx::query("UPDATE privatemessages SET status = 0 WHERE pmid = $1")
+        .bind(pmid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let sent: i32 =
+        sqlx::query_scalar("SELECT pmid FROM privatemessages WHERE uid = 1 AND folder = 2")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    sender
+        .post_form(
+            "/pm/tracking",
+            &[("action", "cancel"), ("pmids", &sent.to_string())],
+        )
+        .await;
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM privatemessages WHERE pmid = $1")
+        .bind(pmid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 1);
+}

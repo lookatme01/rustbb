@@ -262,6 +262,7 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
     }
     let mut to = q.to.clone().unwrap_or_default();
     let (mut subject, mut message) = (String::new(), String::new());
+    let mut bcc = String::new();
     if let Some(uid) = q.uid
         && let Some(n) =
             sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE uid = $1")
@@ -361,6 +362,23 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                             .fetch_all(&ctx.app.db)
                             .await?;
                     to = names.join(", ");
+                    // BCC recipients are stored beside the visible ones; sending the reopened
+                    // draft must not drop them.
+                    let bcc_ids: Vec<i32> = pm.recipients.0["bcc"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_i64().map(|x| x as i32))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    bcc = sqlx::query_scalar::<_, String>(
+                        "SELECT username FROM users WHERE uid = ANY($1)",
+                    )
+                    .bind(&bcc_ids)
+                    .fetch_all(&ctx.app.db)
+                    .await?
+                    .join(", ");
                     pmid = pm.pmid;
                 }
                 _ => {
@@ -384,7 +402,7 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
         &ctx,
         &me,
         to,
-        String::new(),
+        bcc,
         subject,
         message,
         pmid,
@@ -1347,9 +1365,10 @@ pub async fn tracking_action(ctx: Ctx, CsrfForm(f): CsrfForm<ActionForm>) -> App
         .bind(&participants)
         .execute(&mut *tx)
         .await?;
-    // "Stop tracking" and cancelling unread messages (deletes the recipient copy if still unread).
+    // "Stop tracking" and cancelling unread messages (deletes the recipient copy if it is unread
+    // and was never opened: a read receipt means it was, even if marked unread again since).
     if f.action == "cancel" {
-        sqlx::query("DELETE FROM privatemessages r USING privatemessages s WHERE r.sent_pmid = s.pmid AND s.uid = $1 AND s.folder = 2 AND s.pmid = ANY($2) AND s.receipt > 0 AND r.status = 0")
+        sqlx::query("DELETE FROM privatemessages r USING privatemessages s WHERE r.sent_pmid = s.pmid AND s.uid = $1 AND s.folder = 2 AND s.pmid = ANY($2) AND s.receipt = 1 AND r.status = 0")
             .bind(me.uid).bind(&f.pmids).execute(&mut *tx).await?;
         for uid in &participants {
             recount_pms(&mut tx, *uid).await?;
