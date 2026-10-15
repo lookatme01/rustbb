@@ -167,11 +167,7 @@ async fn thread_action(ctx: &Ctx, threads: &[Thread], action: &str) -> AppResult
         }
         "removeredirects" => {
             require(ctx, threads, |m| m.canmanagethreads)?;
-            let targets: Vec<String> = tids.iter().map(|t| format!("moved|{t}")).collect();
-            sqlx::query("DELETE FROM threads WHERE closed = ANY($1)")
-                .bind(&targets)
-                .execute(uow.conn())
-                .await?;
+            remove_redirects(ctx, uow.conn(), &tids).await?;
             "Redirects have been removed."
         }
         "removesubscriptions" => {
@@ -828,6 +824,27 @@ fn opt_b(o: &serde_json::Value, k: &str) -> bool {
 /// approvethread (approve|unapprove|toggle), softdeletethread (softdelete|restore), deletethread,
 /// deletepoll, removeredirects, removesubscriptions, movethread (fid), movethreadredirect, copythread (fid),
 /// newsubject ("{subject}" placeholder), threadprefix (pid), addreply (message), pm_subject/pm_message.
+/// Delete the redirect stubs that point at `tids`. The stubs sit in the forums the threads were
+/// moved out of, which may not be forums this moderator manages, so only those that are go.
+async fn remove_redirects(ctx: &Ctx, conn: &mut sqlx::PgConnection, tids: &[i32]) -> AppResult<()> {
+    let targets: Vec<String> = tids.iter().map(|t| format!("moved|{t}")).collect();
+    let stubs: Vec<(i32, i32)> =
+        sqlx::query_as("SELECT tid, fid FROM threads WHERE closed = ANY($1)")
+            .bind(&targets)
+            .fetch_all(&mut *conn)
+            .await?;
+    let mine: Vec<i32> = stubs
+        .into_iter()
+        .filter(|(_, fid)| ctx.mod_perms(*fid).is_some_and(|m| m.canmanagethreads))
+        .map(|(tid, _)| tid)
+        .collect();
+    sqlx::query("DELETE FROM threads WHERE tid = ANY($1)")
+        .bind(&mine)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<String> {
     let fids: Vec<i32> = threads.iter().map(|t| t.fid).collect();
     let (o, _, name) = load_tool(ctx, id, "t", &fids).await?;
@@ -883,10 +900,7 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
                 .await?;
         }
         if opt_b(&o, "removeredirects") {
-            sqlx::query("DELETE FROM threads WHERE closed = $1")
-                .bind(format!("moved|{tid}"))
-                .execute(uow.conn())
-                .await?;
+            remove_redirects(ctx, uow.conn(), &[tid]).await?;
         }
         let newsub = opt_str(&o, "newsubject");
         if !newsub.is_empty() && newsub != "{subject}" {

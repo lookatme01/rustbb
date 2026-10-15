@@ -323,3 +323,76 @@ async fn moderator_assignments_can_withhold_report_handling_and_the_mod_log() {
         assert_eq!(allowed.status, 200, "{path}: {}", allowed.status);
     }
 }
+
+#[tokio::test]
+async fn removing_redirects_only_touches_forums_the_moderator_manages() {
+    let t = test_app!();
+    let fids: Vec<i32> =
+        sqlx::query_scalar("SELECT fid FROM forums WHERE type = 'f' ORDER BY fid LIMIT 2")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    let (origin, home) = (fids[0], fids[1]);
+    let author = t.create_user("redirauthor", "Passw0rd-redirauthor").await;
+    let moderator = t.create_user("homemod", "Passw0rd-homemod").await;
+    // Moderates only the forum the thread now lives in.
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, '{}')")
+        .bind(home)
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, 'Moved here', $2, 'redirauthor', 1, 1, 1) RETURNING tid",
+    )
+    .bind(home)
+    .bind(author)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let stub: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible, closed) VALUES ($1, 'Moved here', $2, 'redirauthor', 1, 1, 1, $3) RETURNING tid",
+    )
+    .bind(origin)
+    .bind(author)
+    .bind(format!("moved|{tid}"))
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let c = t.login_as(moderator).await;
+    c.post_form(
+        "/moderation/threads",
+        &[("action", "removeredirects"), ("tids", &tid.to_string())],
+    )
+    .await;
+    let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE tid = $1")
+        .bind(stub)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        kept, 1,
+        "the stub sits in a forum this moderator does not manage"
+    );
+    // Once they manage that forum too, the same request removes it.
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, '{}')")
+        .bind(origin)
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let c = t.login_as(moderator).await;
+    c.post_form(
+        "/moderation/threads",
+        &[("action", "removeredirects"), ("tids", &tid.to_string())],
+    )
+    .await;
+    let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE tid = $1")
+        .bind(stub)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(kept, 0);
+}
