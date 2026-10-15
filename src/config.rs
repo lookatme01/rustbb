@@ -179,6 +179,15 @@ impl Config {
 
     pub fn from_env() -> anyhow::Result<Self> {
         let get = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_string());
+        // Switches take true/false, 1/0, yes/no or on/off in any case; anything else is an error
+        // rather than a silent "off" (RBB_SECURE_COOKIES=1 used to disable secure cookies).
+        let flag = |k: &str, d: bool| -> anyhow::Result<bool> {
+            match std::env::var(k) {
+                Err(_) => Ok(d),
+                Ok(v) => parse_flag(&v)
+                    .ok_or_else(|| anyhow::anyhow!("{k} must be true or false (got {v:?})")),
+            }
+        };
         let secret = get("RBB_SECRET", "");
         // The secret signs CSRF tokens, captchas, 2FA challenges and forum-password cookies: a
         // guessable one lets anyone forge them. Refuse to run with an empty, example or short one.
@@ -195,10 +204,10 @@ impl Config {
             db_max_connections: get("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS)
                 .parse()?,
             upload_dir: get("RBB_UPLOAD_DIR", DEFAULT_UPLOAD_DIR),
-            trust_proxy: get("RBB_TRUST_PROXY", "false") == "true",
+            trust_proxy: flag("RBB_TRUST_PROXY", false)?,
             trusted_proxies: {
                 let mut list = get("RBB_TRUSTED_PROXIES", "");
-                if list.trim().is_empty() && get("RBB_TRUST_PROXY", "false") == "true" {
+                if list.trim().is_empty() && flag("RBB_TRUST_PROXY", false)? {
                     list = "127.0.0.0/8,::1/128".into();
                 }
                 list.split(',')
@@ -211,11 +220,11 @@ impl Config {
                     })
                     .collect::<anyhow::Result<Vec<_>>>()?
             },
-            secure_cookies: get("RBB_SECURE_COOKIES", "false") == "true",
+            secure_cookies: flag("RBB_SECURE_COOKIES", false)?,
             // Deprecated: use RBB_ROLE without `scheduler` instead.
-            run_tasks: get("RBB_RUN_TASKS", "true") == "true",
+            run_tasks: flag("RBB_RUN_TASKS", true)?,
             plugins_dir: get("RBB_PLUGINS_DIR", DEFAULT_PLUGINS_DIR),
-            plugins_trusted: get("RBB_PLUGINS_TRUSTED", "false") == "true",
+            plugins_trusted: flag("RBB_PLUGINS_TRUSTED", false)?,
             dev_templates: std::env::var("RBB_DEV_TEMPLATES").ok(),
             page_cache_mb: get("RBB_PAGE_CACHE_MB", DEFAULT_PAGE_CACHE_MB).parse()?,
             roles: Roles::parse(&get("RBB_ROLE", "all"))?,
@@ -223,7 +232,7 @@ impl Config {
                 Ok(v) if !v.is_empty() => Some(v.parse()?),
                 _ => None,
             },
-            migrate_on_start: get("RBB_MIGRATE_ON_START", "true") == "true",
+            migrate_on_start: flag("RBB_MIGRATE_ON_START", true)?,
             query_sample_rate: get("RBB_QUERY_SAMPLE_RATE", "0.01")
                 .parse::<f64>()?
                 .clamp(0.0, 1.0),
@@ -262,5 +271,31 @@ mod tests {
         assert!(r.web && r.worker && !r.scheduler);
         assert!(Roles::parse("").is_err());
         assert!(Roles::parse("cron").is_err());
+    }
+}
+
+/// A true/false switch as written in an environment variable.
+fn parse_flag(v: &str) -> Option<bool> {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" | "" => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::parse_flag;
+
+    #[test]
+    fn switches_accept_the_usual_spellings_and_reject_the_rest() {
+        for t in ["true", "TRUE", "1", "yes", "On", " true "] {
+            assert_eq!(parse_flag(t), Some(true), "{t}");
+        }
+        for f in ["false", "0", "no", "OFF", ""] {
+            assert_eq!(parse_flag(f), Some(false), "{f}");
+        }
+        assert_eq!(parse_flag("tru"), None);
+        assert_eq!(parse_flag("2"), None);
     }
 }
