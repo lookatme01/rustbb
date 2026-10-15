@@ -173,3 +173,97 @@ async fn ban_filters_and_other_select_columns_save_through_the_generic_editor() 
         .unwrap();
     assert_eq!((filter.as_str(), kind), ("203.0.113.7", 1));
 }
+
+/// Every field of a settings group at its default, with `overrides` applied, as the form posts them.
+fn settings_form(group: &str, overrides: &[(&str, &str)]) -> Vec<(String, String)> {
+    rbb::settings::DEFS
+        .iter()
+        .filter(|d| d.group == group && d.kind != "password")
+        .map(|d| {
+            let v = overrides
+                .iter()
+                .find(|(k, _)| *k == d.name)
+                .map(|(_, v)| v.to_string())
+                .unwrap_or_else(|| d.default.to_string());
+            (d.name.to_string(), v)
+        })
+        .collect()
+}
+
+async fn setting_value(t: &TestApp, name: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT value FROM settings WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&t.db.pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_rejected_settings_save_writes_nothing_and_absurd_values_are_refused() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let before = setting_value(&t, "postsperpage").await;
+    for bad in ["0", "-3", "100000"] {
+        let r = post_settings(
+            &c,
+            "showthread",
+            settings_form("showthread", &[("postsperpage", bad)]),
+        )
+        .await;
+        assert!(
+            r.body.contains("must be between"),
+            "{bad}: {} {}",
+            r.status,
+            r.body
+        );
+        assert_eq!(setting_value(&t, "postsperpage").await, before, "{bad}");
+    }
+    let r = post_settings(
+        &c,
+        "showthread",
+        settings_form("showthread", &[("postsperpage", "25")]),
+    )
+    .await;
+    assert!(r.status.is_redirection(), "{}", r.status);
+    assert_eq!(
+        setting_value(&t, "postsperpage").await.as_deref(),
+        Some("25")
+    );
+}
+
+#[tokio::test]
+async fn an_admin_cannot_require_two_factor_before_having_it() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let fields = settings_form("security", &[("acp2fa", "1")]);
+    let refs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let r = c.post_form("/admin/settings/security", &refs).await;
+    assert!(r.body.contains("two-factor"), "{} {}", r.status, r.body);
+    assert_ne!(setting_value(&t, "acp2fa").await.as_deref(), Some("1"));
+}
+
+async fn post_settings(
+    c: &common::Client,
+    group: &str,
+    fields: Vec<(String, String)>,
+) -> common::Response {
+    let refs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    c.post_form(&format!("/admin/settings/{group}"), &refs)
+        .await
+}

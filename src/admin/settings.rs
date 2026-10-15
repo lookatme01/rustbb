@@ -90,6 +90,8 @@ pub async fn save(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "settings");
     let mut changed = vec![];
+    // Validated first, written together: a bad field must not leave the ones before it saved.
+    let mut writes: Vec<(&str, String)> = vec![];
     for d in DEFS.iter().filter(|d| d.group == group) {
         let raw = match f.fields.get(d.name) {
             Some(serde_json::Value::String(s)) => s.clone(),
@@ -106,11 +108,20 @@ pub async fn save(
                     "0".to_string()
                 }
             }
-            "numeric" => raw
-                .trim()
-                .parse::<i64>()
-                .map(|n| n.to_string())
-                .map_err(|_| AppError::user(format!("“{}” must be a number.", d.title)))?,
+            "numeric" => {
+                let n = raw
+                    .trim()
+                    .parse::<i64>()
+                    .map_err(|_| AppError::user(format!("“{}” must be a number.", d.title)))?;
+                let (lo, hi) = numeric_bounds(d.name);
+                if n != 0 && !(lo..=hi).contains(&n) || n == 0 && lo > 0 && !zero_allowed(d.name) {
+                    return Err(AppError::user(format!(
+                        "“{}” must be between {lo} and {hi}.",
+                        d.title
+                    )));
+                }
+                n.to_string()
+            }
             "password" if raw.is_empty() => continue,
             k if k.starts_with("select:") => {
                 if !k[7..]
@@ -146,11 +157,22 @@ pub async fn save(
                 "The external proxy URL must start with https:// (or http://).",
             ));
         }
+        if d.name == "acp2fa" && value == "1" && ctx.me()?.totp_secret.is_empty() {
+            // Every Admin CP page would then refuse the admin who turned it on.
+            return Err(AppError::user(
+                "Set up two-factor authentication on your own account (User CP → Sign-in & security) before requiring it for the Admin CP.",
+            ));
+        }
         if ctx.settings().get(d.name) != value {
             changed.push(d.name);
         }
-        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = $2").bind(d.name).bind(&value).execute(&ctx.app.db).await?;
+        writes.push((d.name, value));
     }
+    let mut tx = ctx.app.db.begin().await?;
+    for (name, value) in &writes {
+        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = $2").bind(name).bind(value).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
     ctx.app.invalidate(&["settings"]).await?;
     if changed.iter().any(|c| {
         c.starts_with("sig")
@@ -172,4 +194,34 @@ pub async fn save(
         &format!("/admin/settings/{group}"),
         "The settings have been updated.",
     ))
+}
+
+/// Accepted range of a numeric setting. Page sizes and name lengths feed LIMITs, loops and
+/// validation elsewhere; everything else only needs to stay far from overflow.
+fn numeric_bounds(name: &str) -> (i64, i64) {
+    match name {
+        n if n.ends_with("perpage") => (1, 500),
+        "minnamelength" => (1, 100),
+        "maxnamelength" => (3, 255),
+        "ratelimit_requests" => (10, 100_000),
+        _ => (-1_000_000_000_000, 1_000_000_000_000),
+    }
+}
+
+/// Zero means "off" for these even though their range starts above it.
+fn zero_allowed(name: &str) -> bool {
+    name == "ratelimit_requests"
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+
+    #[test]
+    fn page_sizes_and_limits_have_sane_ranges() {
+        assert_eq!(numeric_bounds("postsperpage"), (1, 500));
+        assert_eq!(numeric_bounds("maxnamelength").0, 3);
+        assert!(numeric_bounds("ratelimit_requests").0 >= 10);
+        assert!(zero_allowed("ratelimit_requests") && !zero_allowed("postsperpage"));
+    }
 }
