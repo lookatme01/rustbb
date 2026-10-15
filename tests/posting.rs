@@ -386,3 +386,43 @@ async fn api_reply(c: &Client, path: &str) -> common::Response {
     )
     .await
 }
+
+#[tokio::test]
+async fn drafts_cannot_point_at_threads_the_member_cannot_see() {
+    let t = test_app!();
+    let fid = forum(&t).await;
+    let admin = t.login_as(1).await;
+    let tid = new_thread(&t, &admin, fid).await;
+    let member = t.create_user("drafter", "Passw0rd-drafter").await;
+    let c = t.login_as(member).await;
+    let tid_s = tid.to_string();
+    let fid_s = fid.to_string();
+    let save = |tid: &str, fid: &str| {
+        let fields = vec![
+            ("tid", tid.to_string()),
+            ("fid", fid.to_string()),
+            ("message", "draft".to_string()),
+        ];
+        let c = &c;
+        async move {
+            let f: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            c.post_form("/drafts/save", &f).await
+        }
+    };
+    assert_eq!(save(&tid_s, &fid_s).await.status, 200);
+    sqlx::query("UPDATE threads SET visible = -1 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = save(&tid_s, &fid_s).await;
+    assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+    let r = save("999999", "0").await;
+    assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM drafts WHERE uid = $1")
+        .bind(member)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+}

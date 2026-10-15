@@ -1099,6 +1099,19 @@ async fn save_draft_row(
 }
 
 pub async fn save_draft(ctx: Ctx, CsrfForm(f): CsrfForm<DraftForm>) -> AppResult<Response> {
-    let did = save_draft_row(&ctx, f.did, f.fid, f.tid, &f.subject, &f.message).await?;
+    // The ids come straight from the client and are shown back on the drafts page, so they must
+    // name a thread or forum this member can see.
+    let fid = if f.tid > 0 {
+        crate::routes::showthread::check_thread(&ctx, f.tid)
+            .await?
+            .0
+            .fid
+    } else {
+        if f.fid > 0 {
+            ctx.check_forum(f.fid)?;
+        }
+        f.fid.max(0)
+    };
+    let did = save_draft_row(&ctx, f.did, fid, f.tid.max(0), &f.subject, &f.message).await?;
     Ok(Json(serde_json::json!({"did": did})).into_response())
 }
