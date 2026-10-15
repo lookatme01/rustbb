@@ -422,6 +422,26 @@ pub async fn delete_threads(app: &App, tids: &[i32]) -> AppResult<()> {
     own_uow!(app, |uow| delete_threads_in(&mut uow, tids).await?)
 }
 
+/// Permanently delete up to `limit` soft-deleted threads whose deletion is older than `cutoff`.
+/// The candidates are chosen and locked in the same transaction as the delete, so a thread a
+/// moderator restores in the meantime is skipped instead of destroyed. Returns how many went.
+pub async fn purge_deleted_threads(app: &App, cutoff: i64, limit: i64) -> AppResult<usize> {
+    let mut uow = Uow::begin(app).await?;
+    let tids: Vec<i32> = sqlx::query_scalar(
+        "SELECT tid FROM threads WHERE visible = -1 AND deletetime > 0 AND deletetime < $1
+         ORDER BY tid LIMIT $2 FOR UPDATE",
+    )
+    .bind(cutoff)
+    .bind(limit)
+    .fetch_all(uow.conn())
+    .await?;
+    if !tids.is_empty() {
+        delete_threads_in(&mut uow, &tids).await?;
+    }
+    uow.commit(app).await?;
+    Ok(tids.len())
+}
+
 pub async fn delete_threads_in(uow: &mut Uow, tids: &[i32]) -> AppResult<()> {
     lock_threads(uow.conn(), tids).await?;
     let before = snapshot(uow.conn(), tids).await?;

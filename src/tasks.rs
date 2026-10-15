@@ -317,19 +317,10 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
             Ran::new(n > 0, format!("pruned {n} unactivated users"))
         }
         "recyclebin" => {
-            let tids: Vec<i32> = sqlx::query_scalar("SELECT tid FROM threads WHERE visible = -1 AND deletetime > 0 AND deletetime < $1 LIMIT 500")
-                .bind(t - 90 * 86400)
-                .fetch_all(db)
-                .await?;
-            if !tids.is_empty() {
-                crate::ops::delete_threads(app, &tids)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-            }
-            Ran::new(
-                !tids.is_empty(),
-                format!("purged {} old soft-deleted threads", tids.len()),
-            )
+            let n = crate::ops::purge_deleted_threads(app, t - 90 * 86400, 500)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            Ran::new(n > 0, format!("purged {n} old soft-deleted threads"))
         }
         "automoderation" => crate::automod::run(app).await?,
         "systemautoclose" => crate::system::autoclose(app).await?,

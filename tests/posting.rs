@@ -529,3 +529,42 @@ async fn moving_a_thread_re_renders_posts_with_the_new_forums_settings() {
         "the moved post was served from HTML rendered for the old forum"
     );
 }
+
+#[tokio::test]
+async fn the_recycle_bin_purge_only_removes_threads_that_are_still_deleted_and_old() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    let fid = forum(&t).await;
+    let c = t.login_as(1).await;
+    let old = new_thread(&t, &c, fid).await;
+    let recent = new_thread(&t, &c, fid).await;
+    let restored = new_thread(&t, &c, fid).await;
+    rbb::ops::set_threads_visibility(&t.app, &[old, recent, restored], -1)
+        .await
+        .unwrap();
+    let cutoff = rbb::util::now() - 90 * 86400;
+    for tid in [old, restored] {
+        sqlx::query("UPDATE threads SET deletetime = $2 WHERE tid = $1")
+            .bind(tid)
+            .bind(cutoff - 10)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    // A moderator restores one of the old threads before the purge gets to it.
+    rbb::ops::set_threads_visibility(&t.app, &[restored], 1)
+        .await
+        .unwrap();
+    let n = rbb::ops::purge_deleted_threads(&t.app, cutoff, 500)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+    let left: Vec<i32> =
+        sqlx::query_scalar("SELECT tid FROM threads WHERE tid = ANY($1) ORDER BY tid")
+            .bind(vec![old, recent, restored])
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(left, vec![recent, restored]);
+    assert_consistent(&t).await;
+}
