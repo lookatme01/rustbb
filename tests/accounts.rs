@@ -594,3 +594,29 @@ async fn registration_attempts_are_limited_per_address() {
     }
     assert_eq!(last, 429);
 }
+
+#[tokio::test]
+async fn adding_a_passkey_needs_the_authentication_code_when_two_factor_is_on() {
+    const SECRET: &str = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    let t = test_app!();
+    let uid = t.create_user("keyadder", "Passw0rd-keyadder").await;
+    sqlx::query("UPDATE users SET totp_secret = $2 WHERE uid = $1")
+        .bind(uid)
+        .bind(SECRET)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    let r = c
+        .post_form(
+            "/usercp/passkeys/begin",
+            &[("password", "Passw0rd-keyadder")],
+        )
+        .await;
+    assert!(
+        r.body.contains("authenticator app"),
+        "{} {}",
+        r.status,
+        r.body
+    );
+}

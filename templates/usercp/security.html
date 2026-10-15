@@ -17,6 +17,7 @@
     {% if not passkeys %}<div class="box-body small">A passkey lives on your phone, computer or security key and is unlocked the same way you unlock the device. It can't be guessed, reused or phished, and you never have to type it.</div>{% endif %}
     <div class="form-row"><label for="pk-name">Name</label><input id="pk-name" type="text" name="name" maxlength="60" placeholder="e.g. My phone" autocomplete="off"></div>
     <div class="form-row"><label for="pk-pw">Password</label><input id="pk-pw" type="password" name="password" autocomplete="current-password" required></div>
+    {% if enabled %}<div class="form-row"><label for="pk-code">Authentication code</label><input id="pk-code" type="text" name="code" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" required></div>{% endif %}
     <p class="notice bad small js-passkey-error" role="alert" hidden></p>
     <noscript><p class="notice warn small">Adding a passkey needs JavaScript.</p></noscript>
     <div class="box-foot"><button class="btn" type="submit">Add a passkey</button></div>

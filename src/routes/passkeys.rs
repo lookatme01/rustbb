@@ -61,6 +61,9 @@ fn member(ctx: &Ctx) -> AppResult<crate::models::User> {
 pub struct PasswordForm {
     #[serde(default, deserialize_with = "de::string")]
     pub password: String,
+    /// The current authentication code, when two-factor authentication is on.
+    #[serde(default, deserialize_with = "de::string")]
+    pub code: String,
 }
 
 /// Adding a passkey needs the password: a stolen session alone must not be able to plant a
@@ -78,6 +81,17 @@ pub async fn add_begin(ctx: Ctx, CsrfForm(f): CsrfForm<PasswordForm>) -> Respons
             }
             if !auth::verify_password(&f.password, &me.password).await {
                 return Err(AppError::user("Your password is incorrect."));
+            }
+            // A passkey signs in without the second factor, so planting one must not be possible
+            // with the password alone: that would turn a stolen password and session into a
+            // permanent way around 2FA.
+            if !me.totp_secret.is_empty()
+                && !crate::routes::member::totp_consume(&ctx.app, me.uid, &me.totp_secret, &f.code)
+                    .await?
+            {
+                return Err(AppError::user(
+                    "Enter the current code from your authenticator app to add a passkey.",
+                ));
             }
             crate::passkeys::begin_registration(&ctx.app, me.uid, &me.username).await
         }
