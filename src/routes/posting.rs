@@ -780,6 +780,7 @@ pub async fn editpost_submit(
     if form.delete {
         return do_delete(&ctx, &post, &thread, &fp, &mp, form.harddelete).await;
     }
+    posting::check_not_suspended(&ctx)?;
     if !edit_allowed(&ctx, &post, &thread, &fp, &mp) {
         return Err(AppError::user(
             "You do not have permission to edit this post, or the edit time limit has passed.",

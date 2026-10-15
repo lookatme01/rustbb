@@ -163,15 +163,22 @@ async fn enforce_post_limits(tx: &mut sqlx::PgConnection, ctx: &CtxInner) -> App
     Ok(())
 }
 
+/// Refuse members whose posting privileges are suspended. Anything that publishes new content
+/// (edits, uploads, polls) needs this as well as new posts.
+pub fn check_not_suspended(ctx: &CtxInner) -> AppResult<()> {
+    match &ctx.user {
+        Some(u) if u.suspendposting && (u.suspensiontime == 0 || u.suspensiontime > now()) => Err(
+            AppError::user("Your posting privileges are currently suspended."),
+        ),
+        _ => Ok(()),
+    }
+}
+
 /// Flood control + daily post limit + suspension checks.
 pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
     let s = ctx.settings();
+    check_not_suspended(ctx)?;
     if let Some(u) = &ctx.user {
-        if u.suspendposting && (u.suspensiontime == 0 || u.suspensiontime > now()) {
-            return Err(AppError::user(
-                "Your posting privileges are currently suspended.",
-            ));
-        }
         let exempt = ctx.can(crate::domain::staff::Cap::PostingExempt);
         if !exempt && s.bool("postfloodcheck") {
             let secs = s.int("postfloodsecs");

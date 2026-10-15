@@ -77,6 +77,9 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     if !s.bool("enableattachments") || !ctx.perms.canpostattachments {
         return Ok(json_err("You are not allowed to upload attachments."));
     }
+    if crate::posting::check_not_suspended(&ctx).is_err() {
+        return Ok(json_err("Your posting privileges are currently suspended."));
+    }
     let mut posthash = String::new();
     let mut pid = 0i32;
     let mut fid = 0i32;

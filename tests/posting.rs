@@ -426,3 +426,41 @@ async fn drafts_cannot_point_at_threads_the_member_cannot_see() {
         .unwrap();
     assert_eq!(n, 1);
 }
+
+#[tokio::test]
+async fn a_suspended_member_cannot_edit_posts_or_add_polls() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    let fid = forum(&t).await;
+    let uid = t.create_user("suspended", "Passw0rd-suspended").await;
+    let c = t.login_as(uid).await;
+    let tid = new_thread(&t, &c, fid).await;
+    let pid: i32 = sqlx::query_scalar("SELECT firstpost FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let r = edit_post(&c, pid, "An edit before the suspension.").await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    sqlx::query("UPDATE users SET suspendposting = TRUE, suspensiontime = 0 WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = edit_post(&c, pid, "An edit during the suspension.").await;
+    assert!(r.body.contains("suspended"), "{} {}", r.status, r.body);
+    let message: String = sqlx::query_scalar("SELECT message FROM posts WHERE pid = $1")
+        .bind(pid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(message, "An edit before the suspension.");
+}
+
+async fn edit_post(c: &Client, pid: i32, message: &str) -> common::Response {
+    c.post_form(
+        &format!("/editpost/{pid}"),
+        &[("subject", "Concurrency"), ("message", message)],
+    )
+    .await
+}
