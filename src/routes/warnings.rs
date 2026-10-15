@@ -168,6 +168,20 @@ pub async fn warn_submit(
             },
         )
     };
+    // The post is shown back on the warnings page with its thread's subject: it has to be one
+    // the warned member wrote and the person warning can read.
+    if f.pid > 0 {
+        let post: Option<(i32, i32)> = sqlx::query_as("SELECT uid, tid FROM posts WHERE pid = $1")
+            .bind(f.pid)
+            .fetch_optional(&ctx.app.db)
+            .await?;
+        match post {
+            Some((author, tid)) if author == uid => {
+                crate::routes::showthread::check_thread(&ctx, tid).await?;
+            }
+            _ => return Err(AppError::user("That post was not written by this member.")),
+        }
+    }
     if f.pid == 0 && !ctx.settings().bool("allowwarningsnopost") {
         return Err(AppError::user("Warnings must be tied to a post."));
     }

@@ -145,3 +145,49 @@ async fn a_warning_level_can_only_ban_into_a_banned_group() {
         .unwrap();
     assert_eq!(group, 7, "the member is banned, not promoted");
 }
+
+#[tokio::test]
+async fn a_warning_can_only_cite_a_post_the_member_wrote() {
+    let t = test_app!();
+    let (warner, _, plain) = setup(&t).await;
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let other = t.create_user("someoneelse", "Passw0rd-someoneelse").await;
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, 'Elsewhere', $2, 'someoneelse', 1, 1, 1) RETURNING tid",
+    )
+    .bind(fid)
+    .bind(other)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let pid: i32 = sqlx::query_scalar(
+        "INSERT INTO posts (tid, fid, subject, uid, username, dateline, message, visible) VALUES ($1, $2, 'Elsewhere', $3, 'someoneelse', 1, 'text', 1) RETURNING pid",
+    )
+    .bind(tid)
+    .bind(fid)
+    .bind(other)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let c = t.login_as(warner).await;
+    let r = c
+        .post_form(
+            &format!("/warnings/{plain}/warn"),
+            &[
+                ("custom_reason", "Rude"),
+                ("custom_points", "2"),
+                ("pid", &pid.to_string()),
+            ],
+        )
+        .await;
+    assert!(
+        r.body.contains("not written by this member"),
+        "{} {}",
+        r.status,
+        r.body
+    );
+    assert_eq!(points(&t, plain).await, 0);
+}
