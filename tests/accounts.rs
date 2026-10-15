@@ -391,3 +391,76 @@ async fn a_forged_undo_cookie_cannot_aim_the_csrf_token_off_site() {
 fn percent_encode(s: &str) -> String {
     s.bytes().map(|b| format!("%{b:02X}")).collect()
 }
+
+async fn pending(t: &common::TestApp, uid: i32, kind: &str, code: &str, age: i64, misc: &str) {
+    sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type = $2")
+        .bind(uid)
+        .bind(kind)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO awaitingactivation (uid, dateline, code, type, misc) VALUES ($1, $2, $3, $4, $5)")
+        .bind(uid)
+        .bind(rbb::util::now() - age)
+        .bind(rbb::util::sha256_hex(code))
+        .bind(kind)
+        .bind(misc)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+}
+
+async fn email_of(t: &common::TestApp, uid: i32) -> String {
+    sqlx::query_scalar("SELECT email FROM users WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn email_change_links_expire_and_die_with_the_credentials_that_requested_them() {
+    let t = test_app!();
+    let uid = t.create_user("changer", "Passw0rd-changer").await;
+    let before = email_of(&t, uid).await;
+    let c = t.client();
+    // A link older than a day does nothing.
+    pending(
+        &t,
+        uid,
+        "e",
+        "stalecode123",
+        2 * 86400,
+        "stale@example.test",
+    )
+    .await;
+    let r = c
+        .get(&format!("/member/activate?uid={uid}&code=stalecode123"))
+        .await;
+    assert!(
+        r.status.is_client_error() || r.body.contains("invalid"),
+        "{} {}",
+        r.status,
+        r.body
+    );
+    assert_eq!(email_of(&t, uid).await, before);
+    // A fresh one works.
+    pending(&t, uid, "e", "freshcode123", 60, "fresh@example.test").await;
+    c.get(&format!("/member/activate?uid={uid}&code=freshcode123"))
+        .await;
+    assert_eq!(email_of(&t, uid).await, "fresh@example.test");
+    // A pending change and a pending reset are discarded when sessions are revoked.
+    pending(&t, uid, "e", "pendingcode1", 60, "attacker@example.test").await;
+    pending(&t, uid, "p", "resetcode123", 60, "").await;
+    rbb::auth::destroy_all_logins(&t.app, uid, None)
+        .await
+        .unwrap();
+    let left: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM awaitingactivation WHERE uid = $1 AND type IN ('e', 'p')",
+    )
+    .bind(uid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    assert_eq!(left, 0);
+}

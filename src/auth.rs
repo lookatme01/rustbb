@@ -229,6 +229,12 @@ pub async fn destroy_all_logins(app: &App, uid: i32, keep: Option<&str>) -> AppR
         .bind(uid)
         .execute(&app.db)
         .await?;
+    // Pending email changes and reset links were requested under the credentials being
+    // retired; they must not outlive them.
+    sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type IN ('e', 'p')")
+        .bind(uid)
+        .execute(&app.db)
+        .await?;
     Ok(())
 }
 

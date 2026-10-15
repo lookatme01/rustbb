@@ -215,15 +215,22 @@ pub enum Activated {
     EmailChanged,
 }
 
+/// How long an email-change confirmation link works.
+pub const EMAIL_CHANGE_TTL_SECS: i64 = 86_400;
+
 /// Use an emailed activation or email-change code. The code is consumed in the same
 /// transaction as its effect, so it works exactly once.
 pub async fn activate(app: &App, actor: &Actor, uid: i32, code: &str) -> AppResult<Activated> {
     let mut uow = Uow::begin(app).await?;
+    // Registration codes wait for as long as the account does; an email-change code is only good
+    // for a day, or an unclicked link could change the address long after the request.
     let row: Option<(String, String)> = sqlx::query_as(
-        "DELETE FROM awaitingactivation WHERE uid = $1 AND code = $2 AND type IN ('r', 'e') RETURNING type, misc",
+        "DELETE FROM awaitingactivation WHERE uid = $1 AND code = $2
+         AND (type = 'r' OR (type = 'e' AND dateline > $3)) RETURNING type, misc",
     )
     .bind(uid)
     .bind(util::sha256_hex(code))
+    .bind(now() - EMAIL_CHANGE_TTL_SECS)
     .fetch_optional(uow.conn())
     .await?;
     let Some((kind, misc)) = row else {
@@ -375,6 +382,11 @@ pub async fn reset_password(
         .execute(uow.conn())
         .await?;
     sqlx::query("UPDATE api_tokens SET revoked_at = now() WHERE uid = $1 AND revoked_at IS NULL")
+        .bind(uid)
+        .execute(uow.conn())
+        .await?;
+    // Whoever held the old password may have left an email change or another reset pending.
+    sqlx::query("DELETE FROM awaitingactivation WHERE uid = $1 AND type IN ('e', 'p')")
         .bind(uid)
         .execute(uow.conn())
         .await?;

@@ -168,10 +168,12 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
                 .bind(t - 86400)
                 .execute(db)
                 .await?;
-            sqlx::query("DELETE FROM awaitingactivation WHERE type = 'p' AND dateline < $1")
-                .bind(t - 86400)
-                .execute(db)
-                .await?;
+            sqlx::query(
+                "DELETE FROM awaitingactivation WHERE type IN ('p', 'e') AND dateline < $1",
+            )
+            .bind(t - 86400)
+            .execute(db)
+            .await?;
             sqlx::query("DELETE FROM logins WHERE expires < $1")
                 .bind(t)
                 .execute(db)
