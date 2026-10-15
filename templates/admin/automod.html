@@ -8,7 +8,7 @@
   <div class="form-row"><label for="am_links">Link threshold (0 disables)</label><input class="w-100" id="am_links" type="number" name="max_links" min="0" max="100" value="{{ policy.max_links }}" required></div>
   <div class="form-row"><label for="am_new">Apply link/repetition rules below this visible post count</label><input class="w-100" id="am_new" type="number" name="new_user_posts" min="0" max="1000" value="{{ policy.new_user_posts }}" required></div>
   <div class="form-row"><label for="am_dup">Repeated-message threshold in 10 minutes</label><input class="w-100" id="am_dup" type="number" name="duplicate_limit" min="2" max="20" value="{{ policy.duplicate_limit }}" required></div>
-  <div class="form-row"><label for="am_phrases">Blocked phrases, one per line<span class="help">Case-insensitive literal matches for all non-staff members.</span></label><textarea id="am_phrases" name="phrases" rows="6">{{ phrases }}</textarea></div>
+  <div class="form-row"><label for="am_phrases">Blocked phrases, one per line<span class="help">Case-insensitive whole-word matches for all non-staff members. Put * at the start or end to match inside longer words.</span></label><textarea id="am_phrases" name="phrases" rows="6">{{ phrases }}</textarea></div>
   <div class="box-foot"><button class="btn">Save policy</button></div>
 </form>
 <form method="post" action="/admin/automod/rollback" class="box js-confirm" data-confirm="Disable automation and undo all unchanged quarantine actions?">{{ m.csrf_field() }}<input type="hidden" name="revision" value="{{ revision }}">

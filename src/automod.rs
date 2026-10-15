@@ -46,7 +46,7 @@ impl Policy {
         let text = format!("{subject}\n{message}").to_lowercase();
         let mut reasons = vec![];
         for phrase in &self.phrases {
-            if text.contains(&phrase.trim().to_lowercase()) {
+            if contains_phrase(&text, &phrase.trim().to_lowercase()) {
                 reasons.push(format!("Blocked phrase: {}", phrase.trim()));
             }
         }
@@ -68,8 +68,34 @@ impl Policy {
         reasons
     }
 }
+/// Whether `text` (already lower-cased) contains `phrase` as whole words, so "ass" does not hit
+/// "class". A `*` at either end of the phrase lifts the word boundary on that side.
+fn contains_phrase(text: &str, phrase: &str) -> bool {
+    let (open_start, rest) = match phrase.strip_prefix('*') {
+        Some(r) => (true, r),
+        None => (false, phrase),
+    };
+    let (open_end, needle) = match rest.strip_suffix('*') {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+    if needle.is_empty() {
+        return false;
+    }
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    text.match_indices(needle).any(|(i, m)| {
+        let before = text[..i].chars().next_back();
+        let after = text[i + m.len()..].chars().next();
+        let start_ok =
+            open_start || !needle.chars().next().is_some_and(word) || !before.is_some_and(word);
+        let end_ok =
+            open_end || !needle.chars().next_back().is_some_and(word) || !after.is_some_and(word);
+        start_ok && end_ok
+    })
+}
+
 static LINK_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r"(?i)(?:\[url(?:=[^\]]*)?\][^\[]*\[/url\]|https?://|www\.)").unwrap()
+    regex::Regex::new(r"(?i)(?:\[url(?:=[^\]]*)?\][^\[]*\[/url\]|\bhttps?://|\bwww\.)").unwrap()
 });
 
 async fn log(
@@ -330,5 +356,36 @@ mod tests {
             p.reasons("", "https://a https://b https://c", 0, 1)
                 .is_empty()
         );
+    }
+}
+
+#[cfg(test)]
+mod phrase_tests {
+    use super::contains_phrase;
+
+    #[test]
+    fn phrases_match_whole_words_unless_starred() {
+        assert!(contains_phrase("what an ass.", "ass"));
+        assert!(!contains_phrase("a first class seat", "ass"));
+        assert!(contains_phrase("buy spam now", "buy spam"));
+        assert!(!contains_phrase("buy spammers now", "buy spam"));
+        assert!(contains_phrase("buy spammers now", "buy spam*"));
+        assert!(contains_phrase("a first class seat", "*ass*"));
+        assert!(contains_phrase(
+            "visit http://bad.example/x",
+            "http://bad.example"
+        ));
+        assert!(!contains_phrase("anything", "*"));
+    }
+
+    #[test]
+    fn links_inside_words_are_not_links() {
+        let re = super::LINK_RE.clone();
+        assert_eq!(
+            re.find_iter("see www.example.org and https://x.test")
+                .count(),
+            2
+        );
+        assert_eq!(re.find_iter("awww.cute and xhttp://nope").count(), 0);
     }
 }
