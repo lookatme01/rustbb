@@ -771,6 +771,20 @@ fn field_ints(v: Option<&serde_json::Value>) -> Vec<i32> {
     }
 }
 
+/// Why a ban filter must not be saved, if so: one that matches everybody locks out every
+/// sign-in and registration, the administrator who would remove it included, and an address
+/// filter that matches the saver's own address does the same to them.
+fn ban_filter_problem(filter: &str, kind: &str, saver_ip: &str) -> Option<&'static str> {
+    let filter = filter.trim();
+    if filter.trim_matches(['*', '?', '.', ':', '/']).is_empty() || filter.ends_with("/0") {
+        return Some("That filter would match everyone. Enter something more specific.");
+    }
+    if kind == "1" && crate::auth::ip_matches(filter, saver_ip) {
+        return Some("That filter matches your own IP address and would lock you out.");
+    }
+    None
+}
+
 pub async fn save(
     ctx: Ctx,
     Path(slug): Path<String>,
@@ -785,6 +799,15 @@ pub async fn save(
         if regex::Regex::new(&re).is_err() {
             return Err(AppError::user("The regular expression is invalid."));
         }
+    }
+    if t.slug == "banfilters"
+        && let Some(why) = ban_filter_problem(
+            &field_str(form.fields.get("filter")),
+            &field_str(form.fields.get("type")),
+            &ctx.ip,
+        )
+    {
+        return Err(AppError::user(why));
     }
     if t.slug == "badwords"
         && field_str(form.fields.get("regex")) == "1"
@@ -913,4 +936,23 @@ pub async fn delete(
         &format!("/admin/crud/{}", t.slug),
         &format!("The {} has been deleted.", t.singular),
     ))
+}
+
+#[cfg(test)]
+mod ban_filter_tests {
+    use super::ban_filter_problem;
+
+    #[test]
+    fn filters_that_match_everyone_or_the_saver_are_refused() {
+        for bad in ["*", "**", "", "0.0.0.0/0", "::/0", "*.*", "198.51.100.*"] {
+            assert!(
+                ban_filter_problem(bad, "1", "198.51.100.9").is_some(),
+                "{bad}"
+            );
+        }
+        assert!(ban_filter_problem("*", "2", "198.51.100.9").is_some());
+        assert!(ban_filter_problem("203.0.113.0/24", "1", "198.51.100.9").is_none());
+        assert!(ban_filter_problem("*spam*", "2", "198.51.100.9").is_none());
+        assert!(ban_filter_problem("example.com", "3", "198.51.100.9").is_none());
+    }
 }
