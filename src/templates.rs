@@ -43,7 +43,10 @@ pub fn resolve_source(
         tid = cache.theme(tid).map(|t| t.pid).unwrap_or(0);
         guard += 1;
     }
+    // Template names come from `{% include %}` in theme templates: keep them inside the directory.
     if let Some(dir) = dev_dir
+        && !name.starts_with('/')
+        && !name.split('/').any(|part| part == "..")
         && let Ok(s) = std::fs::read_to_string(format!("{dir}/{name}"))
     {
         return Some(s);
