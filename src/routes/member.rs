@@ -45,8 +45,10 @@ async fn find_login_user(ctx: &Ctx, name: &str) -> AppResult<Option<User>> {
             "SELECT {} FROM users WHERE lower(email) = lower($1) ORDER BY uid LIMIT 1",
             crate::models::USER_COLUMNS
         ),
+        // Something that looks like an address is matched as one first: a member could otherwise
+        // register that address as a username and take over the email sign-in of its owner.
         "2" => &format!(
-            "SELECT {} FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1) ORDER BY (lower(username) = lower($1)) DESC, uid LIMIT 1",
+            "SELECT {} FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1) ORDER BY (CASE WHEN position('@' in $1) > 0 THEN lower(email) = lower($1) ELSE lower(username) = lower($1) END) DESC, uid LIMIT 1",
             crate::models::USER_COLUMNS
         ),
         _ => &format!(

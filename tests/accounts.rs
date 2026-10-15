@@ -541,3 +541,44 @@ async fn captcha_refresh_is_rate_limited_per_address() {
     }
     assert_eq!(last, 429);
 }
+
+#[tokio::test]
+async fn an_address_registered_as_a_username_cannot_take_over_email_sign_in() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('usernamemethod', '2') ON CONFLICT (name) DO UPDATE SET value = '2'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let victim = t.create_user("victim", "Passw0rd-victim").await;
+    let email: String = sqlx::query_scalar("SELECT email FROM users WHERE uid = $1")
+        .bind(victim)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    // The imposter's username is the victim's address.
+    let imposter = t.create_user("imposter", "Passw0rd-imposter").await;
+    sqlx::query("UPDATE users SET username = $2 WHERE uid = $1")
+        .bind(imposter)
+        .bind(&email)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.client();
+    let key = common::form_key(&c.get("/member/login").await.body);
+    let r = c
+        .post_form(
+            "/member/login",
+            &[
+                ("my_post_key", &key),
+                ("username", &email),
+                ("password", "Passw0rd-victim"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{}", r.status);
+    assert!(
+        c.cookie(rbb::ctx::AUTH_COOKIE).is_some(),
+        "the owner signed in"
+    );
+}
