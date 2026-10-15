@@ -5,7 +5,7 @@
 <section class="box" id="passkeys"><div class="box-head"><h2>Passkeys</h2><span class="desc">Sign in with your fingerprint, face or screen lock instead of your password</span>{% if passkeys %}<span class="right"><span class="tag">{{ passkeys|length }}</span></span>{% endif %}</div>
 {% if passkeys %}
 <table class="grid"><thead><tr><th>Name</th><th>Added</th><th>Last used</th><th></th></tr></thead><tbody>
-{% for k in passkeys %}<tr><td>{{ k.name }}</td><td class="small">{{ k.created|date }}</td><td class="small">{% if k.last_used %}{{ k.last_used|date }}{% else %}never{% endif %}</td><td class="num"><form method="post" action="/usercp/passkeys/remove" class="js-confirm" data-confirm="Remove the passkey “{{ k.name }}”? You won't be able to sign in with it any more.">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ k.id }}"><button class="btn btn-ghost btn-sm" type="submit">Remove</button></form></td></tr>{% endfor %}
+{% for k in passkeys %}<tr><td>{{ k.name }}</td><td class="small">{{ k.created|date }}</td><td class="small">{% if k.last_used %}{{ k.last_used|date }}{% else %}never{% endif %}</td><td class="num"><form method="post" action="/usercp/passkeys/remove" class="js-confirm" data-confirm="Remove the passkey “{{ k.name }}”? You won't be able to sign in with it any more.">{{ m.csrf_field() }}<input type="hidden" name="id" value="{{ k.id }}"><input type="password" name="password" size="12" placeholder="Password" aria-label="Your password to remove {{ k.name }}" autocomplete="current-password" required> <button class="btn btn-ghost btn-sm" type="submit">Remove</button></form></td></tr>{% endfor %}
 </tbody></table>
 {% endif %}
 {% if passkeys_unavailable %}

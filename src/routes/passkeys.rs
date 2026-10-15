@@ -141,10 +141,24 @@ pub async fn add_finish(ctx: Ctx, CsrfForm(f): CsrfForm<FinishAddForm>) -> Respo
 pub struct RemoveForm {
     #[serde(default, deserialize_with = "de::i32")]
     pub id: i32,
+    #[serde(default, deserialize_with = "de::string")]
+    pub password: String,
 }
 
 pub async fn remove(ctx: Ctx, CsrfForm(f): CsrfForm<RemoveForm>) -> AppResult<Response> {
     let me = member(&ctx)?;
+    // Adding one needs the password; so does removing one, or a hijacked session could strip
+    // the owner's real passkeys and leave only what the intruder planted.
+    if !ctx
+        .app
+        .throttle(&format!("passkey-remove:{}", me.uid), 10, 600)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+    if !auth::verify_password(&f.password, &me.password).await {
+        return Err(AppError::user("Your password is incorrect."));
+    }
     let name: Option<String> =
         sqlx::query_scalar("DELETE FROM passkeys WHERE id = $1 AND uid = $2 RETURNING name")
             .bind(f.id)

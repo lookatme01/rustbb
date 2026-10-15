@@ -202,8 +202,30 @@ async fn members_add_a_passkey_and_sign_in_with_it() {
         .fetch_one(&t.db.pool)
         .await
         .unwrap();
+    // A session alone is not enough: the password is needed, as it is to add one.
     let r = c
-        .post_form("/usercp/passkeys/remove", &[("id", &id.to_string())])
+        .post_form(
+            "/usercp/passkeys/remove",
+            &[("id", &id.to_string()), ("password", "not-the-password")],
+        )
+        .await;
+    assert!(
+        r.body.contains("password is incorrect"),
+        "{} {}",
+        r.status,
+        r.body
+    );
+    let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passkeys WHERE id = $1")
+        .bind(id)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(kept, 1);
+    let r = c
+        .post_form(
+            "/usercp/passkeys/remove",
+            &[("id", &id.to_string()), ("password", PASSWORD)],
+        )
         .await;
     assert_eq!(r.status, 303);
     let (_, r, _) = sign_in(&t, &mut dev, BOARD).await;
