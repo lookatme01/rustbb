@@ -72,14 +72,32 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
     // The name and website filters are substring matches, not user-supplied patterns.
     let username_like = util::like_escape(q.username.trim());
     let website_like = util::like_escape(q.website.trim());
-    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
-        .bind(&hidden)
-        .bind(&username_like)
-        .bind(&letter)
-        .bind(&website_like)
-        .bind(gid)
-        .fetch_one(&ctx.app.db)
-        .await?;
+    // The unfiltered total is what almost every visit asks for and it counts the whole users
+    // table, so a 30 s old figure is shared; filtered counts are computed each time.
+    let unfiltered =
+        username_like.is_empty() && letter.is_empty() && website_like.is_empty() && gid == 0;
+    let cache_key = format!("memberlist_total:{hidden:?}");
+    let cached = unfiltered
+        .then(|| ctx.app.short_cache.get(&cache_key).and_then(|v| v.as_i64()))
+        .flatten();
+    let total: i64 = match cached {
+        Some(n) => n,
+        None => {
+            let n: i64 =
+                sqlx::query_scalar(&format!("SELECT COUNT(*) FROM users WHERE {where_sql}"))
+                    .bind(&hidden)
+                    .bind(&username_like)
+                    .bind(&letter)
+                    .bind(&website_like)
+                    .bind(gid)
+                    .fetch_one(&ctx.app.db)
+                    .await?;
+            if unfiltered {
+                ctx.app.short_cache.insert(cache_key, serde_json::json!(n));
+            }
+            n
+        }
+    };
     let per = s.int("membersperpage").max(5);
     let base = format!(
         "/members?sort={}&order={}&username={}&letter={}&gid={}&website={}&page={{page}}",

@@ -997,10 +997,24 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
         })
         .collect();
     // Most active forum
-    let active_forum: Option<(i32, i64)> = sqlx::query_as("SELECT fid, COUNT(*) c FROM posts WHERE uid = $1 AND visible = 1 GROUP BY fid ORDER BY c DESC LIMIT 1")
-        .bind(uid)
-        .fetch_optional(&ctx.app.db)
-        .await?;
+    // Counts every post of the member, so a 30 s old answer is shared between profile views.
+    let key = format!("activeforum:{uid}");
+    let cached: Option<Option<(i32, i64)>> = ctx
+        .app
+        .short_cache
+        .get(&key)
+        .and_then(|v| serde_json::from_value(v).ok());
+    let active_forum: Option<(i32, i64)> = match cached {
+        Some(v) => v,
+        None => {
+            let v: Option<(i32, i64)> = sqlx::query_as("SELECT fid, COUNT(*) c FROM posts WHERE uid = $1 AND visible = 1 GROUP BY fid ORDER BY c DESC LIMIT 1")
+                .bind(uid)
+                .fetch_optional(&ctx.app.db)
+                .await?;
+            ctx.app.short_cache.insert(key, serde_json::json!(v));
+            v
+        }
+    };
     let active_forum = active_forum.and_then(|(fid, c)| {
         let f = ctx.cache.forum(fid)?;
         ctx.access().can_see(fid).then(|| minijinja::context! { fid => fid, name => &f.name, count => c, url => crate::templates::url_forum(fid as i64, Some(&f.name)) })
