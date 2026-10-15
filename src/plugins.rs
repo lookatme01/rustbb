@@ -264,7 +264,18 @@ pub fn sanitize_html(html: &str) -> String {
                 });
             b
         });
-    CLEANER.clean(html).to_string()
+    // Attachment placeholders are HTML comments, which the cleaner drops. Carry them across as
+    // text, restoring only well-formed numeric ones (the same rule the parser's own sanitizer
+    // applies), so a plugin editing a post doesn't make its attachments disappear.
+    static MARK: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"<!--attachment:(\d{1,9})-->").unwrap());
+    static SAVED: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new("\u{E000}att:(\\d{1,9})\u{E001}").unwrap());
+    let protected = MARK.replace_all(html, "\u{E000}att:$1\u{E001}");
+    let cleaned = CLEANER.clean(&protected).to_string();
+    SAVED
+        .replace_all(&cleaned, "<!--attachment:$1-->")
+        .into_owned()
 }
 
 /// Keep only the declarations the parser emits (colours, sizes, fonts, alignment).
@@ -468,5 +479,20 @@ impl Plugins {
 
     pub fn has_hook(&self, hook: &str) -> bool {
         self.list.iter().any(|p| p.hooks.iter().any(|h| h == hook))
+    }
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::sanitize_html;
+
+    #[test]
+    fn attachment_placeholders_survive_a_plugin_edit_but_other_comments_do_not() {
+        let out = sanitize_html("<p>See <!--attachment:42--> and <!--secret--> <b>x</b></p>");
+        assert!(out.contains("<!--attachment:42-->"), "{out}");
+        assert!(!out.contains("secret"), "{out}");
+        // Only well-formed numeric markers come back.
+        assert!(!sanitize_html("<!--attachment:4x2--><script>1</script>").contains("attachment"));
+        assert!(!sanitize_html("<script>alert(1)</script>").contains("script"));
     }
 }
