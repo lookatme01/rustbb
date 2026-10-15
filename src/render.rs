@@ -35,6 +35,21 @@ pub fn parse_with(
     opts: &ParseOptions,
     msg: &str,
 ) -> String {
+    // Embeds that must name the board (Twitch) use the host of the board URL.
+    let with_host;
+    let opts = if opts.embed_host.is_empty() {
+        let host = url::Url::parse(cache.settings.get("bburl"))
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_default();
+        with_host = ParseOptions {
+            embed_host: host,
+            ..opts.clone()
+        };
+        &with_host
+    } else {
+        opts
+    };
     // The "Add rel=nofollow to links" setting applies to every parse; changing it bumps the
     // parser revision so cached renders refresh.
     let mut html = if opts.nofollow

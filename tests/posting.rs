@@ -705,3 +705,39 @@ async fn subscribers_hear_nothing_about_a_reply_hidden_before_the_job_ran() {
     rbb::infra::outbox::run_batch(&t.app).await.unwrap();
     assert_eq!(alerts().await, before, "no alert for a post nobody can see");
 }
+
+#[tokio::test]
+async fn twitch_embeds_name_the_boards_own_host_as_their_parent() {
+    let t = test_app!();
+    sqlx::query("UPDATE settings SET value = 'https://forum.example.test' WHERE name = 'bburl'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let fid = forum(&t).await;
+    let c = t.login_as(1).await;
+    let r = c
+        .post_form(
+            &format!("/newthread/{fid}"),
+            &[
+                ("subject", "Stream"),
+                (
+                    "message",
+                    "[video=twitch]https://www.twitch.tv/videos/123456789[/video]",
+                ),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let tid: i32 = sqlx::query_scalar("SELECT MAX(tid) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let page = c.get(&format!("/thread/{tid}")).await;
+    assert!(
+        page.body.contains("parent=forum.example.test"),
+        "{}",
+        page.status
+    );
+    assert!(!page.body.contains("parent=localhost"));
+}

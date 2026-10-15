@@ -23,6 +23,9 @@ pub struct ParseOptions {
     pub mentions: bool,
     /// Render newlines as <br>.
     pub nl2br: bool,
+    /// Host of the board, for embeds that must name the embedding site (Twitch's `parent`).
+    /// Empty falls back to localhost.
+    pub embed_host: String,
 }
 
 impl Default for ParseOptions {
@@ -38,6 +41,7 @@ impl Default for ParseOptions {
             me_username: None,
             mentions: true,
             nl2br: true,
+            embed_host: String::new(),
         }
     }
 }
@@ -821,7 +825,7 @@ impl<'a> Parser<'a> {
                 let url = Self::plain_text(children);
                 match (
                     self.opts.allow_videocode,
-                    arg.and_then(|a| video_embed(a, url.trim())),
+                    arg.and_then(|a| video_embed(a, url.trim(), &self.opts.embed_host)),
                 ) {
                     (true, Some(html)) => {
                         out.push_str(&html);
@@ -1112,7 +1116,7 @@ static DM_RE: LazyLock<Regex> =
 static TWITCH_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"twitch\.tv/videos/(\d{3,15})").unwrap());
 
-fn video_embed(service: &str, url: &str) -> Option<String> {
+fn video_embed(service: &str, url: &str, host: &str) -> Option<String> {
     let src = match service.to_ascii_lowercase().as_str() {
         "youtube" => format!(
             "https://www.youtube-nocookie.com/embed/{}",
@@ -1127,8 +1131,9 @@ fn video_embed(service: &str, url: &str) -> Option<String> {
             DM_RE.captures(url)?.get(1)?.as_str()
         ),
         "twitch" => format!(
-            "https://player.twitch.tv/?video={}&parent=localhost&autoplay=false",
-            TWITCH_RE.captures(url)?.get(1)?.as_str()
+            "https://player.twitch.tv/?video={}&parent={}&autoplay=false",
+            TWITCH_RE.captures(url)?.get(1)?.as_str(),
+            if host.is_empty() { "localhost" } else { host }
         ),
         _ => return None,
     };
