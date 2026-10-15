@@ -337,7 +337,11 @@ pub async fn calendar_cid(
 }
 
 fn parse_date(s: &str) -> AppResult<NaiveDate> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| AppError::not_found("date"))
+    // chrono accepts years up to 262142, where the day/week arithmetic below would overflow.
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .ok()
+        .filter(|d| (1..=9999).contains(&d.year()))
+        .ok_or_else(|| AppError::not_found("date"))
 }
 
 pub async fn day(ctx: Ctx, Path((cid, date)): Path<(i32, String)>) -> AppResult<Response> {

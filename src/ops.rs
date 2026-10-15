@@ -521,7 +521,7 @@ pub async fn move_threads_in(
                  FROM threads WHERE tid = $1",
             )
             .bind(tid)
-            .bind(if days > 0 { now() + days * 86400 } else { 0 })
+            .bind(if days > 0 { now() + days.min(36500) * 86400 } else { 0 })
             .execute(&mut *tx)
             .await?;
         }

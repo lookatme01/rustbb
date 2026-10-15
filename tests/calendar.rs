@@ -53,3 +53,21 @@ async fn nonexistent_dst_times_are_rejected_instead_of_becoming_epoch_dates() {
         "2026-03-08T08:30:00+00:00"
     );
 }
+
+#[tokio::test]
+async fn absurd_years_in_day_and_week_views_are_not_found_not_a_panic() {
+    let t = test_app!();
+    let cid: i32 = sqlx::query_scalar("SELECT MIN(cid) FROM calendars")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(1).await;
+    for view in ["day", "week"] {
+        let ok = c.get(&format!("/calendar/{cid}/{view}/2026-10-15")).await;
+        assert_eq!(ok.status, 200, "{view}: {}", ok.body);
+        let r = c
+            .get(&format!("/calendar/{cid}/{view}/+262142-12-31"))
+            .await;
+        assert_eq!(r.status, 404, "{view}: {}", r.status);
+    }
+}
