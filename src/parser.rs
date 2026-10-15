@@ -195,10 +195,9 @@ struct Tag {
 
 /// Try to read a tag starting at `s[0] == '['`. Returns the tag and its byte length.
 fn read_tag(s: &str) -> Option<(Tag, usize)> {
-    let end = s.find(']')?;
-    if end > 512 {
-        return None;
-    }
+    // Tags are short: look at most 513 bytes ahead instead of scanning to the end of the post
+    // for every stray `[`.
+    let end = s.as_bytes().iter().take(513).position(|&b| b == b']')?;
     let inner = &s[1..end];
     let raw = s[..=end].to_string();
     if let Some(name) = inner.strip_prefix('/') {
@@ -284,6 +283,7 @@ fn tokenize_and_build(input: &str) -> Vec<Node> {
         });
     }
 
+    let mut unclosed: Vec<String> = vec![];
     while i < input.len() {
         if bytes[i] == b'['
             && let Some((tag, len)) = read_tag(&input[i..])
@@ -291,7 +291,18 @@ fn tokenize_and_build(input: &str) -> Vec<Node> {
             if !tag.closing && VERBATIM.contains(&tag.name.as_str()) {
                 let close = format!("[/{}]", tag.name);
                 let after = &input[i + len..];
-                if let Some(pos) = find_ci(after, &close) {
+                // The rest of the input only shrinks, so a tag whose closer is missing once is
+                // missing for every later opener too (a post of thousands of `[code]` would
+                // otherwise rescan it each time).
+                let found = if unclosed.contains(&tag.name) {
+                    None
+                } else {
+                    find_ci(after, &close)
+                };
+                if found.is_none() && !unclosed.contains(&tag.name) {
+                    unclosed.push(tag.name.clone());
+                }
+                if let Some(pos) = found {
                     push_text(&mut stack, &mut text);
                     let content = after[..pos].to_string();
                     stack.last_mut().unwrap().children.push(Node::Raw {
@@ -374,9 +385,16 @@ fn tokenize_and_build(input: &str) -> Vec<Node> {
     stack.pop().unwrap().children
 }
 
+/// First ASCII-case-insensitive occurrence of an ASCII `needle`, without copying `hay`. A match
+/// can only start on a character boundary because ASCII bytes never occur inside UTF-8 sequences.
 fn find_ci(hay: &str, needle: &str) -> Option<usize> {
-    let lh = hay.to_ascii_lowercase();
-    lh.find(&needle.to_ascii_lowercase())
+    let n = needle.as_bytes();
+    if n.is_empty() {
+        return Some(0);
+    }
+    hay.as_bytes()
+        .windows(n.len())
+        .position(|w| w.eq_ignore_ascii_case(n))
 }
 
 static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -961,15 +979,16 @@ fn replace_smilies(s: &str, smilies: &[Smilie]) -> String {
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
     let bytes = s.as_bytes();
+    // Escaped once per call, not once per character of the post.
+    let escaped: Vec<String> = smilies.iter().map(|sm| escape_html(&sm.find)).collect();
     'outer: while i < s.len() {
         let prev_ok = i == 0 || {
             let pc = s[..i].chars().next_back().unwrap();
             pc.is_whitespace() || !pc.is_alphanumeric() && pc != ';' && pc != '&' && pc != '/'
         };
         if prev_ok {
-            for sm in smilies {
-                let f = escape_html(&sm.find);
-                if !f.is_empty() && s[i..].starts_with(&f) {
+            for (sm, f) in smilies.iter().zip(&escaped) {
+                if !f.is_empty() && s[i..].starts_with(f.as_str()) {
                     let after = &s[i + f.len()..];
                     let next_ok = after
                         .chars()
@@ -1644,5 +1663,38 @@ mod tests {
         assert!(safe_url("/\\evil.example").is_none());
         assert!(!p("[url=/\\evil.example]x[/url]").contains("href"));
         assert_eq!(safe_url("/thread/1").as_deref(), Some("/thread/1"));
+    }
+}
+
+#[cfg(test)]
+mod adversarial_tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn render(msg: &str) -> String {
+        let data = ParserData::default();
+        let opts = ParseOptions::default();
+        Parser::new(&data, &opts).parse(msg)
+    }
+
+    #[test]
+    fn long_posts_of_unclosed_or_stray_tags_stay_fast() {
+        let started = Instant::now();
+        for unit in ["[code]", "[", "[php]x", "[noparse]"] {
+            let post = unit.repeat(60_000 / unit.len());
+            let _ = render(&post);
+        }
+        assert!(
+            started.elapsed().as_millis() < 1500,
+            "adversarial posts took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn verbatim_tags_still_close_after_an_earlier_unclosed_one() {
+        let html = render("[code]open [/CODE] and [php]<?php 1;[/php] [code]never closed");
+        assert!(html.contains("open"), "{html}");
+        assert!(html.contains("never closed"), "{html}");
     }
 }
