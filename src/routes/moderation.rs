@@ -601,16 +601,17 @@ pub async fn do_split(ctx: Ctx, CsrfForm(f): CsrfForm<SplitForm>) -> AppResult<R
     let threads = load_threads(&ctx, &[f.tid]).await?;
     require(&ctx, &threads, |m| m.canmanagethreads)?;
     let t = &threads[0];
-    let pids: Vec<i32> =
-        sqlx::query_scalar("SELECT pid FROM posts WHERE pid = ANY($1) AND tid = $2 AND pid <> $3")
-            .bind(&f.pids)
-            .bind(t.tid)
-            .bind(t.firstpost)
-            .fetch_all(&ctx.app.db)
-            .await?;
+    let pids: Vec<i32> = sqlx::query_scalar(
+        "SELECT pid FROM posts WHERE pid = ANY($1) AND tid = $2 AND pid <> $3 AND visible = 1",
+    )
+    .bind(&f.pids)
+    .bind(t.tid)
+    .bind(t.firstpost)
+    .fetch_all(&ctx.app.db)
+    .await?;
     if pids.is_empty() {
         return Err(AppError::user(
-            "Select posts other than the first post to split.",
+            "Select visible posts other than the first post to split.",
         ));
     }
     let subject = if f.subject.trim().is_empty() {
@@ -688,16 +689,17 @@ pub async fn do_moveposts(ctx: Ctx, CsrfForm(f): CsrfForm<MovePostsForm>) -> App
         ));
     }
     let src = threads.iter().find(|t| t.tid == f.tid).unwrap();
-    let pids: Vec<i32> =
-        sqlx::query_scalar("SELECT pid FROM posts WHERE pid = ANY($1) AND tid = $2 AND pid <> $3")
-            .bind(&f.pids)
-            .bind(src.tid)
-            .bind(src.firstpost)
-            .fetch_all(&ctx.app.db)
-            .await?;
+    let pids: Vec<i32> = sqlx::query_scalar(
+        "SELECT pid FROM posts WHERE pid = ANY($1) AND tid = $2 AND pid <> $3 AND visible = 1",
+    )
+    .bind(&f.pids)
+    .bind(src.tid)
+    .bind(src.firstpost)
+    .fetch_all(&ctx.app.db)
+    .await?;
     if pids.is_empty() {
         return Err(AppError::user(
-            "Select posts other than the first post to move.",
+            "Select visible posts other than the first post to move.",
         ));
     }
     // Split into a temporary thread, then merge it into the destination (one transaction, so

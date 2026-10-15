@@ -493,11 +493,19 @@ async fn insert_reply(
     let t = now();
 
     // Serialize writes to this thread (replies, merges, edits, moderation) and keep counters right.
-    let tvis: i16 = sqlx::query_scalar("SELECT visible FROM threads WHERE tid = $1 FOR UPDATE")
-        .bind(tid)
-        .fetch_optional(uow.conn())
-        .await?
-        .ok_or_else(|| AppError::not_found("thread"))?;
+    let (tvis, locked_fid): (i16, i32) =
+        sqlx::query_as("SELECT visible, fid FROM threads WHERE tid = $1 FOR UPDATE")
+            .bind(tid)
+            .fetch_optional(uow.conn())
+            .await?
+            .ok_or_else(|| AppError::not_found("thread"))?;
+    // The forum the caller checked permissions against may be stale: a move that committed while
+    // we waited for the lock changed it, and the counters below would go to the wrong forum.
+    if locked_fid != fid {
+        return Err(AppError::user(
+            "This thread was just moved to another forum. Please try posting your reply again.",
+        ));
+    }
 
     // Automatic post merge (double posting) — MyBB's "postmergemins". Decided under the thread
     // lock, with the last post locked too, so two quick replies cannot both merge or both miss.

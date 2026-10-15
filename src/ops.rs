@@ -558,6 +558,14 @@ pub async fn move_threads_in(
         .bind(to_fid)
         .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "UPDATE reportedcontent SET id3 = $2
+         WHERE type = 'post' AND id3 <> $2 AND id IN (SELECT pid FROM posts WHERE tid = ANY($1))",
+    )
+    .bind(tids)
+    .bind(to_fid)
+    .execute(&mut *tx)
+    .await?;
     adjust_user_postcounts(tx, &pids, 1).await?;
     adjust_user_threadcounts(tx, tids, 1).await?;
     settle(tx, before).await?;
@@ -608,6 +616,15 @@ pub async fn merge_threads_in(
         .bind(into_fid)
         .execute(&mut *tx)
         .await?;
+    // A post report records the post's forum, which decides which moderators see it.
+    sqlx::query(
+        "UPDATE reportedcontent SET id3 = $2
+         WHERE type = 'post' AND id3 <> $2 AND id IN (SELECT pid FROM posts WHERE tid = $1)",
+    )
+    .bind(into)
+    .bind(into_fid)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("UPDATE threadsubscriptions SET tid = $1 WHERE tid = $2 AND uid NOT IN (SELECT uid FROM threadsubscriptions WHERE tid = $1)")
         .bind(into)
         .bind(from)
@@ -703,6 +720,13 @@ pub async fn split_posts_in(
         .bind(old_tid)
         .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "UPDATE reportedcontent SET id3 = $2 WHERE type = 'post' AND id3 <> $2 AND id = ANY($1)",
+    )
+    .bind(pids)
+    .bind(to_fid)
+    .execute(&mut *tx)
+    .await?;
     // First post of the new thread must be visible for the thread to be visible.
     recount_thread(tx, new_tid).await?;
     sqlx::query(

@@ -568,3 +568,95 @@ async fn the_recycle_bin_purge_only_removes_threads_that_are_still_deleted_and_o
     assert_eq!(left, vec![recent, restored]);
     assert_consistent(&t).await;
 }
+
+#[tokio::test]
+async fn reports_follow_their_post_when_a_thread_moves_to_another_forum() {
+    let t = test_app!();
+    let fids: Vec<i32> =
+        sqlx::query_scalar("SELECT fid FROM forums WHERE type = 'f' ORDER BY fid LIMIT 2")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    let (from, to) = (fids[0], fids[1]);
+    let c = t.login_as(1).await;
+    let tid = new_thread(&t, &c, from).await;
+    let pid: i32 = sqlx::query_scalar("SELECT firstpost FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let rid: i32 = sqlx::query_scalar(
+        "INSERT INTO reportedcontent (id, id2, id3, uid, type, reason, dateline, lastreport)
+         VALUES ($1, 1, $2, 1, 'post', 'spam', 1, 1) RETURNING rid",
+    )
+    .bind(pid)
+    .bind(from)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    rbb::ops::move_threads(&t.app, &[tid], to, None)
+        .await
+        .unwrap();
+    let id3: i32 = sqlx::query_scalar("SELECT id3 FROM reportedcontent WHERE rid = $1")
+        .bind(rid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        id3, to,
+        "moderators of the new forum must be able to see the report"
+    );
+}
+
+#[tokio::test]
+async fn splitting_never_publishes_a_hidden_post() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    setting(&t, "postmergemins", "0").await;
+    let fid = forum(&t).await;
+    let c = t.login_as(1).await;
+    let tid = new_thread(&t, &c, fid).await;
+    for i in 0..2 {
+        let r = c
+            .post_form(
+                &format!("/newreply/{tid}"),
+                &[("message", &format!("Reply number {i} in the thread."))],
+            )
+            .await;
+        assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    }
+    let pids: Vec<i32> = sqlx::query_scalar("SELECT pid FROM posts WHERE tid = $1 ORDER BY pid")
+        .bind(tid)
+        .fetch_all(&t.db.pool)
+        .await
+        .unwrap();
+    // The first reply is soft-deleted; the second stays visible.
+    rbb::ops::set_posts_visibility(&t.app, &[pids[1]], -1)
+        .await
+        .unwrap();
+    let (hidden, shown) = (pids[1].to_string(), pids[2].to_string());
+    let tid_s = tid.to_string();
+    c.post_form(
+        "/moderation/split",
+        &[
+            ("tid", &tid_s),
+            ("pids", &hidden),
+            ("pids", &shown),
+            ("subject", "Split off"),
+        ],
+    )
+    .await;
+    let vis: i16 = sqlx::query_scalar("SELECT visible FROM posts WHERE pid = $1")
+        .bind(pids[1])
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(vis, -1, "the deleted post must stay deleted");
+    let stayed: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
+        .bind(pids[1])
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(stayed, tid);
+    assert_consistent(&t).await;
+}
