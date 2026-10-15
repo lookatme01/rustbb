@@ -398,7 +398,7 @@ async fn drafts_cannot_point_at_threads_the_member_cannot_see() {
     let tid_s = tid.to_string();
     let fid_s = fid.to_string();
     let save = |tid: &str, fid: &str| {
-        let fields = vec![
+        let fields = [
             ("tid", tid.to_string()),
             ("fid", fid.to_string()),
             ("message", "draft".to_string()),

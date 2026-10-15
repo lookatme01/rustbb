@@ -800,12 +800,17 @@ async fn attach_uploads(
         })
         .map(|(aid, _)| aid)
         .collect();
+    // The upload judged approval by the forum the client named; apply the rule for the forum the
+    // post really went to (a file can lose approval here but never gain it).
+    let exempt =
+        ctx.is_mod(fid) || !(ctx.forum_perms(fid).modattachments || ctx.perms.modattachments);
     let r = sqlx::query(
-        "UPDATE attachments SET pid = $1, posthash = '', uid = $3 WHERE aid = ANY($2) AND pid = 0",
+        "UPDATE attachments SET pid = $1, posthash = '', uid = $3, visible = visible AND $4 WHERE aid = ANY($2) AND pid = 0",
     )
     .bind(pid)
     .bind(&ok)
     .bind(owner)
+    .bind(exempt)
     .execute(&mut *tx)
     .await?;
     Ok(r.rows_affected())

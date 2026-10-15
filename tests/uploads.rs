@@ -609,3 +609,77 @@ async fn live_streams_are_capped_per_address() {
         "slots are released when streams end"
     );
 }
+
+#[tokio::test]
+async fn attachments_uploaded_for_one_forum_are_moderated_by_the_forum_they_are_posted_to() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enableattachments', '1') ON CONFLICT (name) DO UPDATE SET value = '1'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let fids: Vec<i32> =
+        sqlx::query_scalar("SELECT fid FROM forums WHERE type = 'f' ORDER BY fid LIMIT 2")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    let (open, moderated) = (fids[0], fids[1]);
+    sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES ($1, 2, '{\"modattachments\":true}') ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+        .bind(moderated)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+    let uid = t.create_user("uploader", "Passw0rd-uploader").await;
+    let c = t.login_as(uid).await;
+    let csrf = c.csrf();
+    let hash = "0123456789abcdefABC";
+    // The upload names the forum without attachment moderation...
+    let (ct, body) = multipart(
+        &[
+            ("my_post_key", &csrf),
+            ("posthash", hash),
+            ("fid", &open.to_string()),
+        ],
+        Some(("notes.txt", b"hello attachment")),
+    );
+    let r = c
+        .request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&r.body).unwrap()["visible"],
+        true
+    );
+    // ...but the post goes to the one that moderates them.
+    let r = c
+        .post_form(
+            &format!("/newthread/{moderated}"),
+            &[
+                ("subject", "Smuggled attachment"),
+                ("message", "Trying to dodge attachment moderation."),
+                ("posthash", hash),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let visible: bool =
+        sqlx::query_scalar("SELECT visible FROM attachments WHERE posthash = '' AND uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert!(
+        !visible,
+        "the attachment must wait for approval in the forum it was posted to"
+    );
+}
