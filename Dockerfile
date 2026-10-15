@@ -9,7 +9,15 @@ COPY lang lang
 RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates postgresql-client && rm -rf /var/lib/apt/lists/* \
+# The ACP database backup shells out to pg_dump, which refuses a server newer than itself.
+# Debian bookworm only ships the 15 client, so take 17 (the version docker-compose.yml runs)
+# from the PostgreSQL project's apt repository.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && install -d /usr/share/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && apt-get purge -y --auto-remove curl gnupg && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 rbb && mkdir -p /app/uploads /app/plugins && chown -R rbb /app
 WORKDIR /app
 COPY --from=build /src/target/release/rbb /app/rbb
