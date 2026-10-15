@@ -122,6 +122,10 @@ pub async fn warn_submit(
     if !tperms.canreceivewarnings || tperms.cancp {
         return Err(AppError::user("This user cannot receive warnings."));
     }
+    // A warning level can ban or restrict, so the same rank rule as a manual ban applies.
+    if !crate::routes::modcp::can_act_on(&ctx, &user) {
+        return Err(AppError::user("You cannot warn this user."));
+    }
     if ctx.perms.maxwarningsday > 0 {
         let n: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM warnings WHERE issuedby = $1 AND dateline > $2",
@@ -311,6 +315,14 @@ pub async fn revoke(
     enabled(&ctx)?;
     if !ctx.perms.canwarnusers {
         return Err(AppError::no_perm());
+    }
+    // The warn form refuses self-warnings and hides the button on one's own; enforce it here.
+    let target: Option<i32> = sqlx::query_scalar("SELECT uid FROM warnings WHERE wid = $1")
+        .bind(wid)
+        .fetch_optional(&ctx.app.db)
+        .await?;
+    if target == Some(ctx.uid()) {
+        return Err(AppError::user("You cannot revoke a warning you received."));
     }
     // Revoking and giving the points back happen together.
     let mut tx = ctx.app.db.begin().await?;

@@ -1348,6 +1348,11 @@ pub async fn ban_save(ctx: Ctx, CsrfForm(f): CsrfForm<BanForm>) -> AppResult<Res
     if !can_act_on(&ctx, &user) || user.uid == ctx.uid() {
         return Err(AppError::user("You cannot ban this user."));
     }
+    // Someone already banned sits in the banned group, which has no rank of its own: judge them
+    // by the groups they had, or re-banning an admin would let anyone rewrite their ban.
+    check_can_lift(&ctx, uid)
+        .await
+        .map_err(|_| AppError::user("You cannot ban this user."))?;
     let gid = if ctx
         .cache
         .group(f.gid)
