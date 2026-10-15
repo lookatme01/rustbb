@@ -229,3 +229,29 @@ async fn empty_thread_listings_render_a_friendly_page() {
         assert!(r.body.contains("Browse the forums"));
     }
 }
+
+#[tokio::test]
+async fn guests_are_rate_limited_on_the_search_listings() {
+    let t = test_app!();
+    let g = t.client();
+    let first = g.get("/search/today").await;
+    assert!(
+        first.status.is_success() || first.status.is_redirection(),
+        "{}",
+        first.status
+    );
+    let second = g.get("/search/today").await;
+    assert!(
+        second.body.contains("searching a little fast"),
+        "{} {}",
+        second.status,
+        second.body
+    );
+    // A member is not slowed between listings.
+    let uid = t.create_user("browser", "Passw0rd-browser").await;
+    let c = t.login_as(uid).await;
+    for _ in 0..3 {
+        let r = c.get("/search/today").await;
+        assert!(!r.body.contains("searching a little fast"));
+    }
+}

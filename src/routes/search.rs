@@ -119,6 +119,33 @@ async fn flood_check(ctx: &Ctx) -> AppResult<()> {
     Ok(())
 }
 
+/// The limits every search runs under: the per-visitor flood check, the cap on searches at once
+/// and a five second statement timeout. The listings (`/search/new`, a member's posts...) are
+/// open to guests and write a result row each time, so they need them as much as a keyword search.
+async fn limited(
+    ctx: &Ctx,
+) -> AppResult<(
+    tokio::sync::SemaphorePermit<'_>,
+    sqlx::Transaction<'static, sqlx::Postgres>,
+)> {
+    // Members switching between listings are not the worry, anonymous crawlers are; everyone is
+    // still held to the concurrency cap and the timeout below.
+    if ctx.uid() == 0 {
+        flood_check(ctx).await?;
+    }
+    let permit = ctx
+        .app
+        .search_sem
+        .acquire()
+        .await
+        .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
+    let mut tx = ctx.app.db.begin().await?;
+    sqlx::query("SELECT set_config('statement_timeout', '5s', true), set_config('plan_cache_mode', 'force_custom_plan', true)")
+        .execute(&mut *tx)
+        .await?;
+    Ok((permit, tx))
+}
+
 async fn store(
     ctx: &Ctx,
     kind: &str,
@@ -621,6 +648,7 @@ async fn thread_listing(
 ) -> AppResult<Response> {
     let (fids, own_only) = searchable_forums(ctx);
     let limit = ctx.settings().int("searchhardlimit").max(50);
+    let (_permit, mut tx) = limited(ctx).await?;
     let tids: Vec<i32> = sqlx::query_scalar(&format!(
         "SELECT t.tid FROM threads t WHERE (t.fid = ANY($1) OR (t.fid = ANY($2) AND t.uid = $3)) AND t.visible = 1 AND t.closed NOT LIKE 'moved|%' AND {cond}
          ORDER BY t.lastpost DESC LIMIT $5"
@@ -630,8 +658,9 @@ async fn thread_listing(
     .bind(ctx.uid())
     .bind(arg)
     .bind(limit)
-    .fetch_all(&ctx.app.db)
+    .fetch_all(&mut *tx)
     .await?;
+    drop(tx);
     if tids.is_empty() {
         return empty_listing(ctx, title, empty).await;
     }
@@ -716,6 +745,7 @@ async fn member_listing_title(ctx: &Ctx, uid: i32, noun: &str) -> AppResult<Stri
 
 pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let (fids, own_only) = searchable_forums(&ctx);
+    let (_permit, mut tx) = limited(&ctx).await?;
     let tids: Vec<i32> = sqlx::query_scalar(
         "SELECT tid FROM threads WHERE uid = $1 AND (fid = ANY($2) OR (fid = ANY($3) AND uid = $4)) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY dateline DESC LIMIT $5",
     )
@@ -724,8 +754,9 @@ pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response>
     .bind(&own_only)
     .bind(ctx.uid())
     .bind(ctx.settings().int("searchhardlimit").max(50))
-    .fetch_all(&ctx.app.db)
+    .fetch_all(&mut *tx)
     .await?;
+    drop(tx);
     if tids.is_empty() {
         return Err(AppError::user(
             "This member has not started any threads you can see.",
@@ -745,6 +776,7 @@ pub async fn user_threads(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response>
 
 pub async fn user_posts(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let (fids, own_only) = searchable_forums(&ctx);
+    let (_permit, mut tx) = limited(&ctx).await?;
     let pids: Vec<i32> = sqlx::query_scalar(
         "SELECT p.pid FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.uid = $1 AND (p.fid = ANY($2) OR (p.fid = ANY($3) AND t.uid = $4))
          AND p.visible = 1 AND t.visible = 1 ORDER BY p.dateline DESC LIMIT $5",
@@ -754,8 +786,9 @@ pub async fn user_posts(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     .bind(&own_only)
     .bind(ctx.uid())
     .bind(ctx.settings().int("searchhardlimit").max(50))
-    .fetch_all(&ctx.app.db)
+    .fetch_all(&mut *tx)
     .await?;
+    drop(tx);
     if pids.is_empty() {
         return Err(AppError::user("This member has no posts you can see."));
     }
