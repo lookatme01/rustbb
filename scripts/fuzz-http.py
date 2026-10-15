@@ -7,6 +7,12 @@
          huge, negative, overflowing, NUL byte, bidi/zero-width, SQL and template fragments...)
   get    mutate path numbers and query parameters of every page it finds (page=-1, limit=2^63...)
   api    JSON bodies against the API's write endpoints (wrong types, nulls, broken JSON...)
+  authz  replay every /admin, /modcp and /moderation page and form as a guest and as the plain
+         member given with --member (same password as the admin): anything but a clean denial
+         (401/403/404, or a redirect to the login page) is reported
+         Expected on a healthy board: POST /moderation/threads answers 422 (the placeholder action
+         "x" is rejected as invalid before permissions are looked at; real actions give 403) and
+         POST /admin/themes/N/banner answers 400 (it only takes multipart bodies).
 
 A 5xx means a handler failed where it should have said "invalid input" (400/422). The `forms`
 mode submits destructive actions (deletes, merges, password changes), so only ever point this at
@@ -236,11 +242,52 @@ def fuzz_api(c, _password):
     return rep.finish("api")
 
 
+def fuzz_authz(admin, password, member_name, member_password):
+    pages, forms = crawl(admin, 600, 3)
+    staff = re.compile(r"^/(admin|modcp|moderation)")
+    spages = [p for p in pages if staff.match(p)]
+    sforms = [f for f in forms if staff.match(f[0])]
+    print(f"authz: {len(spages)} staff pages and {len(sforms)} staff forms found as admin")
+    member = Client(admin.base)
+    _, b, _ = member.req("/member/login")
+    member.form("/member/login", {"my_post_key": key(b), "username": member_name, "password": member_password})
+    guest = Client(admin.base)
+
+    def clean(code, loc):
+        return code in (401, 403, 404) or (code in (301, 302, 303, 307, 308) and ("/member/login" in loc or loc in ("/", "")))
+
+    flags = []
+    for who, c in (("guest", guest), ("member", member)):
+        for p in spages:
+            code, _, loc = c.req(p)
+            if not clean(code, loc):
+                flags.append((who, "GET", p, code, loc))
+        for action, fields, _page in sforms:
+            _, body, _ = c.req("/")
+            k = key(body) or key(c.req("/member/login")[1])
+            data = [(n, k if n == "my_post_key" else (v if ty in ("hidden", "submit", "button", "checkbox", "radio") else "x"))
+                    for n, ty, v in fields]
+            if not any(n == "my_post_key" for n, _ in data):
+                data.append(("my_post_key", k))
+            code, _, loc = c.form(action, data)
+            if not clean(code, loc):
+                flags.append((who, "POST", action, code, loc))
+    print(f"authz: {len(flags)} responses that were not a clean denial")
+    seen = set()
+    for f in flags:
+        k = (f[0], f[1], re.sub(r"\d+", "N", f[2]), f[3], f[4])
+        if k not in seen:
+            seen.add(k)
+            print("  FLAG", f)
+    return not flags
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=["forms", "get", "api", "all"])
+    ap.add_argument("mode", choices=["forms", "get", "api", "authz", "all"])
     ap.add_argument("base", help="e.g. http://127.0.0.1:50352")
     ap.add_argument("--password", default="admin12345", help="the administrator's password")
+    ap.add_argument("--member", help="a plain member's username, for authz (their password must equal --password)")
     ap.add_argument("--disposable-board", action="store_true",
                     help="confirm this board and its database can be wrecked")
     a = ap.parse_args()
@@ -249,6 +296,10 @@ def main():
     c = Client(a.base)
     c.login(a.password)
     modes = {"forms": fuzz_forms, "get": fuzz_get, "api": fuzz_api}
+    if a.mode == "authz":
+        if not a.member:
+            sys.exit("authz needs --member USERNAME")
+        sys.exit(0 if fuzz_authz(c, a.password, a.member, a.password) else 1)
     ok = True
     # `forms` last: a fuzzed password form can change the administrator's password.
     for name in (["get", "api", "forms"] if a.mode == "all" else [a.mode]):
