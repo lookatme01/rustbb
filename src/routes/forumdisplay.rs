@@ -325,6 +325,13 @@ pub async fn forumdisplay(
         };
         let dir = if order == "asc" { "ASC" } else { "DESC" };
         let own_only = fperms.canonlyviewownthreads && !is_mod;
+        // The queries read owner 0 as "any author", which is what a guest's uid is: a guest in an
+        // own-threads-only forum owns nothing, so give them an id no thread has.
+        let owner_filter = match (own_only, ctx.uid()) {
+            (false, _) => 0,
+            (true, 0) => -1,
+            (true, uid) => uid,
+        };
         let prefix = q.prefix.unwrap_or(0);
         let simple = datecut <= 0 && !own_only && prefix == 0;
         total = if simple {
@@ -359,7 +366,7 @@ pub async fn forumdisplay(
             )
             .bind(fid)
             .bind(&states)
-            .bind(if own_only { ctx.uid() } else { 0 })
+            .bind(owner_filter)
             .bind(if datecut > 0 { now() - datecut * 86400 } else { 0 })
             .bind(prefix)
             .fetch_one(&ctx.app.db)
@@ -408,7 +415,7 @@ pub async fn forumdisplay(
         ))
         .bind(fid)
         .bind(&states)
-        .bind(if own_only { ctx.uid() } else { 0 })
+        .bind(owner_filter)
         .bind(if datecut > 0 { now() - datecut * 86400 } else { 0 })
         .bind(prefix)
         .bind(limit)

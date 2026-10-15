@@ -1273,6 +1273,13 @@ pub async fn ban_user(
     admin: i32,
 ) -> AppResult<()> {
     crate::system::guard(&app.cache(), target.uid, "banned")?;
+    // The group comes from the ban form or a warning level's saved action; only a banned group
+    // is acceptable, or "banning" could move someone into an administrator group.
+    let gid = if app.cache().group(gid).is_some_and(|g| g.isbannedgroup) {
+        gid
+    } else {
+        7
+    };
     // Cap the length so `days * 86400` cannot overflow; 100 years is as good as permanent.
     let days = days.clamp(0, MAX_RESTRICTION_DAYS);
     let lifted = if days > 0 { now() + days * 86400 } else { 0 };

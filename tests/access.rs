@@ -35,6 +35,24 @@ async fn archive_own_thread_forums_hide_other_authors_and_allow_moderators() {
 }
 
 #[tokio::test]
+async fn guests_see_no_thread_count_for_own_threads_only_forums() {
+    let t = test_app!();
+    hidden_subforum(&t).await;
+    sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES (8, 1, '{\"canonlyviewownthreads\":true}') ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+    let r = t.client().get("/forum/8").await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(!r.body.contains("Zebracorn sightings"));
+    assert!(
+        !r.body.contains("1 thread"),
+        "the count of hidden threads leaked to a guest"
+    );
+}
+
+#[tokio::test]
 async fn api_own_thread_forums_hide_other_authors_and_remain_searchable() {
     let t = test_app!();
     let (tid, uid) = hidden_subforum(&t).await;

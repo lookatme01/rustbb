@@ -120,3 +120,28 @@ async fn warn_user(c: &common::Client, uid: i32) -> common::Response {
     )
     .await
 }
+
+#[tokio::test]
+async fn a_warning_level_can_only_ban_into_a_banned_group() {
+    let t = test_app!();
+    let (warner, _, plain) = setup(&t).await;
+    // A level saved with the Administrators group as its "ban" group.
+    sqlx::query("INSERT INTO warninglevels (percentage, action) VALUES (10, '{\"type\":\"ban\",\"length\":0,\"usergroup\":4}')")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(warner).await;
+    let r = c
+        .post_form(
+            &format!("/warnings/{plain}/warn"),
+            &[("custom_reason", "Rude"), ("custom_points", "10")],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let group: i32 = sqlx::query_scalar("SELECT usergroup FROM users WHERE uid = $1")
+        .bind(plain)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(group, 7, "the member is banned, not promoted");
+}
