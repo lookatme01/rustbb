@@ -270,6 +270,7 @@ pub async fn leader_add(
     CsrfForm(f): CsrfForm<AnyForm>,
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "groups");
+    crate::admin::users::guard_admin_group(&ctx, gid).await?;
     let uid: i32 = sqlx::query_scalar("SELECT uid FROM users WHERE lower(username) = lower($1)")
         .bind(s(f.fields.get("username")).trim())
         .fetch_optional(&ctx.app.db)

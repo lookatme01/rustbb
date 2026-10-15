@@ -143,6 +143,7 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Re
     };
     let newg: i32 = s(fl.get("newusergroup")).parse().unwrap_or(0);
     crate::system::guard_group(&ctx.cache, 0, &[newg])?;
+    crate::admin::users::guard_admin_group(&ctx, newg).await?;
     if ctx.cache.group(newg).is_none() {
         return Err(AppError::user("Choose the group to promote to."));
     }

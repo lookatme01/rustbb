@@ -375,6 +375,17 @@ async fn guard_admin_grant(ctx: &Ctx, target: &User, new_groups: &[i32]) -> AppR
     Ok(())
 }
 
+/// Refuse routing members into administrator group `gid` unless the signed-in admin is
+/// unrestricted (group leaders and promotions add members without going through the user editor).
+pub(super) async fn guard_admin_group(ctx: &Ctx, gid: i32) -> AppResult<()> {
+    if ctx.cache.group(gid).is_some_and(|g| g.perms.0.cancp) && !is_full_admin(ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can grant administrator access.",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize, Default)]
 pub struct EditQ {
     #[serde(default)]

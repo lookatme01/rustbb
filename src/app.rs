@@ -683,8 +683,12 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
     let mut l1 = Vec::new();
     let mut l2 = Vec::new();
     let mut bots = Vec::new();
-    let mut user_times: HashMap<i32, (i64, String)> = HashMap::new();
-    for (sid, a) in rows {
+    // Rows are written in key order so that overlapping flushes (from several nodes, or racing a
+    // moderator's transaction) take their row locks in the same order and cannot deadlock.
+    let mut user_times: std::collections::BTreeMap<i32, (i64, String)> = Default::default();
+    let mut ordered: Vec<_> = rows.iter().collect();
+    ordered.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    for (sid, a) in ordered {
         let (sid, a) = (sid.clone(), a.clone());
         if a.uid > 0 {
             let e = user_times.entry(a.uid).or_insert((0, String::new()));
@@ -768,7 +772,10 @@ pub async fn flush_views(app: &App) -> anyhow::Result<()> {
 }
 
 async fn write_views(app: &App, id: uuid::Uuid, views: &HashMap<i32, i32>) -> anyhow::Result<()> {
-    let (tids, counts): (Vec<i32>, Vec<i32>) = views.iter().map(|(k, v)| (*k, *v)).unzip();
+    // Sorted so concurrent flushes lock thread rows in the same order.
+    let mut pairs: Vec<(i32, i32)> = views.iter().map(|(k, v)| (*k, *v)).collect();
+    pairs.sort_unstable();
+    let (tids, counts): (Vec<i32>, Vec<i32>) = pairs.into_iter().unzip();
     let mut tx = app.db.begin().await?;
     let fresh = sqlx::query("INSERT INTO applied_batches (id) VALUES ($1) ON CONFLICT DO NOTHING")
         .bind(id)
