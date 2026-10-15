@@ -6,3 +6,4 @@ uploads/
 CHANGELOG.md
 node_modules/
 docs/
+__pycache__/

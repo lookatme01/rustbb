@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Concurrent soak of a running board, to be followed by `rbb check`.
+
+    DATABASE_URL=postgres://.../scratchdb scripts/soak-http.py PORT_FILE SECONDS
+
+Logs in 24 members and 3 administrators and has them post, reply, edit, soft-delete, restore,
+close, stick, approve, move, merge, split and delete at random against live ids, all at once.
+It prints the response classes per operation. Afterwards, check the server log for
+"deadlock detected" and run `rbb check` against the same database: every denormalized counter
+(replies, post counts, last-post fields) must still match the data, and no 5xx should be a
+deadlock.
+
+It needs a throwaway board that you installed and seeded yourself (see scripts/fuzz-http.py for
+how), users `user1`..`user24` whose password equals the administrator's (copy the hash with SQL),
+`admin`/`admin12345`, and ratelimit_requests/postfloodcheck/postmergemins/searchfloodtime set to 0.
+PORT_FILE is a file containing the port, so a script can pick a free one. It uses psql and
+DATABASE_URL to pick random ids and to clear the login throttle, so never point it at a real board.
+"""
+import importlib.util, os, random, re, subprocess, sys, threading, time, collections
+spec = importlib.util.spec_from_file_location("fz", "scripts/fuzz-http.py"); fz = importlib.util.module_from_spec(spec); spec.loader.exec_module(fz)
+PORT = open(sys.argv[1]).read().strip(); BASE = f"http://127.0.0.1:{PORT}"; DURATION = int(sys.argv[2])
+PSQL = "/opt/homebrew/opt/postgresql@17/bin/psql"; DB = os.environ["DATABASE_URL"]
+def q(sql): return [r for r in subprocess.run([PSQL, DB, "-Atc", sql], capture_output=True, text=True).stdout.split("\n") if r]
+ids = {"tids": [], "pids": [], "fids": []}
+def refresh():
+    ids["tids"] = [int(x) for x in q("select tid from threads where closed not like 'moved|%' order by random() limit 300")]
+    ids["pids"] = [int(x) for x in q("select pid from posts order by random() limit 300")]
+    ids["pt"] = [tuple(int(y) for y in x.split("|")) for x in q("select pid, tid from posts order by random() limit 300")]
+    ids["fids"] = [int(x) for x in q("select fid from forums where type='f'")]
+refresh()
+def mk(name, admin=False):
+    c = fz.Client(BASE)
+    _, b, _ = c.req("/member/login")
+    c.form("/member/login", {"my_post_key": fz.key(b), "username": name, "password": "admin12345"})
+    if admin:
+        _, b, _ = c.req("/admin/verify"); c.form("/admin/verify", {"my_post_key": fz.key(b), "password": "admin12345"})
+    return c
+def reset_throttle(): q("delete from ratelimits")
+members, admins = [], []
+for i in range(1, 25):
+    if i % 10 == 1: reset_throttle()
+    members.append(mk(f"user{i}"))
+for _ in range(3):
+    reset_throttle(); admins.append(mk("admin", True))
+for c in members + admins:
+    assert c.req("/usercp")[0] == 200, "a client is not signed in"
+print("all", len(members) + len(admins), "clients signed in")
+stats = collections.Counter(); errors = collections.Counter(); stop = time.time() + DURATION
+def key_of(c, path):
+    _, b, _ = c.req(path)
+    m = re.search(r'name="csrf-token" content="([^"]+)"', b)
+    return fz.key(b) or (m.group(1) if m else "")
+def member_op(c):
+    op = random.choice(["reply", "reply", "reply", "thread"])
+    if op == "reply":
+        tid = random.choice(ids["tids"]); k = key_of(c, f"/newreply/{tid}")
+        code, _, _ = c.form(f"/newreply/{tid}", {"my_post_key": k, "message": f"soak reply {random.random()} to the thread"})
+    else:
+        fid = random.choice(ids["fids"]); k = key_of(c, f"/newthread/{fid}")
+        code, _, _ = c.form(f"/newthread/{fid}", {"my_post_key": k, "subject": f"soak thread {random.random()}", "message": "soak opening post text"})
+    return op, code
+def admin_op(c):
+    op = random.choice(["softdelete", "restore", "close", "open", "stick", "unstick", "approve", "unapprove", "move", "move", "delete", "postdelete", "postsoft", "postrestore", "postapprove", "edit", "split", "merge"])
+    k = key_of(c, "/")
+    if op.startswith("post"):
+        a = {"postdelete": "delete", "postsoft": "softdelete", "postrestore": "restore", "postapprove": "approve"}[op]
+        pid, tid = random.choice(ids["pt"])
+        code, _, _ = c.form("/moderation/posts", {"my_post_key": k, "action": a, "tid": tid, "pids": pid})
+    elif op == "split":
+        pid, tid = random.choice(ids["pt"])
+        code, _, _ = c.form("/moderation/split", {"my_post_key": k, "tid": tid, "pids": pid, "subject": "split off"})
+    elif op == "merge":
+        a, b = random.sample(ids["tids"], 2)
+        code, _, _ = c.form("/moderation/merge", {"my_post_key": k, "tid": a, "target": str(b)})
+    elif op == "move":
+        code, _, _ = c.form("/moderation/move", {"my_post_key": k, "tids": random.choice(ids["tids"]), "target": random.choice(ids["fids"]), "method": "move"})
+    elif op == "edit":
+        pid = random.choice(ids["pids"]); k2 = key_of(c, f"/editpost/{pid}")
+        code, _, _ = c.form(f"/editpost/{pid}", {"my_post_key": k2, "subject": "edited", "message": f"soak edit {random.random()} text body"})
+    elif op == "delete" and random.random() > 0.25:
+        op = "close"; code, _, _ = c.form("/moderation/threads", {"my_post_key": k, "action": "close", "tids": random.choice(ids["tids"])})
+    else:
+        code, _, _ = c.form("/moderation/threads", {"my_post_key": k, "action": op, "tids": random.choice(ids["tids"])})
+    return op, code
+def worker(c, fn):
+    while time.time() < stop:
+        try:
+            op, code = fn(c); stats[(op, code // 100)] += 1
+        except Exception as e: errors[str(e)[:80]] += 1
+def refresher():
+    while time.time() < stop: time.sleep(10); refresh()
+ts = [threading.Thread(target=worker, args=(c, member_op)) for c in members] + [threading.Thread(target=worker, args=(c, admin_op)) for c in admins] + [threading.Thread(target=refresher)]
+t0 = time.time(); [t.start() for t in ts]; [t.join() for t in ts]
+tot = sum(stats.values())
+print(f"{tot} operations in {time.time()-t0:.0f}s")
+byop = collections.defaultdict(dict)
+for (op, cls), n in sorted(stats.items()): byop[op][f"{cls}xx"] = n
+for op, d in byop.items(): print(f"  {op:12} {d}")
+print("client errors:", dict(errors))
