@@ -464,3 +464,69 @@ async fn email_change_links_expire_and_die_with_the_credentials_that_requested_t
     .unwrap();
     assert_eq!(left, 0);
 }
+
+fn totp_now(secret: &str) -> String {
+    let bytes = totp_rs::Secret::Encoded(secret.to_string())
+        .to_bytes()
+        .unwrap();
+    totp_rs::TOTP::new(
+        totp_rs::Algorithm::SHA1,
+        6,
+        1,
+        30,
+        bytes,
+        Some("rbb".into()),
+        "user".into(),
+    )
+    .unwrap()
+    .generate_current()
+    .unwrap()
+}
+
+#[tokio::test]
+async fn two_factor_changes_end_other_sessions_and_cannot_be_replaced_with_just_the_password() {
+    const SECRET: &str = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    let t = test_app!();
+    let uid = t.create_user("secured", "Passw0rd-secured").await;
+    sqlx::query("UPDATE users SET totp_secret = $2 WHERE uid = $1")
+        .bind(uid)
+        .bind(SECRET)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let here = t.login_as(uid).await;
+    let _elsewhere = t.login_as(uid).await;
+    let sessions = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM logins WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(sessions().await, 2);
+    // Setting up again while it is on is refused, whatever secret is offered.
+    let r = here
+        .post_form(
+            "/usercp/security/2fa",
+            &[
+                ("password", "Passw0rd-secured"),
+                ("secret", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+                ("code", &totp_now("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")),
+            ],
+        )
+        .await;
+    assert!(r.body.contains("already on"), "{} {}", r.status, r.body);
+    // Turning it off signs the other session out.
+    let r = here
+        .post_form(
+            "/usercp/security/2fa",
+            &[
+                ("password", "Passw0rd-secured"),
+                ("disable", "1"),
+                ("code", &totp_now(SECRET)),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    assert_eq!(sessions().await, 1);
+}

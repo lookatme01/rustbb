@@ -1798,9 +1798,18 @@ pub async fn twofa_save(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult
             .bind(me.uid)
             .execute(&ctx.app.db)
             .await?;
+        // A 2FA change ends the other sessions, like a password change does.
+        auth::destroy_all_logins(&ctx.app, me.uid, ctx.token_hash.as_deref()).await?;
+        auth::rotate_login(&ctx).await?;
         return Ok(ctx.redirect(
             "/usercp/security",
             "Two-factor authentication has been disabled.",
+        ));
+    }
+    if !me.totp_secret.is_empty() {
+        // Replacing the secret would let the password alone take over the second factor.
+        return Err(AppError::user(
+            "Two-factor authentication is already on. Turn it off first to set it up again.",
         ));
     }
     let Some(step) = crate::routes::member::totp_step(&f.secret, &f.code) else {
