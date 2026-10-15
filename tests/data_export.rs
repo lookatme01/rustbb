@@ -225,3 +225,14 @@ async fn activity_page_hides_the_staff_members_address_and_browser() {
     assert_eq!(r.status, 200, "{}", r.body);
     assert!(r.body.contains("198.51.100.77"), "{}", r.body);
 }
+
+#[tokio::test]
+async fn exports_are_limited_per_member() {
+    let t = test_app!();
+    let uid = t.create_user("exporter", "Passw0rd-exporter").await;
+    let c = t.login_as(uid).await;
+    for _ in 0..5 {
+        assert_eq!(c.get("/usercp/export").await.status, 200);
+    }
+    assert_eq!(c.get("/usercp/export").await.status, 429);
+}

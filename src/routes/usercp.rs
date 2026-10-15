@@ -2259,6 +2259,14 @@ fn zip_files(files: &[(String, Vec<u8>)]) -> anyhow::Result<Vec<u8>> {
 pub async fn export(ctx: Ctx) -> AppResult<Response> {
     use serde_json::json;
     let me = require_ucp(&ctx).await?;
+    // Building the archive reads every post and message the member has, so it is limited.
+    if !ctx
+        .app
+        .throttle(&format!("export-uid:{}", me.uid), 5, 3600)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     crate::audit::log(&ctx, me.uid, "data_exported", serde_json::Value::Null).await;
     let db = &ctx.app.db;
     let mut files: Vec<(String, serde_json::Value)> = Vec::new();
