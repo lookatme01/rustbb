@@ -171,3 +171,34 @@ async fn durable_quarantine_and_rollback() {
     .unwrap();
     app.tpl.render(1,"admin/automod.html",minijinja::context! {themes=>Vec::<String>::new(),languages=>Vec::<String>::new(),path=>"/admin/automod", current_url=>"/admin/automod", policy=>policy, revision=>1, phrases=>"<script>example</script>", list=>Vec::<serde_json::Value>::new(),history=>Vec::<serde_json::Value>::new(), queued=>0,pending=>0}).unwrap();
 }
+
+#[tokio::test]
+async fn items_that_keep_failing_go_to_the_back_of_the_queue() {
+    let t = test_app!();
+    let app = t.app.clone();
+    let db = t.db.pool.clone();
+    let uid: i32 = sqlx::query_scalar("INSERT INTO users (username,password,email,usergroup,regdate) VALUES ('poison','!','poison@invalid',2,$1) RETURNING uid").bind(now()).fetch_one(&db).await.unwrap();
+    let tid: i32 = sqlx::query_scalar("INSERT INTO threads (fid,subject,uid,username,dateline) VALUES (3,'Q', $1,'poison',$2) RETURNING tid").bind(uid).bind(now() - 1).fetch_one(&db).await.unwrap();
+    let pid = post(&app, tid, uid, "a post").await;
+    // An unusable policy makes every evaluation fail.
+    sqlx::query("UPDATE automod_config SET policy = jsonb_set(policy, '{mode}', '\"nonsense\"')")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM automod_queue")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO automod_queue (pid, queued_at) VALUES ($1, 1)")
+        .bind(pid)
+        .execute(&db)
+        .await
+        .unwrap();
+    run(&app).await.unwrap();
+    let queued_at: i64 = sqlx::query_scalar("SELECT queued_at FROM automod_queue WHERE pid = $1")
+        .bind(pid)
+        .fetch_one(&db)
+        .await
+        .expect("the item is kept for a later retry");
+    assert!(queued_at > 1, "a failing item is moved behind the rest");
+}

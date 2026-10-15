@@ -125,6 +125,13 @@ pub async fn run(app: &App) -> anyhow::Result<crate::tasks::Ran> {
             Err(e) => {
                 failed += 1;
                 tracing::error!(pid, "automod failed; item retained for retry: {e}");
+                // Behind everything else: a run takes the oldest 100, so items that keep failing
+                // must not hold up the ones queued after them.
+                let _ = sqlx::query("UPDATE automod_queue SET queued_at = $2 WHERE pid = $1")
+                    .bind(pid)
+                    .bind(now())
+                    .execute(&app.db)
+                    .await;
             }
         }
     }
