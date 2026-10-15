@@ -582,3 +582,15 @@ async fn an_address_registered_as_a_username_cannot_take_over_email_sign_in() {
         "the owner signed in"
     );
 }
+
+#[tokio::test]
+async fn registration_attempts_are_limited_per_address() {
+    let t = test_app!();
+    open_registration(&t, "instant").await;
+    let mut last = 0;
+    for _ in 0..21 {
+        // "admin" is taken: each try reveals that, which is what the limit is meant to bound.
+        last = register(&t, "admin").await.status.as_u16();
+    }
+    assert_eq!(last, 429);
+}

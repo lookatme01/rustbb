@@ -500,6 +500,15 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
             "Sorry, but registration has been disabled by the administrator.",
         ));
     }
+    // The form says whether a name or address is taken before it checks the captcha, so cap how
+    // many tries one address gets: otherwise it is a free lookup of who is registered.
+    if !ctx
+        .app
+        .throttle(&format!("register-try:{}", ctx.ip), 20, 600)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let mut errors: Vec<String> = Vec::new();
     let username = f.username.trim().to_string();
     let email = f.email.trim().to_string();
