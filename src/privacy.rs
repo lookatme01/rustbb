@@ -40,10 +40,22 @@ const IP_COLUMNS: &[(&str, &str, &str)] = &[
 ];
 const BATCH: i64 = 5000;
 
+/// How long one run may spend shortening before it hands the rest to the next run: well inside
+/// the task lease, so a second node never starts the same job while this one is still going.
+const SHORTEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20 * 60);
+
 /// Shorten IP addresses on rows dated before `cut`, in batches so no table is locked for long.
 /// Every old row is checked each run (rows can arrive with old dates, e.g. from an import or a
 /// restore); rows already shortened are skipped.
-async fn shorten_ips(db: &sqlx::PgPool, cut: i64) -> anyhow::Result<u64> {
+///
+/// Returns how many addresses were shortened and whether every old row has been dealt with;
+/// `false` means the time budget ran out and the next run carries on.
+pub async fn shorten_ips_within(
+    db: &sqlx::PgPool,
+    cut: i64,
+    budget: std::time::Duration,
+) -> anyhow::Result<(u64, bool)> {
+    let started = std::time::Instant::now();
     let mut total = 0;
     for (table, time, col) in IP_COLUMNS {
         let sql = format!(
@@ -51,6 +63,9 @@ async fn shorten_ips(db: &sqlx::PgPool, cut: i64) -> anyhow::Result<u64> {
                 SELECT ctid FROM {table} WHERE {time} < $1 AND {col} IS NOT NULL AND {col} <> rbb_anon_ip({col}) LIMIT $2)"
         );
         loop {
+            if started.elapsed() >= budget {
+                return Ok((total, false));
+            }
             let n = sqlx::query(&sql)
                 .bind(cut)
                 .bind(BATCH)
@@ -63,7 +78,7 @@ async fn shorten_ips(db: &sqlx::PgPool, cut: i64) -> anyhow::Result<u64> {
             }
         }
     }
-    Ok(total)
+    Ok((total, true))
 }
 
 /// Scheduled task: shorten IP addresses past the limit and prune logs past their retention.
@@ -76,9 +91,16 @@ pub async fn run(app: &crate::app::App) -> anyhow::Result<crate::tasks::Ran> {
     let mut changed = false;
     let ip_days = s.int("privacy_ip_days");
     if ip_days > 0 {
-        let n = shorten_ips(db, t - ip_days * day).await?;
+        let (n, complete) = shorten_ips_within(db, t - ip_days * day, SHORTEN_BUDGET).await?;
         changed |= n > 0;
-        done.push(format!("shortened {n} IP addresses"));
+        done.push(format!(
+            "shortened {n} IP addresses{}",
+            if complete {
+                ""
+            } else {
+                " (more on the next run)"
+            }
+        ));
     }
     for (setting, table) in [
         ("privacy_audit_days", "user_audit"),
