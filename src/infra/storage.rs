@@ -112,15 +112,24 @@ impl Storage {
                 use tokio::io::AsyncReadExt;
                 let upload = store.put_multipart(&Self::object_path(prefix, key)).await?;
                 let mut w = object_store::WriteMultipart::new(upload);
-                let mut f = tokio::fs::File::open(file).await?;
-                let mut buf = vec![0u8; 256 * 1024];
-                loop {
-                    let n = f.read(&mut buf).await?;
-                    if n == 0 {
-                        break;
+                let copied: anyhow::Result<()> = async {
+                    let mut f = tokio::fs::File::open(file).await?;
+                    let mut buf = vec![0u8; 256 * 1024];
+                    loop {
+                        let n = f.read(&mut buf).await?;
+                        if n == 0 {
+                            return Ok(());
+                        }
+                        w.wait_for_capacity(4).await?;
+                        w.write(&buf[..n]);
                     }
-                    w.wait_for_capacity(4).await?;
-                    w.write(&buf[..n]);
+                }
+                .await;
+                if let Err(e) = copied {
+                    // Dropping an unfinished multipart upload leaves its parts in the bucket
+                    // (and billed) until a lifecycle rule removes them.
+                    let _ = w.abort().await;
+                    return Err(e);
                 }
                 w.finish().await?;
                 let _ = tokio::fs::remove_file(file).await;
