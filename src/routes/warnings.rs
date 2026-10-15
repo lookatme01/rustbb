@@ -167,6 +167,9 @@ pub async fn warn_submit(
     if f.pid == 0 && !ctx.settings().bool("allowwarningsnopost") {
         return Err(AppError::user("Warnings must be tied to a post."));
     }
+    // The warning and its points are written together, or the later expiry would take off
+    // points that were never added.
+    let mut tx = ctx.app.db.begin().await?;
     let wid: i32 = sqlx::query_scalar("INSERT INTO warnings (uid, tid, pid, title, points, dateline, issuedby, expires, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING wid")
         .bind(uid)
         .bind(f.warningtype)
@@ -177,9 +180,10 @@ pub async fn warn_submit(
         .bind(me.uid)
         .bind(expires)
         .bind(f.notes.trim())
-        .fetch_one(&ctx.app.db)
+        .fetch_one(&mut *tx)
         .await?;
-    let newpoints: i32 = sqlx::query_scalar("UPDATE users SET warningpoints = warningpoints + $2 WHERE uid = $1 RETURNING warningpoints").bind(uid).bind(points).fetch_one(&ctx.app.db).await?;
+    let newpoints: i32 = sqlx::query_scalar("UPDATE users SET warningpoints = warningpoints + $2 WHERE uid = $1 RETURNING warningpoints").bind(uid).bind(points).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
     // Warning levels.
     let max = ctx.settings().int("maxwarningpoints").max(1);
     let pct = (newpoints as i64 * 100 / max) as i32;
@@ -308,14 +312,26 @@ pub async fn revoke(
     if !ctx.perms.canwarnusers {
         return Err(AppError::no_perm());
     }
+    // Revoking and giving the points back happen together.
+    let mut tx = ctx.app.db.begin().await?;
     let row: Option<(i32, i32, bool)> = sqlx::query_as("UPDATE warnings SET daterevoked = $2, revokedby = $3, revokereason = $4 WHERE wid = $1 AND daterevoked = 0 RETURNING uid, points, expired")
         .bind(wid)
         .bind(now())
         .bind(ctx.uid())
         .bind(f.reason.trim())
-        .fetch_optional(&ctx.app.db)
+        .fetch_optional(&mut *tx)
         .await?;
     if let Some((uid, points, expired)) = row {
+        if !expired {
+            sqlx::query(
+                "UPDATE users SET warningpoints = GREATEST(warningpoints - $2, 0) WHERE uid = $1",
+            )
+            .bind(uid)
+            .bind(points)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
         crate::audit::log(
             &ctx,
             uid,
@@ -323,15 +339,6 @@ pub async fn revoke(
             serde_json::json!({"wid": wid}),
         )
         .await;
-        if !expired {
-            sqlx::query(
-                "UPDATE users SET warningpoints = GREATEST(warningpoints - $2, 0) WHERE uid = $1",
-            )
-            .bind(uid)
-            .bind(points)
-            .execute(&ctx.app.db)
-            .await?;
-        }
         crate::ops::log_moderator_action(
             &ctx.app,
             ctx.uid(),

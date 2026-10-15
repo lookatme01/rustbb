@@ -126,11 +126,14 @@ async fn run(app: &App, tid: i32, key: &str, logging: bool, force: bool) -> anyh
         &[("task", key)],
         t0.elapsed().as_secs_f64(),
     );
+    // Only release a lease this node still holds: if the run outlived LEASE another node has
+    // claimed the task, and clearing its lease would let a third run start alongside it.
     sqlx::query(
-        "UPDATE tasks SET lastrun = $2, locked_until = NULL, locked_by = NULL WHERE tid = $1",
+        "UPDATE tasks SET lastrun = $2, locked_until = NULL, locked_by = NULL WHERE tid = $1 AND locked_by = $3",
     )
     .bind(tid)
     .bind(now())
+    .bind(&app.node_id)
     .execute(&app.db)
     .await?;
     // A run started from the ACP is logged even when idle.
@@ -231,11 +234,14 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
             Ran::new(true, format!("pruned {a} read markers"))
         }
         "banlifter" => {
+            // The ban row and the member's restored groups change together: a crash in between
+            // would leave a member in the banned group with nothing left to lift it.
+            let mut tx = db.begin().await?;
             let lifted: Vec<(i32, i32, Vec<i32>, i32)> = sqlx::query_as(
                 "DELETE FROM banned WHERE lifted > 0 AND lifted <= $1 RETURNING uid, oldgroup, oldadditionalgroups, olddisplaygroup",
             )
             .bind(t)
-            .fetch_all(db)
+            .fetch_all(&mut *tx)
             .await?;
             let mut unbanned: Vec<(i32, String)> = vec![];
             for (uid, g, ag, dg) in &lifted {
@@ -244,10 +250,11 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
                     .bind(g)
                     .bind(ag)
                     .bind(dg)
-                    .fetch_optional(db)
+                    .fetch_optional(&mut *tx)
                     .await?;
                 unbanned.extend(name.map(|n| (*uid, n)));
             }
+            tx.commit().await?;
             crate::system::log_expiries(app, "Ban expired", &unbanned).await;
             for (sql, action) in [
                 (
@@ -269,17 +276,20 @@ async fn execute(app: &App, key: &str) -> anyhow::Result<Ran> {
             Ran::new(!lifted.is_empty(), format!("lifted {} bans", lifted.len()))
         }
         "warnings" => {
+            // Marking a warning expired and taking its points off the member go together.
+            let mut tx = db.begin().await?;
             let rows: Vec<(i32, i32)> = sqlx::query_as(
                 "UPDATE warnings SET expired = TRUE WHERE expired = FALSE AND daterevoked = 0 AND expires > 0 AND expires <= $1 RETURNING uid, points",
             )
             .bind(t)
-            .fetch_all(db)
+            .fetch_all(&mut *tx)
             .await?;
             let mut expired: Vec<(i32, String)> = vec![];
             for (uid, pts) in &rows {
-                let name: Option<String> = sqlx::query_scalar("UPDATE users SET warningpoints = GREATEST(warningpoints - $2, 0) WHERE uid = $1 RETURNING username").bind(uid).bind(pts).fetch_optional(db).await?;
+                let name: Option<String> = sqlx::query_scalar("UPDATE users SET warningpoints = GREATEST(warningpoints - $2, 0) WHERE uid = $1 RETURNING username").bind(uid).bind(pts).fetch_optional(&mut *tx).await?;
                 expired.extend(name.map(|n| (*uid, n)));
             }
+            tx.commit().await?;
             crate::system::log_expiries(app, "Warning expired", &expired).await;
             Ran::new(!rows.is_empty(), format!("expired {} warnings", rows.len()))
         }

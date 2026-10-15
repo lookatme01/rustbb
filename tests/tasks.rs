@@ -81,3 +81,62 @@ async fn idle_scheduled_runs_are_not_logged_but_manual_runs_are() {
     assert_eq!(msg, "lifted 0 bans");
     assert_eq!(logged().await, 1);
 }
+
+#[tokio::test]
+async fn expiry_tasks_restore_groups_and_take_warning_points_off() {
+    let t = test_app!();
+    let uid = t.create_user("expiring", "Passw0rd-expiring").await;
+    let now = rbb::util::now();
+    // Banned until an hour ago: the banned group comes off and the old group comes back.
+    sqlx::query("UPDATE users SET usergroup = 7, warningpoints = 15 WHERE uid = $1")
+        .bind(uid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO banned (uid, gid, oldgroup, admin, dateline, lifted) VALUES ($1, 7, 2, 1, $2, $3)")
+        .bind(uid)
+        .bind(now - 86400)
+        .bind(now - 3600)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    // Two warnings: one has run out, one has not.
+    sqlx::query("INSERT INTO warnings (uid, title, points, dateline, issuedby, expires) VALUES ($1, 'old', 5, $2, 1, $3), ($1, 'live', 10, $2, 1, $4)")
+        .bind(uid)
+        .bind(now - 86400)
+        .bind(now - 60)
+        .bind(now + 86400)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let run = |key: &'static str| {
+        let (app, pool) = (t.app.clone(), t.db.pool.clone());
+        async move {
+            let tid: i32 = sqlx::query_scalar("SELECT tid FROM tasks WHERE key = $1")
+                .bind(key)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            rbb::tasks::run_task(&app, tid, key, 300, true)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(run("banlifter").await, "lifted 1 bans");
+    assert_eq!(run("warnings").await, "expired 1 warnings");
+    let (group, points): (i32, i32) =
+        sqlx::query_as("SELECT usergroup, warningpoints FROM users WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!((group, points), (2, 10));
+    let bans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM banned WHERE uid = $1")
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(bans, 0);
+    // Running again changes nothing.
+    assert_eq!(run("warnings").await, "expired 0 warnings");
+}
