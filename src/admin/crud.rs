@@ -866,11 +866,40 @@ pub async fn save(
                 }
             }
             Kind::Int => {
-                let n: i64 = field_str(v).trim().parse().unwrap_or(0);
+                let raw = field_str(v);
+                let raw = raw.trim();
+                // Blank is zero; anything else must be a number that fits, not silently wrap.
+                let n: i32 = if raw.is_empty() {
+                    0
+                } else {
+                    raw.parse().map_err(|_| {
+                        AppError::user(format!(
+                            "{} must be a whole number that is not too large.",
+                            fdef.label
+                        ))
+                    })?
+                };
                 // Column types vary (smallint/int); send as text-cast-free integer.
-                q.bind(n as i32)
+                q.bind(n)
             }
-            Kind::Days => q.bind(field_str(v).trim().parse::<i64>().unwrap_or(0) * 86400),
+            Kind::Days => {
+                let raw = field_str(v);
+                let days: i64 = if raw.trim().is_empty() {
+                    0
+                } else {
+                    raw.trim()
+                        .parse()
+                        .ok()
+                        .filter(|d: &i64| (0..=36_500).contains(d))
+                        .ok_or_else(|| {
+                            AppError::user(format!(
+                                "{} must be between 0 and 36500 days.",
+                                fdef.label
+                            ))
+                        })?
+                };
+                q.bind(days * 86400)
+            }
             Kind::Bool => q.bind(matches!(field_str(v).as_str(), "1" | "on" | "yes" | "true")),
             Kind::Groups | Kind::Forums => q.bind(field_ints(v)),
             Kind::Json => {

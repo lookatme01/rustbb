@@ -360,3 +360,39 @@ async fn a_restricted_admin_cannot_reset_the_security_of_staff_accounts() {
         .unwrap();
     assert!(!secret.is_empty(), "the second factor was removed");
 }
+
+#[tokio::test]
+async fn the_generic_editor_refuses_numbers_that_do_not_fit_instead_of_wrapping_them() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let save = |order: &'static str| {
+        let c = &c;
+        async move {
+            c.post_form(
+                "/admin/crud/smilies/save",
+                &[
+                    ("name", "grin"),
+                    ("find", ":D"),
+                    ("image", "/static/grin.svg"),
+                    ("disporder", order),
+                ],
+            )
+            .await
+        }
+    };
+    // 4294967297 used to become 1 through `as i32`.
+    let r = save("4294967297").await;
+    assert!(r.body.contains("whole number"), "{} {}", r.status, r.body);
+    let r = save("7").await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let order: i32 = sqlx::query_scalar("SELECT disporder FROM smilies WHERE name = 'grin'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(order, 7);
+}
