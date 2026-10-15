@@ -289,6 +289,10 @@ pub struct OnlineSummary {
     pub bots: Vec<String>,
     pub total: i64,
     pub cutoff: i64,
+    /// Every member the counts include, shown or not (invisible members are counted but may not
+    /// be listed), so the viewer is added to the counts only once.
+    #[serde(default)]
+    pub counted: Vec<i32>,
 }
 
 #[derive(Serialize, serde::Deserialize, Clone)]
@@ -326,20 +330,23 @@ pub async fn online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
         }
     };
     // The viewer is online even if the cached summary predates their arrival.
-    if let Some(u) = &ctx.user
-        && !summary.members.iter().any(|m| m.uid == u.uid)
-    {
-        summary.members.push(OnlineUser {
-            uid: u.uid,
-            formatted: ctx
-                .cache
-                .format_name(&u.username, u.usergroup, u.displaygroup),
-            invisible: u.invisible,
-            username: u.username.clone(),
-            avatar: String::new(),
-        });
-        summary.num_members += 1;
-        summary.total += 1;
+    if let Some(u) = &ctx.user {
+        if !summary.counted.contains(&u.uid) {
+            summary.counted.push(u.uid);
+            summary.num_members += 1;
+            summary.total += 1;
+        }
+        if !summary.members.iter().any(|m| m.uid == u.uid) {
+            summary.members.push(OnlineUser {
+                uid: u.uid,
+                formatted: ctx
+                    .cache
+                    .format_name(&u.username, u.usergroup, u.displaygroup),
+                invisible: u.invisible,
+                username: u.username.clone(),
+                avatar: String::new(),
+            });
+        }
     }
     // Faces for the first members shown.
     let shown: Vec<i32> = summary.members.iter().take(40).map(|m| m.uid).collect();
@@ -434,6 +441,7 @@ async fn compute_online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
         bots,
         total,
         cutoff: mins,
+        counted: uids,
     })
 }
 
