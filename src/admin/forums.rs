@@ -349,10 +349,28 @@ async fn purge_forums(app: &crate::app::App, fids: &[i32]) -> AppResult<()> {
         }
         crate::ops::delete_threads(app, &tids).await?;
     }
+    // Deleting the forums takes their moderator assignments with it, but not the Moderators
+    // group those members were given alongside them.
+    let moderators: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT id FROM moderators WHERE fid = ANY($1) AND NOT isgroup",
+    )
+    .bind(fids)
+    .fetch_all(&app.db)
+    .await?;
+    let mut tx = app.db.begin().await?;
     sqlx::query("DELETE FROM forums WHERE fid = ANY($1)")
         .bind(fids)
-        .execute(&app.db)
+        .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "UPDATE users SET additionalgroups = array_remove(additionalgroups, 6)
+         WHERE uid = ANY($1) AND NOT EXISTS (
+            SELECT 1 FROM moderators m WHERE m.id = users.uid AND NOT m.isgroup)",
+    )
+    .bind(&moderators)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
 }
 

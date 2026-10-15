@@ -267,3 +267,63 @@ async fn post_settings(
     c.post_form(&format!("/admin/settings/{group}"), &refs)
         .await
 }
+
+#[tokio::test]
+async fn deleting_a_forum_takes_its_moderators_out_of_the_moderators_group() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO forums (fid, name, description, type, pid, parentlist, disporder) VALUES (40, 'Doomed', '', 'f', 0, '{40}', 40), (41, 'Kept', '', 'f', 0, '{41}', 41)")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let only = t.create_user("onlymod", "Passw0rd-onlymod").await;
+    let both = t.create_user("bothmod", "Passw0rd-bothmod").await;
+    for uid in [only, both] {
+        sqlx::query("UPDATE users SET additionalgroups = '{6}' WHERE uid = $1")
+            .bind(uid)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES (40, $1, FALSE, '{}'), (40, $2, FALSE, '{}'), (41, $2, FALSE, '{}')")
+        .bind(only)
+        .bind(both)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums", "moderators"]).await.unwrap();
+    let r = c.post_form("/admin/forums/delete", &[("fid", "40")]).await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    // The purge runs in the background.
+    for _ in 0..100 {
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM forums WHERE fid = 40")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+        if left == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let groups = |uid: i32| {
+        let pool = t.db.pool.clone();
+        async move {
+            sqlx::query_scalar::<_, Vec<i32>>("SELECT additionalgroups FROM users WHERE uid = $1")
+                .bind(uid)
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+        }
+    };
+    assert!(groups(only).await.is_empty(), "no forum left to moderate");
+    assert_eq!(
+        groups(both).await,
+        vec![6],
+        "still moderates the other forum"
+    );
+}
