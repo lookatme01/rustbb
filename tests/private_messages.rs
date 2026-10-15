@@ -420,3 +420,36 @@ async fn cancelling_does_not_delete_a_message_that_was_already_read() {
         .unwrap();
     assert_eq!(left, 1);
 }
+
+#[tokio::test]
+async fn the_pm_flood_limit_cannot_be_reset_by_deleting_copies() {
+    let t = test_app!();
+    t.create_user("friend", "Passw0rd-friend").await;
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('pmfloodsecs', '60') ON CONFLICT (name) DO UPDATE SET value = '60'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let uid = t.create_user("flooder", "Passw0rd-flooder").await;
+    let c = t.login_as(uid).await;
+    assert!(send_to_friend(&c, "One").await.status.is_redirection());
+    // No saved copy, and the recipient's copy is deleted: no rows are left to measure from.
+    sqlx::query("DELETE FROM privatemessages")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = send_to_friend(&c, "Two").await;
+    assert!(r.body.contains("Please wait"), "{} {}", r.status, r.body);
+}
+
+async fn send_to_friend(c: &common::Client, subject: &str) -> common::Response {
+    c.post_form(
+        "/pm/send",
+        &[
+            ("to", "friend"),
+            ("subject", subject),
+            ("message", "Body text"),
+        ],
+    )
+    .await
+}

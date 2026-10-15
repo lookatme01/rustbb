@@ -883,6 +883,19 @@ pub async fn send(ctx: Ctx, CsrfForm(f): CsrfForm<SendForm>) -> AppResult<Respon
             "Please wait {wait} more seconds before sending another message."
         )));
     }
+    // The check above reads the sender's surviving messages, which recipients can delete (and
+    // which don't exist without a saved copy); this counter can't be reset that way.
+    if check_flood
+        && flood > 0
+        && !ctx
+            .app
+            .throttle(&format!("pmflood:{}", me.uid), 1, flood)
+            .await
+    {
+        return Err(AppError::user(format!(
+            "Please wait up to {flood} seconds before sending another message."
+        )));
+    }
     let mut rec_pmids: Vec<(i32, i32)> = vec![];
     for r in &recipients {
         let pmid: i32 = sqlx::query_scalar(
