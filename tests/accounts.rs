@@ -530,3 +530,14 @@ async fn two_factor_changes_end_other_sessions_and_cannot_be_replaced_with_just_
     assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
     assert_eq!(sessions().await, 1);
 }
+
+#[tokio::test]
+async fn captcha_refresh_is_rate_limited_per_address() {
+    let t = test_app!();
+    let c = t.client();
+    let mut last = 200;
+    for _ in 0..31 {
+        last = c.get("/captcha/refresh").await.status.as_u16();
+    }
+    assert_eq!(last, 429);
+}

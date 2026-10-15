@@ -120,6 +120,14 @@ pub async fn image(ctx: Ctx, Path(hash): Path<String>) -> AppResult<Response> {
 }
 
 pub async fn refresh(ctx: Ctx) -> AppResult<Response> {
+    // Every call writes a row that stays until the hourly cleanup, and it needs no sign-in.
+    if !ctx
+        .app
+        .throttle(&format!("captcha-refresh:{}", ctx.ip), 30, 300)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let h = new_captcha(&ctx).await?;
     Ok(axum::Json(serde_json::json!({"hash": h})).into_response())
 }

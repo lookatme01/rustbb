@@ -565,6 +565,13 @@ fn split_db_password(url: &str) -> (String, Option<String>) {
 pub async fn backup(ctx: Ctx, CsrfForm(_): CsrfForm<AnyForm>) -> AppResult<Response> {
     use tokio::io::AsyncReadExt;
     crate::admin::acp_guard!(ctx, "tools");
+    // The dump holds password hashes, private messages and the mail password: more than the
+    // maintenance the tools module stands for, so only unrestricted admins may take it.
+    if !crate::admin::users::is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can download a database backup.",
+        ));
+    }
     let bin = pg_dump_path()
         .ok_or_else(|| AppError::user("pg_dump was not found. Set RBB_PG_DUMP to its path."))?;
     let (url, password) = split_db_password(&ctx.app.cfg.database_url);

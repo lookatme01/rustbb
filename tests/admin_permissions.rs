@@ -123,3 +123,22 @@ async fn an_unrestricted_admin_can_grant_admin_cp_access_to_a_group() {
     .await;
     assert!(cancp(&t, 6).await);
 }
+
+#[tokio::test]
+async fn only_an_unrestricted_admin_can_download_a_database_backup() {
+    let t = test_app!();
+    let c = restricted_admin(&t).await;
+    sqlx::query(
+        "UPDATE adminoptions SET permissions = '{\"users\": false, \"tools\": true}' WHERE uid = 1",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    let r = c.post_form("/admin/tools/backup", &[]).await;
+    assert!(
+        r.body.contains("without Admin Permissions restrictions"),
+        "{} {}",
+        r.status,
+        r.body
+    );
+}
