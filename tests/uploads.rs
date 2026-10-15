@@ -761,3 +761,71 @@ async fn a_threads_attachment_count_matches_a_recount_on_every_path() {
     let problems = rbb::ops::check_counters(&t.db.pool).await.unwrap();
     assert!(problems.is_empty(), "{problems:?}");
 }
+
+fn stored_attachments(t: &common::TestApp) -> usize {
+    let dir = std::path::Path::new(&t.app.cfg.upload_dir).join("attachments");
+    fn count(p: &std::path::Path) -> usize {
+        std::fs::read_dir(p)
+            .map(|d| {
+                d.flatten()
+                    .map(|e| {
+                        if e.path().is_dir() {
+                            count(&e.path())
+                        } else {
+                            1
+                        }
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+    count(&dir)
+}
+
+#[tokio::test]
+async fn a_failed_upload_does_not_leave_its_files_in_storage() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enableattachments', '1') ON CONFLICT (name) DO UPDATE SET value = '1'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    // Every attachment row insert fails, after the file has already been stored.
+    sqlx::query("CREATE FUNCTION refuse_attachment() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$ LANGUAGE plpgsql")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("CREATE TRIGGER refuse_attachment BEFORE INSERT ON attachments FOR EACH ROW EXECUTE FUNCTION refuse_attachment()")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(1).await;
+    let csrf = c.csrf();
+    let before = stored_attachments(&t);
+    let (ct, body) = multipart(
+        &[
+            ("my_post_key", &csrf),
+            ("posthash", "0123456789abcdefXYZ"),
+            ("fid", "3"),
+        ],
+        Some(("notes.txt", b"plain text attachment content")),
+    );
+    let r = c
+        .request(
+            Request::post("/attachment/upload")
+                .header(header::CONTENT_TYPE, ct)
+                .header(
+                    header::COOKIE,
+                    format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await;
+    assert!(r.status.is_server_error(), "{} {}", r.status, r.body);
+    assert_eq!(
+        stored_attachments(&t),
+        before,
+        "the stored file was cleaned up"
+    );
+}

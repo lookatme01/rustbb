@@ -260,29 +260,50 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
     // other forum is no exemption.
     let visible = ctx.is_mod(fid)
         || !((fid > 0 && ctx.forum_perms(fid).modattachments) || ctx.perms.modattachments);
-    let aid: i32 = sqlx::query_scalar(
-        "INSERT INTO attachments (pid, posthash, uid, filename, filetype, filesize, attachname, dateuploaded, visible, thumbnail) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING aid",
-    )
-    .bind(pid)
-    .bind(&posthash)
-    .bind(me.uid)
-    .bind(&filename)
-    .bind(&at.mimetype)
-    .bind(size)
-    .bind(&attachname)
-    .bind(now())
-    .bind(visible)
-    .bind(if thumbname == attachname { String::new() } else { thumbname })
-    .fetch_one(&mut *tx)
-    .await?;
-    if pid > 0 {
-        sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = $1")
-            .bind(pid)
-            .execute(&mut *tx)
-            .await?;
-        crate::ops::refresh_attachment_count_of_post(&mut tx, pid).await?;
+    let stored_thumb = if thumbname == attachname {
+        String::new()
+    } else {
+        thumbname
+    };
+    // The files are already in storage; if the row cannot be written they must not be left
+    // behind with nothing pointing at them.
+    let written: AppResult<i32> = async {
+        let aid: i32 = sqlx::query_scalar(
+            "INSERT INTO attachments (pid, posthash, uid, filename, filetype, filesize, attachname, dateuploaded, visible, thumbnail) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING aid",
+        )
+        .bind(pid)
+        .bind(&posthash)
+        .bind(me.uid)
+        .bind(&filename)
+        .bind(&at.mimetype)
+        .bind(size)
+        .bind(&attachname)
+        .bind(now())
+        .bind(visible)
+        .bind(&stored_thumb)
+        .fetch_one(&mut *tx)
+        .await?;
+        if pid > 0 {
+            sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = $1")
+                .bind(pid)
+                .execute(&mut *tx)
+                .await?;
+            crate::ops::refresh_attachment_count_of_post(&mut tx, pid).await?;
+        }
+        tx.commit().await?;
+        Ok(aid)
     }
-    tx.commit().await?;
+    .await;
+    let aid = match written {
+        Ok(aid) => aid,
+        Err(e) => {
+            let _ = ctx.app.storage.delete(&attachname).await;
+            if !stored_thumb.is_empty() {
+                let _ = ctx.app.storage.delete(&stored_thumb).await;
+            }
+            return Err(e);
+        }
+    };
     Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(size), "visible": visible, "is_image": is_image})).into_response())
 }
 
