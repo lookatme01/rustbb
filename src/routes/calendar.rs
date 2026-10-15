@@ -124,10 +124,12 @@ fn occurrences(ctx: &Ctx, e: &EventRow, from: NaiveDate, to: NaiveDate) -> Vec<N
             .date_naive()
     });
     let mut out = vec![];
+    // Only the days of the span inside [from, to] matter; events can span years.
     let push_span = |d: NaiveDate, out: &mut Vec<NaiveDate>| {
-        for i in 0..=span {
-            let x = d + Duration::days(i);
-            if x >= from && x <= to {
+        let first = (from - d).num_days().clamp(0, span);
+        let last = (to - d).num_days().min(span);
+        for i in first..=last {
+            if let Some(x) = d.checked_add_signed(Duration::days(i)) {
                 out.push(x);
             }
         }
@@ -148,7 +150,9 @@ fn occurrences(ctx: &Ctx, e: &EventRow, from: NaiveDate, to: NaiveDate) -> Vec<N
                 }
             };
             // Earliest occurrence that could still reach `from` (multi-day spans reach back).
-            let reach = from - Duration::days(span);
+            let reach = from
+                .checked_sub_signed(Duration::days(span))
+                .unwrap_or(NaiveDate::MIN);
             let mut n = match kind {
                 "daily" => (reach - start).num_days() / interval,
                 "weekly" => (reach - start).num_days() / (7 * interval),
@@ -501,10 +505,18 @@ pub struct EventForm {
     pub until: String,
 }
 
+/// A date typed into the event form. Years outside 1900-2200 are refused: chrono accepts
+/// ±262142, and absurd dates make the occurrence maths overflow or run for ages.
+fn event_date_input(s: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d")
+        .ok()
+        .filter(|d| (1900..=2200).contains(&d.year()))
+}
+
 fn build_times(ctx: &Ctx, f: &EventForm) -> AppResult<(i64, i64, bool, serde_json::Value)> {
     use chrono::TimeZone;
-    let d = NaiveDate::parse_from_str(f.date.trim(), "%Y-%m-%d")
-        .map_err(|_| AppError::user("Please enter a valid start date."))?;
+    let d = event_date_input(&f.date)
+        .ok_or_else(|| AppError::user("Please enter a valid start date."))?;
     let usingtime = !f.starttime.trim().is_empty();
     let to_ts = |date: NaiveDate, time: &str| -> AppResult<i64> {
         if usingtime {
@@ -525,8 +537,8 @@ fn build_times(ctx: &Ctx, f: &EventForm) -> AppResult<(i64, i64, bool, serde_jso
         let ed = if f.enddate.trim().is_empty() {
             d
         } else {
-            NaiveDate::parse_from_str(f.enddate.trim(), "%Y-%m-%d")
-                .map_err(|_| AppError::user("Please enter a valid end date."))?
+            event_date_input(&f.enddate)
+                .ok_or_else(|| AppError::user("Please enter a valid end date."))?
         };
         let t = if f.endtime.trim().is_empty() {
             "23:59"
@@ -545,8 +557,7 @@ fn build_times(ctx: &Ctx, f: &EventForm) -> AppResult<(i64, i64, bool, serde_jso
         "daily" | "weekly" | "monthly" | "yearly" => f.repeat.clone(),
         _ => "none".into(),
     };
-    let until = NaiveDate::parse_from_str(f.until.trim(), "%Y-%m-%d")
-        .ok()
+    let until = event_date_input(&f.until)
         .map(|u| u.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp())
         .unwrap_or(0);
     Ok((

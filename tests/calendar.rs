@@ -71,3 +71,43 @@ async fn absurd_years_in_day_and_week_views_are_not_found_not_a_panic() {
         assert_eq!(r.status, 404, "{view}: {}", r.status);
     }
 }
+
+#[tokio::test]
+async fn events_with_absurd_dates_are_refused_and_cannot_stall_the_views() {
+    let t = test_app!();
+    let cid: i32 = sqlx::query_scalar("SELECT MIN(cid) FROM calendars")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(1).await;
+    let r = c
+        .post_form(
+            &format!("/calendar/{cid}/addevent"),
+            &[
+                ("name", "Forever"),
+                ("message", "Spans eight thousand years"),
+                ("date", "0001-01-01"),
+                ("enddate", "9999-12-31"),
+                ("repeat", "daily"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+    // Rows that predate the check (or arrive from an import) must not stall the views either.
+    sqlx::query("INSERT INTO events (cid, uid, name, description, dateline, starttime, endtime, repeats) VALUES ($1, 1, 'Forever', 'x', 1, -62135596800, 253402300799, '{\"type\":\"daily\",\"interval\":1}')")
+        .bind(cid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    for path in [
+        format!("/calendar/{cid}"),
+        format!("/calendar/{cid}/week/2026-10-15"),
+        format!("/calendar/{cid}/day/2026-10-15"),
+    ] {
+        let r = c.get(&path).await;
+        assert_eq!(r.status, 200, "{path}: {}", r.status);
+        assert!(r.body.contains("Forever"), "{path}: the event is shown");
+    }
+    assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
+}
