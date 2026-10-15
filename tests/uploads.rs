@@ -683,3 +683,81 @@ async fn attachments_uploaded_for_one_forum_are_moderated_by_the_forum_they_are_
         "the attachment must wait for approval in the forum it was posted to"
     );
 }
+
+#[tokio::test]
+async fn a_threads_attachment_count_matches_a_recount_on_every_path() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO settings (name, value) VALUES ('enableattachments', '1') ON CONFLICT (name) DO UPDATE SET value = '1'")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["settings"]).await.unwrap();
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(1).await;
+    let csrf = c.csrf();
+    let upload = |hash: &'static str, pid: i32| {
+        let (ct, body) = multipart(
+            &[
+                ("my_post_key", &csrf),
+                ("posthash", hash),
+                ("fid", &fid.to_string()),
+                ("pid", &pid.to_string()),
+            ],
+            Some(("notes.txt", b"attachment body")),
+        );
+        let req = Request::post("/attachment/upload")
+            .header(header::CONTENT_TYPE, ct)
+            .header(
+                header::COOKIE,
+                format!("rbb_auth={}", c.cookie("rbb_auth").unwrap()),
+            )
+            .body(Body::from(body))
+            .unwrap();
+        c.request(req)
+    };
+    assert_eq!(upload("0123456789abcdefAAA", 0).await.status, 200);
+    let r = c
+        .post_form(
+            &format!("/newthread/{fid}"),
+            &[
+                ("subject", "With a file"),
+                ("message", "Opening post with an attachment."),
+                ("posthash", "0123456789abcdefAAA"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let (tid, first): (i32, i32) =
+        sqlx::query_as("SELECT tid, firstpost FROM threads ORDER BY tid DESC LIMIT 1")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    let count = || async {
+        sqlx::query_scalar::<_, i32>("SELECT attachmentcount FROM threads WHERE tid = $1")
+            .bind(tid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(count().await, 1, "first-post attachment counted");
+    // Added to the existing post afterwards.
+    assert_eq!(upload("", first).await.status, 200);
+    assert_eq!(count().await, 2);
+    let aid: i32 = sqlx::query_scalar("SELECT MAX(aid) FROM attachments")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let r = c.post_form(&format!("/attachment/{aid}/remove"), &[]).await;
+    assert!(
+        r.status.is_redirection() || r.status == 200,
+        "{} {}",
+        r.status,
+        r.body
+    );
+    assert_eq!(count().await, 1);
+    let problems = rbb::ops::check_counters(&t.db.pool).await.unwrap();
+    assert!(problems.is_empty(), "{problems:?}");
+}

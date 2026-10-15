@@ -318,6 +318,7 @@ pub async fn create_thread(
             .await?;
     }
     attach_uploads(tx, ctx, fid, &input.posthash, pid, actor, uid).await?;
+    crate::ops::refresh_attachment_count(tx, tid).await?;
     if input.as_system {
         record_system_authorship(tx, ctx, "thread", tid, &subject).await?;
     }
@@ -602,16 +603,17 @@ async fn insert_reply(
         .await?;
     if visible == 1 {
         sqlx::query(
-            "UPDATE threads SET replies = replies + 1, lastpost = $2, lastposter = $3, lastposteruid = $4,
-                attachmentcount = attachmentcount + $5 WHERE tid = $1",
+            "UPDATE threads SET replies = replies + 1, lastpost = $2, lastposter = $3, lastposteruid = $4 WHERE tid = $1",
         )
         .bind(tid)
         .bind(t)
         .bind(&username)
         .bind(uid)
-        .bind(nattach as i32)
         .execute(&mut *tx)
         .await?;
+        if nattach > 0 {
+            crate::ops::refresh_attachment_count(tx, tid).await?;
+        }
         if tvis == 1 {
             sqlx::query(
                 "UPDATE forums SET posts = posts + 1, lastpost = $2, lastposter = $3, lastposteruid = $4, lastposttid = $5, lastpostsubject = $6

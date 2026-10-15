@@ -280,6 +280,7 @@ pub async fn upload(ctx: Ctx, mut mp: Multipart) -> AppResult<Response> {
             .bind(pid)
             .execute(&mut *tx)
             .await?;
+        crate::ops::refresh_attachment_count_of_post(&mut tx, pid).await?;
     }
     tx.commit().await?;
     Ok(Json(serde_json::json!({"aid": aid, "filename": filename, "size": util::format_bytes(size), "visible": visible, "is_image": is_image})).into_response())
@@ -437,6 +438,7 @@ pub async fn remove(
         .execute(uow.conn())
         .await?;
     if pid > 0 {
+        crate::ops::refresh_attachment_count_of_post(uow.conn(), pid).await?;
         sqlx::query("UPDATE posts SET parser_rev = -1 WHERE pid = $1")
             .bind(pid)
             .execute(uow.conn())
@@ -470,9 +472,12 @@ pub async fn approve(
     {
         return Err(AppError::no_perm());
     }
+    let mut tx = ctx.app.db.begin().await?;
     sqlx::query("UPDATE attachments SET visible = TRUE WHERE aid = $1")
         .bind(aid)
-        .execute(&ctx.app.db)
+        .execute(&mut *tx)
         .await?;
+    crate::ops::refresh_attachment_count_of_post(&mut tx, pid).await?;
+    tx.commit().await?;
     Ok(ctx.redirect(&format!("/post/{pid}"), "The attachment has been approved."))
 }

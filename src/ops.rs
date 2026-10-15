@@ -418,6 +418,33 @@ pub async fn delete_posts_in(uow: &mut Uow, pids: &[i32]) -> AppResult<()> {
     Ok(())
 }
 
+/// Set a thread's attachment count to what `recount_threads` computes: visible attachments on
+/// visible posts. Every path that adds, removes or approves attachments calls this, so the
+/// figure cannot depend on which one touched the thread last.
+pub async fn refresh_attachment_count(c: &mut PgConnection, tid: i32) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE threads SET attachmentcount = (
+            SELECT COUNT(*)::int FROM attachments a JOIN posts p ON p.pid = a.pid
+            WHERE p.tid = $1 AND p.visible = 1 AND a.visible) WHERE tid = $1",
+    )
+    .bind(tid)
+    .execute(c)
+    .await?;
+    Ok(())
+}
+
+/// `refresh_attachment_count` for the thread a post belongs to.
+pub async fn refresh_attachment_count_of_post(c: &mut PgConnection, pid: i32) -> AppResult<()> {
+    let tid: Option<i32> = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
+        .bind(pid)
+        .fetch_optional(&mut *c)
+        .await?;
+    match tid {
+        Some(tid) => refresh_attachment_count(c, tid).await,
+        None => Ok(()),
+    }
+}
+
 pub async fn delete_threads(app: &App, tids: &[i32]) -> AppResult<()> {
     own_uow!(app, |uow| delete_threads_in(&mut uow, tids).await?)
 }
