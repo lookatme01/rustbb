@@ -133,6 +133,14 @@ pub async fn edit_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Re
             "The Administrators group must keep Admin CP access.",
         ));
     }
+    // Turning Admin CP access on for a group makes all its members administrators; as with
+    // adding a member to an admin group, a module-restricted admin must not be able to do that.
+    let already_admin = gid > 0 && ctx.cache.group(gid).is_some_and(|g| g.perms.0.cancp);
+    if perms.cancp && !already_admin && !crate::admin::users::is_full_admin(&ctx).await? {
+        return Err(AppError::user(
+            "Only an administrator without Admin Permissions restrictions can grant administrator access.",
+        ));
+    }
     let kind: i16 = if gid > 0 && ctx.cache.group(gid).map(|g| g.kind == 1).unwrap_or(false) {
         1
     } else {

@@ -327,7 +327,7 @@ fn has_staff_role(ctx: &Ctx, u: &User) -> bool {
 
 /// Whether the signed-in admin has no per-module restrictions (Admin Permissions). Only these
 /// admins may touch other administrators' accounts or admin permissions.
-async fn is_full_admin(ctx: &Ctx) -> AppResult<bool> {
+pub(super) async fn is_full_admin(ctx: &Ctx) -> AppResult<bool> {
     let perms: Option<serde_json::Value> =
         sqlx::query_scalar("SELECT permissions FROM adminoptions WHERE uid = $1")
             .bind(ctx.uid())
