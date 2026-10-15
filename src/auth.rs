@@ -312,9 +312,63 @@ pub fn ip_matches(filter: &str, ip: &str) -> bool {
 pub fn valid_username_chars(name: &str) -> bool {
     !name
         .chars()
-        .any(|c| c.is_control() || "<>&\\\"';,".contains(c))
+        .any(|c| c.is_control() || invisible_char(c) || "<>&\\\"';,".contains(c))
         && name.trim() == name
         && !name.contains("  ")
+}
+
+/// Characters that draw nothing or look like a space (zero-width and bidi controls, fillers,
+/// non-ASCII spaces, tag characters). In a username they make two names that look identical but
+/// compare differently, which defeats uniqueness and the username ban filters.
+fn invisible_char(c: char) -> bool {
+    (c.is_whitespace() && c != ' ')
+        || matches!(
+            c as u32,
+            0x00AD
+                | 0x034F
+                | 0x0600..=0x0605
+                | 0x061C
+                | 0x06DD
+                | 0x070F
+                | 0x115F
+                | 0x1160
+                | 0x17B4
+                | 0x17B5
+                | 0x180B..=0x180F
+                | 0x200B..=0x200F
+                | 0x202A..=0x202E
+                | 0x2060..=0x206F
+                | 0x3164
+                | 0xFE00..=0xFE0F
+                | 0xFEFF
+                | 0xFFA0
+                | 0xFFF9..=0xFFFB
+                | 0xE0000..=0xE0FFF
+        )
+}
+
+#[cfg(test)]
+mod username_tests {
+    use super::valid_username_chars;
+
+    #[test]
+    fn lookalike_and_invisible_characters_are_refused() {
+        for bad in [
+            "admin\u{200B}",
+            "ad\u{200D}min",
+            "\u{3164}\u{3164}",
+            "a\u{202E}b",
+            "a\u{00A0}b",
+            "a\u{3000}b",
+            "a\u{FEFF}b",
+            "a\u{E0041}b",
+        ] {
+            assert!(!valid_username_chars(bad), "{bad:?} must be refused");
+        }
+        for good in ["admin", "Jos\u{00E9}", "\u{5C71}\u{7530}", "a b", "x_y-z.1"] {
+            assert!(valid_username_chars(good), "{good:?} must be allowed");
+        }
+    }
 }
 
 pub fn password_strength_error(ctx: &CtxInner, pw: &str, username: &str) -> Option<String> {
