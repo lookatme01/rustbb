@@ -191,3 +191,47 @@ async fn a_warning_can_only_cite_a_post_the_member_wrote() {
     );
     assert_eq!(points(&t, plain).await, 0);
 }
+
+#[tokio::test]
+async fn ip_search_lists_only_posts_the_moderator_may_see() {
+    let t = test_app!();
+    let (warner, _, plain) = setup(&t).await;
+    sqlx::query(
+        "UPDATE usergroups SET perms = perms || '{\"canuseipsearch\":true}'::jsonb WHERE gid = 30",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, 'Open thread', $2, 'plainuser', 1, 1, 1) RETURNING tid",
+    )
+    .bind(fid)
+    .bind(plain)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    for (subject, visible) in [("Shown subject", 1), ("Removed subject", -1)] {
+        sqlx::query("INSERT INTO posts (tid, fid, subject, uid, username, dateline, message, visible, ipaddress) VALUES ($1, $2, $3, $4, 'plainuser', 1, 'text', $5, '203.0.113.5')")
+            .bind(tid)
+            .bind(fid)
+            .bind(subject)
+            .bind(plain)
+            .bind(visible)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    let c = t.login_as(warner).await;
+    let r = c.get("/modcp/ipsearch?ip=203.0.113.5").await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.body.contains("Shown subject"), "{}", r.body);
+    assert!(
+        !r.body.contains("Removed subject"),
+        "a soft-deleted post's subject leaked"
+    );
+}

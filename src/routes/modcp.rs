@@ -1566,12 +1566,21 @@ pub async fn ipsearch(ctx: Ctx, Query(q): Query<IpQuery>) -> AppResult<Response>
         .bind(&arg)
         .fetch_all(&ctx.app.db)
         .await?;
-        let posts: Vec<(i32, i32, String, String, i64)> = sqlx::query_as(&format!(
-            "SELECT pid, uid, username, subject, dateline FROM posts WHERE {cond_p} ORDER BY pid DESC LIMIT 200"
+        let found: Vec<(i32, i32, String, String, i64, i32, i16)> = sqlx::query_as(&format!(
+            "SELECT pid, uid, username, subject, dateline, fid, visible FROM posts WHERE {cond_p} ORDER BY pid DESC LIMIT 200"
         ))
         .bind(&arg)
         .fetch_all(&ctx.app.db)
         .await?;
+        // Subjects are shown, so only posts in forums the moderator can see, in a state they can
+        // see (private forums, unapproved and soft-deleted posts stay out of the list otherwise).
+        let posts: Vec<(i32, i32, String, String, i64)> = found
+            .into_iter()
+            .filter(|(.., fid, visible)| {
+                ctx.check_forum(*fid).is_ok() && ctx.visible_states(*fid).contains(visible)
+            })
+            .map(|(pid, uid, name, subject, dateline, ..)| (pid, uid, name, subject, dateline))
+            .collect();
         (users, posts)
     };
     page(
