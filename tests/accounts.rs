@@ -362,3 +362,32 @@ async fn activity_flushes_rewrite_a_members_row_at_most_once_a_minute() {
     rbb::app::flush_activity(&t.app).await.unwrap();
     assert_eq!(row().await, (base + 70, 70));
 }
+
+#[tokio::test]
+async fn a_forged_undo_cookie_cannot_aim_the_csrf_token_off_site() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    let page = |action: &str| {
+        let json = serde_json::json!({"action": action, "fields": []}).to_string();
+        c.set_cookie("rbb_flash", "Done.");
+        c.set_cookie("rbb_undo", &percent_encode(&json));
+        c.get("/")
+    };
+    let ok = page("/thread/1/undo").await;
+    assert!(
+        ok.body.contains("class=\"js-undo\""),
+        "a local undo is still offered"
+    );
+    for bad in [
+        "/\\evil.example/x",
+        "//evil.example/x",
+        "https://evil.example/x",
+    ] {
+        let r = page(bad).await;
+        assert!(!r.body.contains("evil.example"), "{bad}");
+    }
+}
+
+fn percent_encode(s: &str) -> String {
+    s.bytes().map(|b| format!("%{b:02X}")).collect()
+}

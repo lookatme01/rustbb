@@ -455,6 +455,19 @@ async fn a_suspended_member_cannot_edit_posts_or_add_polls() {
         .await
         .unwrap();
     assert_eq!(message, "An edit before the suspension.");
+    // A direct POST to start a poll is refused too, not just the form.
+    let r = c
+        .post_form(
+            &format!("/thread/{tid}/poll/new"),
+            &[("question", "Is this allowed?"), ("options", "Yes\nNo")],
+        )
+        .await;
+    assert!(r.body.contains("suspended"), "{} {}", r.status, r.body);
+    let polls: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM polls")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(polls, 0);
 }
 
 async fn edit_post(c: &Client, pid: i32, message: &str) -> common::Response {

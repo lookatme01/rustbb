@@ -393,6 +393,7 @@ pub async fn new_save(
     CsrfForm(f): CsrfForm<PollForm>,
 ) -> AppResult<Response> {
     let (t, _, fp) = check_thread(&ctx, tid).await?;
+    crate::posting::check_not_suspended(&ctx)?;
     if t.poll > 0 {
         return Err(AppError::user("This thread already has a poll."));
     }

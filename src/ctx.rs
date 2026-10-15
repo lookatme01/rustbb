@@ -856,7 +856,7 @@ pub async fn context_middleware(
     }
     let undo = get_cookie(&headers, UNDO_COOKIE)
         .and_then(|u| serde_json::from_str::<Undo>(&u).ok())
-        .filter(|u| u.action.starts_with('/') && !u.action.starts_with("//"));
+        .filter(|u| safe_redirect(&u.action) == u.action);
     if get_cookie(&headers, UNDO_COOKIE).is_some() {
         new_cookies.push(format!("{UNDO_COOKIE}=; Path=/; Max-Age=0"));
     }
