@@ -674,8 +674,12 @@ pub async fn flush_activity(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Seconds between writes of one member's `lastactive`/`lastip`/`timeonline`.
-const USER_ACTIVITY_GRANULARITY: i64 = 60;
+/// Seconds between writes of one member's `lastactive`/`lastip`/`timeonline`: a minute, or a
+/// fifth of the "who's online" window when that is shorter, so members never drop out of it.
+fn user_activity_granularity(app: &App) -> i64 {
+    let window = app.cache().settings.int("wolcutoffmins").max(1) * 60;
+    (window / 5).clamp(5, 60)
+}
 
 async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::Result<()> {
     let mut sids = Vec::new();
@@ -736,7 +740,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
         let (t, ip): (Vec<i64>, Vec<String>) = rest.into_iter().unzip();
         let ip: Vec<crate::util::IpText> = ip.into_iter().map(crate::util::IpText).collect();
         // lastvisit becomes the previous lastactive when the user returns after 15+ minutes.
-        // A member's row is only rewritten once USER_ACTIVITY_GRANULARITY seconds have passed:
+        // A member's row is only rewritten once user_activity_granularity() seconds have passed:
         // lastactive and lastip are indexed, so every write touches all of the users table's
         // indexes, and the online window is 15 minutes anyway. timeonline still adds up the
         // same total, just in larger steps.
@@ -752,7 +756,7 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
         .bind(&u)
         .bind(&t)
         .bind(&ip)
-        .bind(USER_ACTIVITY_GRANULARITY)
+        .bind(user_activity_granularity(app))
         .execute(&app.db)
         .await?;
     }
