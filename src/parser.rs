@@ -397,6 +397,12 @@ fn find_ci(hay: &str, needle: &str) -> Option<usize> {
         .position(|w| w.eq_ignore_ascii_case(n))
 }
 
+static ME_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\[(?:code|php|noparse|quote|list|spoiler|indent|hr|align|attachment|video|img)\b",
+    )
+    .unwrap()
+});
 static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\b(?:https?://|www\.)[^\s<>"'\[\]]+[^\s<>"'\[\].,;:!?)]"#).unwrap()
 });
@@ -442,7 +448,11 @@ impl<'a> Parser<'a> {
             msg = msg
                 .lines()
                 .map(|l| {
-                    if let Some(rest) = l.strip_prefix("/me ") {
+                    // A block-level or verbatim tag on the line would swallow or split the closing
+                    // marker, leaving stray tags in the post; such a line is plain text.
+                    if let Some(rest) = l.strip_prefix("/me ")
+                        && !ME_BLOCK_RE.is_match(rest)
+                    {
                         format!("\u{1}me\u{2}* {esc} {rest}\u{1}/me\u{2}")
                     } else {
                         l.to_string()
@@ -1688,6 +1698,30 @@ mod adversarial_tests {
             started.elapsed().as_millis() < 1500,
             "adversarial posts took {:?}",
             started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_me_line_with_a_code_block_does_not_leave_stray_tags() {
+        let data = ParserData::default();
+        let opts = ParseOptions {
+            me_username: Some("Ann".into()),
+            ..ParseOptions::default()
+        };
+        let html = Parser::new(&data, &opts).parse("/me [code]\nfoo\n[/code]");
+        assert_eq!(
+            html.matches("<span").count(),
+            html.matches("</span>").count(),
+            "{html}"
+        );
+        assert!(
+            !html.contains('\u{1}') && !html.contains('\u{2}'),
+            "{html:?}"
+        );
+        let plain = Parser::new(&data, &opts).parse("/me waves");
+        assert!(
+            plain.contains("<span class=\"mycode_me\">* Ann waves</span>"),
+            "{plain}"
         );
     }
 
