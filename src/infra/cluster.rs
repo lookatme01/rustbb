@@ -102,6 +102,9 @@ pub struct Cursor {
     retry: BTreeMap<i64, Instant>,
 }
 
+/// How far back from a new event a missing id still counts as an uncommitted transaction.
+const MAX_GAP_SPAN: i64 = 1000;
+
 impl Cursor {
     /// Start after the newest event, treating recent missing ids as gaps (they may belong to
     /// transactions that have not committed yet).
@@ -129,7 +132,10 @@ impl Cursor {
     pub fn mark(&mut self, id: i64) -> bool {
         if id > self.max {
             let now = Instant::now();
-            for g in (self.max + 1)..id {
+            // Ids that far back cannot belong to a transaction still in flight; after a quiet
+            // spell the sequence may have jumped by thousands, and each would become a gap that
+            // every poll asks about until it expires.
+            for g in (self.max + 1).max(id - MAX_GAP_SPAN)..id {
                 self.gaps.insert(g, now);
             }
             self.max = id;
@@ -244,6 +250,19 @@ mod tests {
         assert!(c.mark(3), "a late commit fills its gap");
         assert!(!c.mark(3));
         assert_eq!(c.gaps.keys().copied().collect::<Vec<_>>(), vec![2]);
+    }
+
+    #[test]
+    fn a_jump_in_ids_after_a_quiet_spell_only_tracks_recent_gaps() {
+        let mut c = Cursor::default();
+        // An empty table, then the first event arrives with the sequence at 200 000.
+        assert!(c.mark(200_000));
+        assert_eq!(c.gaps.len() as i64, MAX_GAP_SPAN);
+        assert_eq!(c.gaps.keys().next().copied(), Some(200_000 - MAX_GAP_SPAN));
+        assert!(
+            c.mark(199_999),
+            "a late commit inside the window still fills its gap"
+        );
     }
 
     #[test]
