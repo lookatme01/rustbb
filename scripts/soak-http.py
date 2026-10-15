@@ -87,7 +87,7 @@ def member_op(c):
         code, _, _ = c.form(f"/newthread/{fid}", {"my_post_key": k, "subject": f"soak thread {random.random()}", "message": "soak opening post text"})
     return op, code
 def admin_op(c):
-    op = random.choice(["softdelete", "restore", "close", "open", "stick", "unstick", "approve", "unapprove", "move", "move", "delete", "postdelete", "postsoft", "postrestore", "postapprove", "edit", "split", "merge", "warn", "ban", "liftban", "usermerge"])
+    op = random.choice(["softdelete", "restore", "close", "open", "stick", "unstick", "approve", "unapprove", "move", "move", "delete", "postdelete", "postsoft", "postrestore", "postapprove", "edit", "split", "merge", "warn", "ban", "liftban", "usermerge", "userdelete"])
     k = key_of(c, "/")
     if op == "warn" and ids["uids"]:
         uid, _ = random.choice(ids["uids"])
@@ -101,7 +101,11 @@ def admin_op(c):
         (_, a), (_, b) = random.sample(ids["uids"], 2)
         kk = key_of(c, "/admin/users/merge")
         code, _, _ = c.form("/admin/users/merge", {"my_post_key": kk, "source": a, "destination": b})
-    elif op in ("warn", "ban", "liftban", "usermerge"):
+    elif op == "userdelete" and len(ids["uids"]) > 6 and random.random() < 0.1:
+        uid, _ = random.choice(ids["uids"])
+        kk = key_of(c, "/admin/users")
+        code, _, _ = c.form(f"/admin/users/{uid}/delete", {"my_post_key": kk, "deletecontent": random.choice(["", "1"])})
+    elif op in ("warn", "ban", "liftban", "usermerge", "userdelete"):
         code, _, _ = c.form("/moderation/threads", {"my_post_key": k, "action": "close", "tids": random.choice(ids["tids"])})
     elif op.startswith("post"):
         a = {"postdelete": "delete", "postsoft": "softdelete", "postrestore": "restore", "postapprove": "approve"}[op]
