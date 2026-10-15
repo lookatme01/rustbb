@@ -320,3 +320,45 @@ async fn instant_registration_lands_on_the_welcome_page() {
     // Guests are sent to log in.
     assert_ne!(t.client().get("/member/welcome").await.status, 200);
 }
+
+#[tokio::test]
+async fn activity_flushes_rewrite_a_members_row_at_most_once_a_minute() {
+    use rbb::app::Activity;
+    let t = test_app!();
+    let uid = t.create_user("browsing", "Passw0rd-browsing").await;
+    let base = rbb::util::now() - 3600;
+    let visit = |time: i64| {
+        t.app.activity.insert(
+            "sid-browsing".into(),
+            Activity {
+                uid,
+                ip: "203.0.113.9".into(),
+                time,
+                location: "index".into(),
+                useragent: "test".into(),
+                anonymous: false,
+                location1: 0,
+                location2: 0,
+                bot: String::new(),
+            },
+        );
+    };
+    let row = || async {
+        sqlx::query_as::<_, (i64, i64)>("SELECT lastactive, timeonline FROM users WHERE uid = $1")
+            .bind(uid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap()
+    };
+    visit(base);
+    rbb::app::flush_activity(&t.app).await.unwrap();
+    assert_eq!(row().await, (base, 0));
+    // Ten seconds later: the session row updates, the users row is left alone.
+    visit(base + 10);
+    rbb::app::flush_activity(&t.app).await.unwrap();
+    assert_eq!(row().await, (base, 0));
+    // A minute on, lastactive moves and the whole gap counts as time online.
+    visit(base + 70);
+    rbb::app::flush_activity(&t.app).await.unwrap();
+    assert_eq!(row().await, (base + 70, 70));
+}

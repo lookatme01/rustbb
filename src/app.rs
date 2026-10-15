@@ -672,6 +672,9 @@ pub async fn flush_activity(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Seconds between writes of one member's `lastactive`/`lastip`/`timeonline`.
+const USER_ACTIVITY_GRANULARITY: i64 = 60;
+
 async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::Result<()> {
     let mut sids = Vec::new();
     let mut uids = Vec::new();
@@ -731,6 +734,10 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
         let (t, ip): (Vec<i64>, Vec<String>) = rest.into_iter().unzip();
         let ip: Vec<crate::util::IpText> = ip.into_iter().map(crate::util::IpText).collect();
         // lastvisit becomes the previous lastactive when the user returns after 15+ minutes.
+        // A member's row is only rewritten once USER_ACTIVITY_GRANULARITY seconds have passed:
+        // lastactive and lastip are indexed, so every write touches all of the users table's
+        // indexes, and the online window is 15 minutes anyway. timeonline still adds up the
+        // same total, just in larger steps.
         sqlx::query(
             "UPDATE users SET
                 lastvisit = CASE WHEN users.lastactive < d.t - 900 THEN users.lastactive ELSE users.lastvisit END,
@@ -738,11 +745,12 @@ async fn write_activity(app: &App, rows: &HashMap<String, Activity>) -> anyhow::
                 lastactive = d.t,
                 lastip = d.ip
              FROM UNNEST($1::int[], $2::bigint[], $3::inet[]) AS d(uid, t, ip)
-             WHERE users.uid = d.uid AND users.lastactive < d.t",
+             WHERE users.uid = d.uid AND users.lastactive <= d.t - $4",
         )
         .bind(&u)
         .bind(&t)
         .bind(&ip)
+        .bind(USER_ACTIVITY_GRANULARITY)
         .execute(&app.db)
         .await?;
     }
