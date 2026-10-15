@@ -111,3 +111,55 @@ async fn events_with_absurd_dates_are_refused_and_cannot_stall_the_views() {
     }
     assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
 }
+
+#[tokio::test]
+async fn making_a_private_event_public_sends_it_to_moderation() {
+    let t = test_app!();
+    sqlx::query("UPDATE calendars SET moderation = TRUE")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["calendars"]).await.unwrap();
+    let cid: i32 = sqlx::query_scalar("SELECT MIN(cid) FROM calendars")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let uid = t.create_user("planner", "Passw0rd-planner").await;
+    let c = t.login_as(uid).await;
+    let r = c
+        .post_form(
+            &format!("/calendar/{cid}/addevent"),
+            &[
+                ("name", "Secret plan"),
+                ("message", "Only for me"),
+                ("date", "2026-11-01"),
+                ("private", "1"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let (eid, visible): (i32, bool) = sqlx::query_as("SELECT eid, visible FROM events")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(visible, "private events are not moderated");
+    let r = c
+        .post_form(
+            &format!("/calendar/event/{eid}/edit"),
+            &[
+                ("name", "Public plan"),
+                ("message", "For everyone"),
+                ("date", "2026-11-01"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let (private, visible): (bool, bool) =
+        sqlx::query_as("SELECT private, visible FROM events WHERE eid = $1")
+            .bind(eid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert!(!private);
+    assert!(!visible, "a newly public event must wait for approval");
+}

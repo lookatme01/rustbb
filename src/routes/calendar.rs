@@ -663,14 +663,16 @@ pub async fn edit_submit(
     CsrfForm(f): CsrfForm<EventForm>,
 ) -> AppResult<Response> {
     let e = load_event(&ctx, eid).await?;
-    get_calendar(&ctx, e.cid)?;
+    let cal = get_calendar(&ctx, e.cid)?;
     let perms = cal_perms(&ctx, e.cid).await?;
     if !(perms.moderate || (e.uid == ctx.uid() && ctx.uid() > 0)) {
         return Err(AppError::no_perm());
     }
     let (name, message) = event_text(&f)?;
     let (start, end, usingtime, repeats) = build_times(&ctx, &f)?;
-    sqlx::query("UPDATE events SET name = $2, description = $3, private = $4, starttime = $5, endtime = $6, usingtime = $7, ignoretimezone = $8, repeats = $9, timezone = $10 WHERE eid = $1")
+    // Private events skip moderation when added, so making one public goes to the queue.
+    let requeue = cal.moderation && e.private && !f.private && !(perms.bypass || perms.moderate);
+    sqlx::query("UPDATE events SET name = $2, description = $3, private = $4, starttime = $5, endtime = $6, usingtime = $7, ignoretimezone = $8, repeats = $9, timezone = $10, visible = visible AND NOT $11 WHERE eid = $1")
         .bind(eid)
         .bind(name)
         .bind(message)
@@ -681,11 +683,16 @@ pub async fn edit_submit(
         .bind(!usingtime)
         .bind(repeats)
         .bind(ctx.tz.name())
+        .bind(requeue)
         .execute(&ctx.app.db)
         .await?;
     Ok(ctx.redirect(
         &format!("/calendar/event/{eid}"),
-        "The event has been updated.",
+        if requeue {
+            "The event has been updated and is awaiting moderation."
+        } else {
+            "The event has been updated."
+        },
     ))
 }
 
