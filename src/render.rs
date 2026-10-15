@@ -90,10 +90,10 @@ pub fn post_html(ctx: &CtxInner, post: &Post, stale: &mut Vec<Parsed>) -> String
     // Parsed moments ago for another viewer, before the write-back landed?
     if !viewer_restrict
         && !post.smilieoff
-        && let Some((rev, hash, html)) = ctx.app.parsed_cache.get(&post.pid)
+        && let Some((rev, fid, hash, html)) = ctx.app.parsed_cache.get(&post.pid)
     {
         // Same parser inputs and the same text (edits reset parser_rev but change the text).
-        if rev == cache.parser_rev && *hash == *source_hash(&post.message) {
+        if rev == cache.parser_rev && fid == post.fid && *hash == *source_hash(&post.message) {
             return html.to_string();
         }
     }
@@ -117,6 +117,7 @@ pub fn post_html(ctx: &CtxInner, post: &Post, stale: &mut Vec<Parsed>) -> String
                 post.pid,
                 (
                     cache.parser_rev,
+                    post.fid,
                     Arc::from(hash.as_slice()),
                     Arc::from(html.as_str()),
                 ),

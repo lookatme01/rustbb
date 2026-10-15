@@ -135,7 +135,9 @@ pub struct AppState {
     /// rarely; entries are dropped when a member changes theirs and expire after two minutes.
     pub avatar_cache: moka::sync::Cache<i32, Arc<str>>,
     /// Post HTML parsed recently but maybe not yet written back to `posts.message_html`.
-    pub parsed_cache: moka::sync::Cache<i32, (i32, Arc<[u8]>, Arc<str>)>,
+    /// Recently parsed post HTML by pid: (parser rev, forum, source hash, html). The forum is part
+    /// of the entry because its settings (images, video, MyCode) change the output.
+    pub parsed_cache: moka::sync::Cache<i32, (i32, i32, Arc<[u8]>, Arc<str>)>,
     /// Posts whose parsed HTML is being written back right now.
     pub parse_inflight: dashmap::DashSet<i32>,
     /// Bounds concurrent HTML write-backs.

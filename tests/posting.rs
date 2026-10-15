@@ -464,3 +464,55 @@ async fn edit_post(c: &Client, pid: i32, message: &str) -> common::Response {
     )
     .await
 }
+
+#[tokio::test]
+async fn moving_a_thread_re_renders_posts_with_the_new_forums_settings() {
+    let t = test_app!();
+    let fids: Vec<i32> =
+        sqlx::query_scalar("SELECT fid FROM forums WHERE type = 'f' ORDER BY fid LIMIT 2")
+            .fetch_all(&t.db.pool)
+            .await
+            .unwrap();
+    let (from, to) = (fids[0], fids[1]);
+    sqlx::query("UPDATE forums SET allowimgcode = FALSE WHERE fid = $1")
+        .bind(to)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums"]).await.unwrap();
+    let c = t.login_as(1).await;
+    let r = c
+        .post_form(
+            &format!("/newthread/{from}"),
+            &[
+                ("subject", "Picture thread"),
+                (
+                    "message",
+                    "Look: [img]https://img.example.test/pic.png[/img]",
+                ),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let tid: i32 = sqlx::query_scalar("SELECT MAX(tid) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    // Viewing renders and caches the post with images allowed.
+    let page = c.get(&format!("/thread/{tid}")).await;
+    assert!(
+        page.body.contains("img.example.test/pic.png"),
+        "{}",
+        page.status
+    );
+    rbb::ops::move_threads(&t.app, &[tid], to, None)
+        .await
+        .unwrap();
+    let page = c.get(&format!("/thread/{tid}")).await;
+    assert!(
+        !page
+            .body
+            .contains("<img src=\"https://img.example.test/pic.png"),
+        "the moved post was served from HTML rendered for the old forum"
+    );
+}

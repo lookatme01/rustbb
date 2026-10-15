@@ -531,7 +531,9 @@ pub async fn move_threads_in(
         .bind(to_fid)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE posts SET fid = $2 WHERE tid = ANY($1)")
+    // The forum's parse settings (images, video, MyCode) shape the cached HTML, so re-render
+    // the posts that change forum.
+    sqlx::query("UPDATE posts SET fid = $2, parser_rev = -1 WHERE tid = ANY($1) AND fid <> $2")
         .bind(tids)
         .bind(to_fid)
         .execute(&mut *tx)
@@ -580,7 +582,7 @@ pub async fn merge_threads_in(
         .bind(from)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE posts SET tid = $1, fid = $3 WHERE tid = $2")
+    sqlx::query("UPDATE posts SET tid = $1, fid = $3, parser_rev = CASE WHEN fid <> $3 THEN -1 ELSE parser_rev END WHERE tid = $2")
         .bind(into)
         .bind(from)
         .bind(into_fid)
@@ -674,7 +676,7 @@ pub async fn split_posts_in(
     .bind(first.2)
     .fetch_one(&mut *tx)
     .await?;
-    sqlx::query("UPDATE posts SET tid = $2, fid = $3 WHERE pid = ANY($1) AND tid = $4")
+    sqlx::query("UPDATE posts SET tid = $2, fid = $3, parser_rev = CASE WHEN fid <> $3 THEN -1 ELSE parser_rev END WHERE pid = ANY($1) AND tid = $4")
         .bind(pids)
         .bind(new_tid)
         .bind(to_fid)
