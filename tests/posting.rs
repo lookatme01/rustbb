@@ -797,3 +797,130 @@ async fn the_moderation_queue_honours_the_moderators_approve_and_delete_rights()
     );
     assert_eq!(state(pending[1]).await, Some(1), "approving was allowed");
 }
+
+#[tokio::test]
+async fn posting_while_a_moderator_toggles_the_authors_thread_does_not_deadlock() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    setting(&t, "postmergemins", "0").await;
+    let fid = forum(&t).await;
+    let author = t.create_user("busyposter", "Passw0rd-busyposter").await;
+    let c = t.login_as(author).await;
+    let tid = new_thread(&t, &c, fid).await;
+    let other = new_thread(&t, &c, fid).await;
+    // Replies by the member (forum counters, then their post count) against a moderator hiding
+    // and restoring the member's other thread (their post count, then the forum counters).
+    let replies = async {
+        let mut failures = vec![];
+        for i in 0..120 {
+            let r = c
+                .post_form(
+                    &format!("/newreply/{tid}"),
+                    &[("message", &format!("concurrent reply number {i} here"))],
+                )
+                .await;
+            if !r.status.is_redirection() {
+                failures.push((i, r.status.as_u16()));
+            }
+        }
+        failures
+    };
+    let toggling = async {
+        for _ in 0..120 {
+            rbb::ops::set_threads_visibility(&t.app, &[other], -1)
+                .await
+                .unwrap();
+            rbb::ops::set_threads_visibility(&t.app, &[other], 1)
+                .await
+                .unwrap();
+        }
+    };
+    let (failures, ()) = tokio::join!(replies, toggling);
+    assert!(
+        failures.is_empty(),
+        "replies failed under moderation: {failures:?}"
+    );
+    assert_consistent(&t).await;
+}
+
+#[tokio::test]
+async fn splitting_posts_that_have_since_gone_leaves_no_empty_thread() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    setting(&t, "postmergemins", "0").await;
+    let fid = forum(&t).await;
+    let c = t.login_as(1).await;
+    let tid = new_thread(&t, &c, fid).await;
+    for i in 0..3 {
+        let r = c
+            .post_form(
+                &format!("/newreply/{tid}"),
+                &[("message", &format!("reply {i} in the thread to split"))],
+            )
+            .await;
+        assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    }
+    let pids: Vec<i32> = sqlx::query_scalar("SELECT pid FROM posts WHERE tid = $1 ORDER BY pid")
+        .bind(tid)
+        .fetch_all(&t.db.pool)
+        .await
+        .unwrap();
+    let threads_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    // The caller picked these replies, then someone else deleted both.
+    sqlx::query("DELETE FROM posts WHERE pid = ANY($1)")
+        .bind(vec![pids[1], pids[2]])
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    // Raw SQL left the counters behind; settle them so the check at the end measures the splits.
+    rbb::ops::rebuild_all_counters(&t.app).await.unwrap();
+    let err = rbb::ops::split_posts(&t.app, &[pids[1], pids[2]], "stale split", fid).await;
+    assert!(
+        err.is_err(),
+        "a split of posts that are gone must be refused"
+    );
+    let threads_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(threads_after, threads_before, "no empty thread was created");
+    // The first post cannot be split off, even if it is in the list.
+    let err = rbb::ops::split_posts(&t.app, &[pids[0]], "first post", fid).await;
+    assert!(err.is_err(), "the opening post stays with its thread");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM threads")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap(),
+        threads_before
+    );
+    // A list with a post that is still there splits just that one.
+    let new_tid = rbb::ops::split_posts(&t.app, &[pids[3], pids[0]], "partial split", fid)
+        .await
+        .unwrap();
+    let moved: Vec<i32> = sqlx::query_scalar("SELECT pid FROM posts WHERE tid = $1")
+        .bind(new_tid)
+        .fetch_all(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(moved, vec![pids[3]]);
+    assert_consistent(&t).await;
+}
+
+#[tokio::test]
+async fn merging_with_a_thread_that_has_since_gone_is_refused_not_an_error() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    let fid = forum(&t).await;
+    let c = t.login_as(1).await;
+    let keep = new_thread(&t, &c, fid).await;
+    let gone = new_thread(&t, &c, fid).await;
+    rbb::ops::delete_threads(&t.app, &[gone]).await.unwrap();
+    let err = rbb::ops::merge_threads(&t.app, keep, gone, None).await;
+    let msg = format!("{:?}", err.as_ref().err());
+    assert!(err.is_err() && msg.contains("merged or deleted"), "{msg}");
+    assert_consistent(&t).await;
+}

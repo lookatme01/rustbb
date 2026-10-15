@@ -82,6 +82,27 @@ pub async fn thread_contrib(c: &mut PgConnection, tid: i32) -> AppResult<(i32, C
     ))
 }
 
+/// Lock forum rows in id order. Every operation that updates several forums takes them through
+/// here first, so two of them cannot each hold one forum while waiting for the other's.
+///
+/// `FOR NO KEY UPDATE`, the lock a plain `UPDATE` takes, not `FOR UPDATE`: inserting a thread or
+/// post key-shares its forum row through the foreign key, and `FOR UPDATE` would conflict with that.
+pub async fn lock_forums(
+    c: &mut PgConnection,
+    fids: impl IntoIterator<Item = i32>,
+) -> AppResult<()> {
+    let mut fids: Vec<i32> = fids.into_iter().filter(|f| *f > 0).collect();
+    fids.sort_unstable();
+    fids.dedup();
+    if !fids.is_empty() {
+        sqlx::query("SELECT fid FROM forums WHERE fid = ANY($1) ORDER BY fid FOR NO KEY UPDATE")
+            .bind(&fids)
+            .fetch_all(&mut *c)
+            .await?;
+    }
+    Ok(())
+}
+
 pub async fn apply_forum_delta(c: &mut PgConnection, fid: i32, d: Contrib) -> AppResult<()> {
     if fid == 0 || d.is_zero() {
         return Ok(());
@@ -183,10 +204,17 @@ async fn snapshot(c: &mut PgConnection, tids: &[i32]) -> AppResult<Vec<(i32, i32
 
 /// Apply before/after deltas and refresh last-post info for all touched forums.
 async fn settle(c: &mut PgConnection, before: Vec<(i32, i32, Contrib)>) -> AppResult<()> {
-    let mut fids = Vec::new();
+    // First work out every thread's new figures (this only touches the threads, already locked),
+    // then lock all the forums involved in id order, then apply the deltas.
+    let mut changes = Vec::with_capacity(before.len());
     for (tid, fid_b, con_b) in before {
         recount_thread(c, tid).await?;
         let (fid_a, con_a) = thread_contrib(c, tid).await?;
+        changes.push((fid_b, con_b, fid_a, con_a));
+    }
+    lock_forums(c, changes.iter().flat_map(|(b, _, a, _)| [*b, *a])).await?;
+    let mut fids = Vec::new();
+    for (fid_b, con_b, fid_a, con_a) in changes {
         if fid_a == fid_b {
             apply_forum_delta(c, fid_a, con_a.sub(con_b)).await?;
         } else {
@@ -205,11 +233,31 @@ async fn settle(c: &mut PgConnection, before: Vec<(i32, i32, Contrib)>) -> AppRe
     Ok(())
 }
 
+/// Lock, in uid order, the users a counting query is about to update. `UPDATE ... FROM (GROUP BY)`
+/// locks them in whatever order the planner visits them, and two operations touching overlapping
+/// authors in different orders deadlock.
+async fn lock_users(c: &mut PgConnection, uids_sql: &str, ids: &[i32]) -> AppResult<()> {
+    sqlx::query(&format!(
+        "SELECT uid FROM users WHERE uid IN ({uids_sql}) ORDER BY uid FOR NO KEY UPDATE"
+    ))
+    .bind(ids)
+    .fetch_all(&mut *c)
+    .await?;
+    Ok(())
+}
+
 /// Adjust user post counts for visible posts (in post-counting forums and visible threads).
 async fn adjust_user_postcounts(c: &mut PgConnection, pids: &[i32], sign: i32) -> AppResult<()> {
     if pids.is_empty() {
         return Ok(());
     }
+    lock_users(
+        c,
+        "SELECT p.uid FROM posts p JOIN forums f ON f.fid = p.fid JOIN threads t ON t.tid = p.tid
+         WHERE p.pid = ANY($1) AND p.visible = 1 AND t.visible = 1 AND f.usepostcounts AND p.uid > 0",
+        pids,
+    )
+    .await?;
     sqlx::query(
         "UPDATE users SET postnum = GREATEST(postnum + $2 * d.c, 0) FROM (
             SELECT p.uid, COUNT(*)::int AS c FROM posts p JOIN forums f ON f.fid = p.fid JOIN threads t ON t.tid = p.tid
@@ -224,6 +272,13 @@ async fn adjust_user_postcounts(c: &mut PgConnection, pids: &[i32], sign: i32) -
 }
 
 async fn adjust_user_threadcounts(c: &mut PgConnection, tids: &[i32], sign: i32) -> AppResult<()> {
+    lock_users(
+        c,
+        "SELECT t.uid FROM threads t JOIN forums f ON f.fid = t.fid
+         WHERE t.tid = ANY($1) AND t.visible = 1 AND f.usethreadcounts AND t.uid > 0 AND t.closed NOT LIKE 'moved|%'",
+        tids,
+    )
+    .await?;
     sqlx::query(
         "UPDATE users SET threadnum = GREATEST(threadnum + $2 * d.c, 0) FROM (
             SELECT t.uid, COUNT(*)::int AS c FROM threads t JOIN forums f ON f.fid = t.fid
@@ -246,12 +301,27 @@ async fn all_pids_of_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<Ve
     )
 }
 
-/// Lock threads (in id order) for the rest of the transaction.
+/// Lock threads (in id order) for the rest of the transaction, and then every member who wrote
+/// in them (in uid order).
+///
+/// The authors' counts are adjusted in several statements over the course of an operation;
+/// locking them all here, once and in a fixed order, is what stops two operations over
+/// overlapping authors (or an operation and a reply by one of them) from each holding a user the
+/// other still needs. The order everywhere is thread -> user -> forum.
 pub async fn lock_threads(c: &mut PgConnection, tids: &[i32]) -> AppResult<()> {
     sqlx::query("SELECT tid FROM threads WHERE tid = ANY($1) ORDER BY tid FOR UPDATE")
         .bind(tids)
         .fetch_all(&mut *c)
         .await?;
+    sqlx::query(
+        "SELECT uid FROM users WHERE uid IN (
+            SELECT uid FROM posts WHERE tid = ANY($1) AND uid > 0
+            UNION SELECT uid FROM threads WHERE tid = ANY($1) AND uid > 0)
+         ORDER BY uid FOR NO KEY UPDATE",
+    )
+    .bind(tids)
+    .fetch_all(&mut *c)
+    .await?;
     Ok(())
 }
 
@@ -496,6 +566,7 @@ pub async fn delete_threads_in(uow: &mut Uow, tids: &[i32]) -> AppResult<()> {
         .bind(&redirect_tids)
         .execute(&mut *c)
         .await?;
+    lock_forums(c, before.iter().map(|b| b.1)).await?;
     let mut fids = Vec::new();
     for (_, fid, con) in before {
         apply_forum_delta(c, fid, Contrib::default().sub(con)).await?;
@@ -624,6 +695,17 @@ pub async fn merge_threads_in(
     }
     let tx = uow.conn();
     lock_threads(tx, &[into, from]).await?;
+    // Both are locked now, so they exist for the rest of this operation or not at all: someone
+    // may have merged or deleted one of them since the caller looked.
+    let present: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE tid = ANY($1)")
+        .bind(vec![into, from])
+        .fetch_one(&mut *tx)
+        .await?;
+    if present != 2 {
+        return Err(crate::error::AppError::user(
+            "One of those threads was merged or deleted by someone else just now; nothing was merged.",
+        ));
+    }
     let before = snapshot(tx, &[into, from]).await?;
     let pids = all_pids_of_threads(tx, &[into, from]).await?;
     adjust_user_postcounts(tx, &pids, -1).await?;
@@ -719,11 +801,32 @@ pub async fn split_posts_in(
         ));
     };
     let tx = uow.conn();
+    let changed = || {
+        crate::error::AppError::user(
+            "Those posts were changed or moved by someone else just now; nothing was split. Please try again.",
+        )
+    };
     let old_tid: i32 = sqlx::query_scalar("SELECT tid FROM posts WHERE pid = $1")
         .bind(first_pid)
-        .fetch_one(&mut *tx)
-        .await?;
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(changed)?;
     lock_threads(tx, &[old_tid]).await?;
+    // The list came from before the lock. Of those posts, only the ones still in this thread (and
+    // not its first post) can be split: going on with the rest would count posts that never moved
+    // and, when nothing is left, leave an empty thread behind.
+    let pids: Vec<i32> = sqlx::query_scalar(
+        "SELECT p.pid FROM posts p JOIN threads t ON t.tid = p.tid
+         WHERE p.pid = ANY($1) AND p.tid = $2 AND p.pid <> t.firstpost ORDER BY p.pid",
+    )
+    .bind(pids)
+    .bind(old_tid)
+    .fetch_all(&mut *tx)
+    .await?;
+    if pids.is_empty() {
+        return Err(changed());
+    }
+    let pids = &pids[..];
     let before = snapshot(tx, &[old_tid]).await?;
     adjust_user_postcounts(tx, pids, -1).await?;
     let first: (i32, String, i64) = sqlx::query_as("SELECT uid, username, dateline FROM posts WHERE pid = ANY($1) ORDER BY dateline, pid LIMIT 1")

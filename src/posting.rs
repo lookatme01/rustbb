@@ -323,6 +323,7 @@ pub async fn create_thread(
         record_system_authorship(tx, ctx, "thread", tid, &subject).await?;
     }
     let forum = ctx.cache.forum(fid);
+    lock_poster(&mut *tx, uid).await?;
     if visible == 1 {
         sqlx::query(
             "UPDATE forums SET threads = threads + 1, posts = posts + 1, lastpost = $2, lastposter = $3, lastposteruid = $4,
@@ -458,6 +459,22 @@ pub async fn create_reply_in(
     insert_reply(uow, ctx, tid, fid, input, guest_name, false).await
 }
 
+/// Take the poster's user row before anything touches a forum row.
+///
+/// Moderation actions lock rows as thread -> user -> forum (the post counts come first); a reply
+/// or new thread used to update the forum first and the user after, so a moderator and a poster
+/// on the same forum and author could each hold what the other needed (PostgreSQL's "deadlock
+/// detected", surfacing as a 500 for a perfectly valid post). Every writer follows one order now.
+async fn lock_poster(tx: &mut sqlx::PgConnection, uid: i32) -> AppResult<()> {
+    if uid > 0 {
+        sqlx::query("SELECT 1 FROM users WHERE uid = $1 FOR NO KEY UPDATE")
+            .bind(uid)
+            .fetch_optional(&mut *tx)
+            .await?;
+    }
+    Ok(())
+}
+
 /// `limits` re-checks flood control and the daily limit atomically (see `enforce_post_limits`).
 async fn insert_reply(
     uow: &mut Uow,
@@ -507,6 +524,7 @@ async fn insert_reply(
             "This thread was just moved to another forum. Please try posting your reply again.",
         ));
     }
+    lock_poster(uow.conn(), uid).await?;
 
     // Automatic post merge (double posting) — MyBB's "postmergemins". Decided under the thread
     // lock, with the last post locked too, so two quick replies cannot both merge or both miss.

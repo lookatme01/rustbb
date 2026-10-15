@@ -225,6 +225,18 @@ async fn award_where(
          )
          SELECT uid FROM new"
     );
+    // The statement above updates every member it awards in whatever order the planner visits
+    // them; lock them in uid order first (inside one transaction) like every other writer does,
+    // or it can deadlock against moderation work on the same members.
+    let mut tx = app.db.begin().await?;
+    sqlx::query(&format!(
+        "SELECT uid FROM users WHERE {who} AND usergroup NOT IN (1, 5, 7) AND NOT is_system
+           AND NOT EXISTS (SELECT 1 FROM user_badges have WHERE have.uid = users.uid AND have.bid = $1)
+         ORDER BY uid FOR NO KEY UPDATE"
+    ))
+    .bind(b.bid)
+    .fetch_all(&mut *tx)
+    .await?;
     let uids: Vec<i32> = sqlx::query_scalar(&sql)
         .bind(b.bid)
         .bind(now())
@@ -234,8 +246,9 @@ async fn award_where(
         .bind(manual.map(|(by, _)| by).filter(|by| *by > 0))
         .bind(manual.map(|(_, r)| r).unwrap_or(""))
         .bind(alerts)
-        .fetch_all(&app.db)
+        .fetch_all(&mut *tx)
         .await?;
+    tx.commit().await?;
     if alerts && uids.len() <= LIVE_ALERT_LIMIT {
         for uid in &uids {
             app.publish_all(LiveEvent {
