@@ -620,3 +620,35 @@ async fn adding_a_passkey_needs_the_authentication_code_when_two_factor_is_on() 
         r.body
     );
 }
+
+#[tokio::test]
+async fn a_nul_byte_is_refused_at_the_door_instead_of_failing_deep_in_a_handler() {
+    let t = test_app!();
+    let uid = t.create_user("nulltest", "Passw0rd-nulltest").await;
+    let c = t.login_as(uid).await;
+    // Query string and path.
+    assert_eq!(c.get("/search?keywords=a%00b").await.status, 400);
+    assert_eq!(c.get("/member/nobody%00/x").await.status, 400);
+    // Form body: every text field of many forms used to be a 500 here.
+    let r = c
+        .post_form("/usercp/notepad", &[("notepad", "a\u{0}b")])
+        .await;
+    assert_eq!(r.status, 400, "{}", r.status);
+    // JSON body.
+    let h = [("x-csrf-token", c.csrf())];
+    let hdrs: Vec<(&str, &str)> = h.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let r = c
+        .send_json(
+            "POST",
+            "/api/v1/threads/1/posts",
+            serde_json::json!({"message": "a\u{0}b"}),
+            &hdrs,
+        )
+        .await;
+    assert_eq!(r.status, 400, "{}", r.status);
+    // Ordinary input still goes through.
+    let r = c
+        .post_form("/usercp/notepad", &[("notepad", "perfectly fine")])
+        .await;
+    assert!(r.status.is_redirection() || r.status == 200, "{}", r.status);
+}

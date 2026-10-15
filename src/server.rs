@@ -120,14 +120,61 @@ pub async fn migrate(db: &sqlx::PgPool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// PostgreSQL cannot store a NUL byte in text, so one anywhere in a path, query, form or JSON
+/// body would surface as a 500 from whichever handler first tried to save or look up the value
+/// (every text field of about two dozen forms did). Nothing legitimate sends one, so refuse it at
+/// the door. Multipart uploads are not buffered or inspected here.
+async fn reject_nul(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let refuse = || {
+        (
+            StatusCode::BAD_REQUEST,
+            "The request contains an invalid character.",
+        )
+            .into_response()
+    };
+    if req.uri().path().contains("%00") || req.uri().query().is_some_and(|q| q.contains("%00")) {
+        return refuse();
+    }
+    let content_type = req
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let form = content_type.starts_with("application/x-www-form-urlencoded");
+    if !form && !content_type.starts_with("application/json") {
+        return next.run(req).await;
+    }
+    let (parts, body) = req.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, DEFAULT_BODY_LIMIT).await else {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "The request is too large.").into_response();
+    };
+    let has_nul = bytes.contains(&0)
+        || if form {
+            bytes.windows(3).any(|w| w == b"%00")
+        } else {
+            bytes.windows(6).any(|w| w == br"\u0000")
+        };
+    if has_nul {
+        return refuse();
+    }
+    next.run(axum::extract::Request::from_parts(
+        parts,
+        axum::body::Body::from(bytes),
+    ))
+    .await
+}
+
 pub fn build_router(app: app::App) -> Router {
     let csp = "default-src 'self'; img-src * data: blob:; media-src *; style-src 'self' 'unsafe-inline'; script-src 'self'; \
                frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://player.twitch.tv; \
                connect-src 'self'; form-action 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'";
-    let dynamic = routes::router().layer(axum::middleware::from_fn_with_state(
-        app.clone(),
-        ctx::context_middleware,
-    ));
+    let dynamic = routes::router()
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            ctx::context_middleware,
+        ))
+        .layer(axum::middleware::from_fn(reject_nul));
     // Avatars and banners: straight from the directory when stored locally, streamed from the
     // object store otherwise.
     let uploads: Router<app::App> = if app.storage.is_local() {
