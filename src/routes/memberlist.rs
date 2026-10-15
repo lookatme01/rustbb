@@ -57,6 +57,8 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
         .filter(|g| !g.perms.0.showmemberlist)
         .map(|g| g.gid)
         .collect();
+    // Filtering by a hidden group would list its members through additionalgroups; match nothing.
+    let gid = if hidden.contains(&q.gid) { -1 } else { q.gid };
     let letter = q
         .letter
         .chars()
@@ -75,7 +77,7 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
         .bind(&username_like)
         .bind(&letter)
         .bind(&website_like)
-        .bind(q.gid)
+        .bind(gid)
         .fetch_one(&ctx.app.db)
         .await?;
     let per = s.int("membersperpage").max(5);
@@ -100,7 +102,7 @@ pub async fn memberlist(ctx: Ctx, Query(q): Query<MlQuery>) -> AppResult<Respons
     .bind(&username_like)
     .bind(&letter)
     .bind(&website_like)
-    .bind(q.gid)
+    .bind(gid)
     .bind(per)
     .bind((pg.page - 1) * per)
     .fetch_all(&ctx.app.db)

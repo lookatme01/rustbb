@@ -62,3 +62,23 @@ async fn team_groups_keep_their_order_memberships_and_individual_limits() {
         "additional group membership was omitted"
     );
 }
+
+#[tokio::test]
+async fn filtering_the_member_list_by_a_hidden_group_does_not_list_its_members() {
+    let t = test_app!();
+    sqlx::query("INSERT INTO usergroups (gid, title, disporder, perms) VALUES (30, 'Quiet group', 40, '{\"showmemberlist\":false}')")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    // A visible-group member who also belongs to the hidden group.
+    sqlx::query("INSERT INTO users (username, password, email, usergroup, regdate, additionalgroups) VALUES ('secretmember', 'disabled', 'secret@example.test', 2, 1, '{30}')")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let all = t.client().get("/members").await;
+    assert!(all.body.contains("secretmember"), "{}", all.status);
+    let r = t.client().get("/members?gid=30").await;
+    assert_eq!(r.status, 200);
+    assert!(!r.body.contains("secretmember"));
+}
