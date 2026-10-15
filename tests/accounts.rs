@@ -669,3 +669,25 @@ async fn database_errors_a_race_can_cause_are_not_reported_as_internal_errors() 
         app.public_message()
     );
 }
+
+#[tokio::test]
+async fn the_captcha_image_is_a_png_that_does_not_spell_out_its_code() {
+    let t = test_app!();
+    let c = t.client();
+    let r = c.get("/captcha/refresh").await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    let hash = serde_json::from_str::<serde_json::Value>(&r.body).unwrap()["hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let img = c.get(&format!("/captcha/{hash}")).await;
+    assert_eq!(img.status, 200);
+    assert_eq!(img.headers.get("content-type").unwrap(), "image/png");
+    assert_eq!(&img.bytes[..8], b"\x89PNG\r\n\x1a\n");
+    let code: String = sqlx::query_scalar("SELECT imagestring FROM captcha WHERE imagehash = $1")
+        .bind(&hash)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(!img.bytes.windows(code.len()).any(|w| w == code.as_bytes()));
+}
