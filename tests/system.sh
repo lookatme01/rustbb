@@ -16,7 +16,8 @@ has "profile shows online" 'Online now'
 has "profile shows bot badge" 'name-system'
 has "profile shows activity" 'Keeping the board running'
 check "index" 200 "$BASE/"
-has "index lists System online" 'name-system'
+# Only members with a session are counted and listed: System has none, so it is not a face the count omits.
+grep -q 'name-system' "$BODY" && bad "index does not list System online" || ok "index does not list System online"
 check "who's online" 200 "$BASE/online"
 has "who's online lists System" 'Keeping the board running'
 
