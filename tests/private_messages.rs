@@ -453,3 +453,20 @@ async fn send_to_friend(c: &common::Client, subject: &str) -> common::Response {
     )
     .await
 }
+
+#[tokio::test]
+async fn key_lookups_work_for_composing_but_cannot_be_used_to_map_the_member_list() {
+    let t = test_app!();
+    t.create_user("lookupfriend", "Passw0rd-lookupfriend").await;
+    let uid = t.create_user("lookupasker", "Passw0rd-lookupasker").await;
+    let c = t.login_as(uid).await;
+    let r = c.get("/pgp/lookup?names=lookupfriend").await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.body.contains("lookupfriend"));
+    // Sixty lookups per ten minutes are plenty for writing messages; a scraper hits the limit.
+    let mut last = 200;
+    for _ in 0..61 {
+        last = c.get("/pgp/lookup?names=nobody").await.status.as_u16();
+    }
+    assert_eq!(last, 429);
+}

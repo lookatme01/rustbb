@@ -500,6 +500,17 @@ pub struct LookupQuery {
 /// Keys for the recipients typed into the compose form (by name) or for known uids.
 async fn lookup(ctx: Ctx, Query(q): Query<LookupQuery>) -> AppResult<Response> {
     let me = require(&ctx)?;
+    // Composing a message looks up a handful of recipients. The endpoint answers for up to fifty
+    // names or ids at a time, so without a limit it is a cheap way to map usernames to ids. It
+    // cannot be limited to members who may view profiles (encrypting a message to someone needs
+    // their key whether or not you may open their profile), hence a rate limit.
+    if !ctx
+        .app
+        .throttle(&format!("pgp-lookup:{}", me.uid), 60, 600)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let names: Vec<String> = q
         .names
         .split([',', ';'])

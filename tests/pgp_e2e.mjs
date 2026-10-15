@@ -6,6 +6,9 @@
 //
 // Needs three existing members, alice_pgp, bob_pgp and mallory_pgp, with the given password
 // (default admin12345) and permission to use private messages. Their keys and messages are reset.
+// It sends several messages in a row, so the board's PM flood control must be off
+// (setting pmfloodsecs = 0); on a fresh install the 20 second default makes it fail with
+// "Please wait N more seconds". Run it against a throwaway board: it resets those members' keys.
 
 const BASE = process.argv[2] || "http://127.0.0.1:8088";
 const PASSWORD = process.argv[3] || "admin12345";
