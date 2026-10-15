@@ -2,7 +2,6 @@
 
 use crate::ctx::Ctx;
 use crate::error::{AppError, AppResult};
-use crate::util::escape_html;
 use axum::extract::Query;
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
@@ -84,7 +83,7 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
     .fetch_all(&ctx.app.db)
     .await?;
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
-    let bbname = escape_html(s.get("bbname"));
+    let bbname = xml_text(s.get("bbname"));
     let opts = crate::parser::ParseOptions {
         allow_videocode: false,
         ..Default::default()
@@ -111,17 +110,17 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
         let forum = ctx
             .cache
             .forum(fid)
-            .map(|f| escape_html(&f.name))
+            .map(|f| xml_text(&f.name))
             .unwrap_or_default();
         if atom {
             out.push_str(&format!(
                 "<entry><title>{}</title><link href=\"{link}\"/><id>{link}</id><updated>{}</updated><author><name>{}</name></author><category term=\"{forum}\"/><content type=\"html\">{}</content></entry>\n",
-                escape_html(&subject), rfc3339(dateline), escape_html(&username), escape_html(&html)
+                xml_text(&subject), rfc3339(dateline), xml_text(&username), xml_text(&html)
             ));
         } else {
             out.push_str(&format!(
                 "<item><title>{}</title><link>{link}</link><guid isPermaLink=\"true\">{link}</guid><pubDate>{}</pubDate><dc:creator xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</dc:creator><category>{forum}</category><description>{}</description></item>\n",
-                escape_html(&subject), rfc2822(dateline), escape_html(&username), escape_html(&html)
+                xml_text(&subject), rfc2822(dateline), xml_text(&username), xml_text(&html)
             ));
         }
     }
@@ -165,14 +164,14 @@ pub async fn sitemap(ctx: Ctx) -> AppResult<Response> {
         if let Some(forum) = ctx.cache.forum(*f) {
             out.push_str(&format!(
                 "<url><loc>{bburl}{}</loc><changefreq>hourly</changefreq></url>\n",
-                escape_html(&crate::templates::url_forum(*f as i64, Some(&forum.name)))
+                xml_text(&crate::templates::url_forum(*f as i64, Some(&forum.name)))
             ));
         }
     }
     for (tid, subject, lp) in threads {
         out.push_str(&format!(
             "<url><loc>{bburl}{}</loc><lastmod>{}</lastmod></url>\n",
-            escape_html(&crate::templates::url_thread(tid as i64, Some(&subject))),
+            xml_text(&crate::templates::url_thread(tid as i64, Some(&subject))),
             chrono::DateTime::from_timestamp(lp, 0)
                 .unwrap_or_default()
                 .format("%Y-%m-%d")
@@ -199,4 +198,34 @@ pub async fn robots(ctx: Ctx) -> AppResult<Response> {
         "User-agent: *\nDisallow: /admin\nDisallow: /modcp\nDisallow: /usercp\nDisallow: /pm\nDisallow: /search\nDisallow: /newreply\nDisallow: /newthread\nDisallow: /member/\nDisallow: /report\nDisallow: /attachment/\nDisallow: /captcha/\nSitemap: {bburl}/sitemap.xml\n"
     );
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body).into_response())
+}
+
+/// `s` escaped for an XML text node. Besides the markup characters, XML 1.0 forbids most control
+/// characters outright (a stray vertical tab in one subject makes the whole feed unparseable), so
+/// those are dropped.
+fn xml_text(s: &str) -> String {
+    crate::util::escape_html(s)
+        .chars()
+        .filter(|&c| {
+            matches!(c, '\t' | '\n' | '\r')
+                || ('\u{20}'..='\u{D7FF}').contains(&c)
+                || ('\u{E000}'..='\u{FFFD}').contains(&c)
+                || c >= '\u{10000}'
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xml_text;
+
+    #[test]
+    fn control_characters_cannot_break_the_feed() {
+        assert_eq!(xml_text("a\u{0B}b\u{01}c\u{FFFE}d"), "abcd");
+        assert_eq!(
+            xml_text("tab\tnew\nline <&>"),
+            "tab\tnew\nline &lt;&amp;&gt;"
+        );
+        assert_eq!(xml_text("emoji \u{1F600} ok"), "emoji \u{1F600} ok");
+    }
 }
