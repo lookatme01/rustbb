@@ -235,3 +235,56 @@ async fn ip_search_lists_only_posts_the_moderator_may_see() {
         "a soft-deleted post's subject leaked"
     );
 }
+
+#[tokio::test]
+async fn a_moderator_can_only_cancel_scheduled_actions_they_could_have_scheduled() {
+    let t = test_app!();
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let author = t.create_user("delayauthor", "Passw0rd-delayauthor").await;
+    let moderator = t.create_user("openclosemod", "Passw0rd-openclosemod").await;
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, '{\"canopenclosethreads\":true,\"canmanagethreads\":false,\"candeletethreads\":false}')")
+        .bind(fid)
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, 'Scheduled', $2, 'delayauthor', 1, 1, 1) RETURNING tid",
+    )
+    .bind(fid)
+    .bind(author)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let mut dids = vec![];
+    for kind in ["delete", "close"] {
+        let did: i32 = sqlx::query_scalar(
+            "INSERT INTO delayedmoderation (type, delaydateline, uid, fid, tids, dateline) VALUES ($1, 4102444800, 1, $2, $3, 1) RETURNING did",
+        )
+        .bind(kind)
+        .bind(fid)
+        .bind(vec![tid])
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+        dids.push(did);
+    }
+    let c = t.login_as(moderator).await;
+    for did in &dids {
+        c.post_form("/moderation/delayed/cancel", &[("did", &did.to_string())])
+            .await;
+    }
+    let left: Vec<String> = sqlx::query_scalar("SELECT type FROM delayedmoderation ORDER BY did")
+        .fetch_all(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        left,
+        vec!["delete".to_string()],
+        "only the close could be cancelled"
+    );
+}

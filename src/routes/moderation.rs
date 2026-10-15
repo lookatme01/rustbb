@@ -1101,17 +1101,25 @@ pub struct CancelForm {
 }
 
 pub async fn cancel_delayed(ctx: Ctx, CsrfForm(f): CsrfForm<CancelForm>) -> AppResult<Response> {
-    // Only moderators of the forum the action was scheduled in.
-    let fid: Option<i32> = sqlx::query_scalar("SELECT fid FROM delayedmoderation WHERE did = $1")
-        .bind(f.did)
-        .fetch_optional(&ctx.app.db)
-        .await?;
-    let Some(fid) = fid else {
+    // Cancelling is allowed to whoever could have scheduled the same action on every thread in
+    // the batch: it may span forums, and the stored forum is only the first thread's.
+    let row: Option<(String, Vec<i32>)> =
+        sqlx::query_as("SELECT type, tids FROM delayedmoderation WHERE did = $1")
+            .bind(f.did)
+            .fetch_optional(&ctx.app.db)
+            .await?;
+    let Some((action, tids)) = row else {
         return Err(AppError::not_found("scheduled action"));
     };
-    if !ctx
-        .mod_perms(fid)
-        .is_some_and(|m| m.canmanagethreads || m.canopenclosethreads)
+    let fids: Vec<i32> = sqlx::query_scalar("SELECT DISTINCT fid FROM threads WHERE tid = ANY($1)")
+        .bind(&tids)
+        .fetch_all(&ctx.app.db)
+        .await?;
+    if fids.is_empty()
+        || !fids.iter().all(|fid| {
+            ctx.mod_perms(*fid)
+                .is_some_and(|m| delayed_allowed(&action, &m))
+        })
     {
         return Err(AppError::no_perm());
     }
