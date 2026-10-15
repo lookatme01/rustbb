@@ -215,6 +215,7 @@ async fn award_where(
              INSERT INTO user_badges (uid, bid, dateline, manual, awarded_by, reason)
              SELECT uid, $1, $2, $5, $6, $7 FROM users
              WHERE {who} AND usergroup NOT IN (1, 5, 7) AND NOT is_system
+               AND NOT EXISTS (SELECT 1 FROM user_badges have WHERE have.uid = users.uid AND have.bid = $1)
              ON CONFLICT DO NOTHING RETURNING uid
          ), alerted AS (
              INSERT INTO alerts (uid, from_uid, kind, object_id, extra, dateline)

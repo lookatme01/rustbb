@@ -143,6 +143,35 @@ pub async fn feed(ctx: Ctx, Query(q): Query<FeedQuery>) -> AppResult<Response> {
 }
 
 pub async fn sitemap(ctx: Ctx) -> AppResult<Response> {
+    // The same document for everybody (it only lists what guests can read) and the most
+    // expensive query here: build it at most every 30 seconds.
+    const KEY: &str = "sitemap";
+    let xml = match ctx
+        .app
+        .short_cache
+        .get(KEY)
+        .and_then(|v| v.as_str().map(str::to_string))
+    {
+        Some(xml) => xml,
+        None => {
+            let xml = build_sitemap(&ctx).await?;
+            ctx.app
+                .short_cache
+                .insert(KEY.to_string(), serde_json::Value::String(xml.clone()));
+            xml
+        }
+    };
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        xml,
+    )
+        .into_response())
+}
+
+async fn build_sitemap(ctx: &Ctx) -> AppResult<String> {
     let s = ctx.settings();
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
     // Only what guests can see, whoever fetches the sitemap.
@@ -178,14 +207,7 @@ pub async fn sitemap(ctx: Ctx) -> AppResult<Response> {
         ));
     }
     out.push_str("</urlset>\n");
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=3600"),
-        ],
-        out,
-    )
-        .into_response())
+    Ok(out)
 }
 
 pub async fn robots(ctx: Ctx) -> AppResult<Response> {
