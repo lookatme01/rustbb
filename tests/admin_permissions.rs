@@ -142,3 +142,34 @@ async fn only_an_unrestricted_admin_can_download_a_database_backup() {
         r.body
     );
 }
+
+#[tokio::test]
+async fn ban_filters_and_other_select_columns_save_through_the_generic_editor() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = c
+        .post_form(
+            "/admin/crud/banfilters/save",
+            &[("filter", "203.0.113.7"), ("type", "1")],
+        )
+        .await;
+    let msg = r
+        .body
+        .split("<main")
+        .nth(1)
+        .unwrap_or("")
+        .chars()
+        .take(300)
+        .collect::<String>();
+    assert!(r.status.is_redirection(), "{} {msg}", r.status);
+    let (filter, kind): (String, i16) = sqlx::query_as("SELECT filter, type FROM banfilters")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!((filter.as_str(), kind), ("203.0.113.7", 1));
+}

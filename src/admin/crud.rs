@@ -826,8 +826,21 @@ pub async fn save(
     for fdef in &fields {
         let v = form.fields.get(fdef.name);
         q = match fdef.kind {
-            Kind::Text | Kind::Textarea | Kind::Select(_) => {
-                q.bind(field_str(v).trim().to_string())
+            Kind::Text | Kind::Textarea => q.bind(field_str(v).trim().to_string()),
+            Kind::Select(options) => {
+                let value = field_str(v).trim().to_string();
+                if !options.iter().any(|(o, _)| *o == value) {
+                    return Err(AppError::user(format!(
+                        "Choose a valid {}.",
+                        fdef.label.to_lowercase()
+                    )));
+                }
+                // Numeric options go to smallint/int columns, which will not take text.
+                if options.iter().all(|(o, _)| o.parse::<i16>().is_ok()) {
+                    q.bind(value.parse::<i16>().unwrap_or(0))
+                } else {
+                    q.bind(value)
+                }
             }
             Kind::Int => {
                 let n: i64 = field_str(v).trim().parse().unwrap_or(0);
