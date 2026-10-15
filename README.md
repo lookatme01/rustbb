@@ -149,6 +149,10 @@ cargo test
 There are also end-to-end scripts in `tests/*.sh` that poke a running board at
 `http://127.0.0.1:8088`, plus a load test in `tests/load.sh`.
 
+`scripts/fuzz-http.py` throws hostile input (huge, negative, NUL bytes, broken JSON...) at a
+running board and reports every 5xx. It submits destructive actions, so point it at a throwaway
+board only; the script's header explains how to set one up.
+
 ## License
 
 LGPL-3.0-or-later, same as MyBB.
