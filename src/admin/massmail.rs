@@ -122,7 +122,7 @@ pub async fn save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Respons
 pub async fn cancel(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "massmail");
     let mid: i32 = s(f.fields.get("mid")).parse().unwrap_or(0);
-    sqlx::query("UPDATE massemails SET status = 3 WHERE mid = $1")
+    sqlx::query("UPDATE massemails SET status = 3 WHERE mid = $1 AND status IN (1, 2)")
         .bind(mid)
         .execute(&ctx.app.db)
         .await?;
@@ -181,7 +181,8 @@ pub async fn run_batch(app: &App) -> anyhow::Result<Ran> {
     }
     let last = users.last().map(|u| u.0).unwrap_or(lastuid);
     sqlx::query(
-        "UPDATE massemails SET status = 2, lastuid = $2, sentcount = sentcount + $3 WHERE mid = $1",
+        // Not for a mailing that was cancelled while this batch was going out.
+        "UPDATE massemails SET status = 2, lastuid = $2, sentcount = sentcount + $3 WHERE mid = $1 AND status IN (1, 2)",
     )
     .bind(mid)
     .bind(last)
