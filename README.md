@@ -76,6 +76,8 @@ Most settings live in the Admin CP. The few that don't are environment variables
 | `RBB_TRUST_PROXY` | Set to `true` when you're behind nginx or a load balancer. |
 | `RBB_SECURE_COOKIES` | Set to `true` when you're on HTTPS. |
 
+On/off variables accept `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`; anything else stops the server at startup instead of quietly counting as off.
+
 <details>
 <summary>The rest of them</summary>
 
