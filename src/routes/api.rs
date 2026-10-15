@@ -419,13 +419,7 @@ pub async fn create_reply(
     ctx.require_login()?;
     ctx.check_csrf("")?;
     let (t, forum, fp) = crate::routes::showthread::check_thread(&ctx, tid).await?;
-    let mp = ctx.mod_perms(t.fid);
-    if !fp.canpostreplys
-        || !ctx.perms.canpostreplys
-        || ((t.is_closed() || !forum.open) && !mp.map(|m| m.canpostclosedthreads).unwrap_or(false))
-    {
-        return Err(AppError::no_perm());
-    }
+    crate::routes::posting::check_can_reply(&ctx, &t, &forum, &fp)?;
     let subject = if r.subject.trim().is_empty() {
         format!("RE: {}", t.subject)
     } else {

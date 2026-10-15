@@ -276,3 +276,113 @@ async fn moderator_merge_and_delete_of_the_same_posts_serialize() {
     let _ = (m, d);
     assert_consistent(&t).await;
 }
+
+#[tokio::test]
+async fn the_api_honours_reply_own_threads_only_and_deleted_threads() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    let fid = forum(&t).await;
+    let admin = t.login_as(1).await;
+    let tid = new_thread(&t, &admin, fid).await;
+    let member = t.create_user("replier", "Passw0rd-replier").await;
+    let c = t.login_as(member).await;
+    let path = format!("/api/v1/threads/{tid}/posts");
+    let r = api_reply(&c, &path).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+
+    sqlx::query("INSERT INTO forumpermissions (fid, gid, perms) VALUES ($1, 2, '{\"canonlyreplyownthreads\":true}') ON CONFLICT (fid, gid) DO UPDATE SET perms = EXCLUDED.perms")
+        .bind(fid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+    let r = api_reply(&c, &path).await;
+    assert_eq!(r.status, 403, "{}", r.body);
+
+    sqlx::query("DELETE FROM forumpermissions WHERE fid = $1 AND gid = 2")
+        .bind(fid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE threads SET visible = -1 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["forums", "forumperms"]).await.unwrap();
+    let r = admin
+        .send_json(
+            "POST",
+            &path,
+            serde_json::json!({"message": "Into a deleted thread."}),
+            &[("x-csrf-token", &admin.csrf())],
+        )
+        .await;
+    assert!(r.status.is_client_error(), "{} {}", r.status, r.body);
+}
+
+#[tokio::test]
+async fn the_moderation_queue_only_acts_on_items_awaiting_approval() {
+    let t = test_app!();
+    let fid = forum(&t).await;
+    let admin = t.login_as(1).await;
+    let tid = new_thread(&t, &admin, fid).await;
+    let moderator = t.create_user("queuemod", "Passw0rd-queuemod").await;
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, '{}')")
+        .bind(fid)
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let c = t.login_as(moderator).await;
+    let id = tid.to_string();
+    // A live thread is not in the queue, so the queue cannot delete it.
+    c.post_form("/modcp/modqueue", &[("kind", "threads"), ("delete", &id)])
+        .await;
+    let live: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(live, 1);
+    // Nor can it restore a thread a moderator soft-deleted.
+    sqlx::query("UPDATE threads SET visible = -1 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    c.post_form("/modcp/modqueue", &[("kind", "threads"), ("approve", &id)])
+        .await;
+    let v: i16 = sqlx::query_scalar("SELECT visible FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(v, -1);
+    // A genuinely pending thread is approved as before.
+    sqlx::query("UPDATE threads SET visible = 0 WHERE tid = $1")
+        .bind(tid)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    c.post_form("/modcp/modqueue", &[("kind", "threads"), ("approve", &id)])
+        .await;
+    let v: i16 = sqlx::query_scalar("SELECT visible FROM threads WHERE tid = $1")
+        .bind(tid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(v, 1);
+}
+
+async fn api_reply(c: &Client, path: &str) -> common::Response {
+    let csrf = c.csrf();
+    c.send_json(
+        "POST",
+        path,
+        serde_json::json!({"message": "A reply from the API."}),
+        &[("x-csrf-token", &csrf)],
+    )
+    .await
+}

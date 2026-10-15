@@ -607,13 +607,15 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
     let mut uow = crate::usecase::Uow::begin(&ctx.app).await?;
     match f.kind.as_str() {
         "posts" => {
+            // Only items still awaiting approval: the queue is not a back door to delete or restore
+            // live or soft-deleted content, which needs the per-forum moderator permissions.
             let ok = |ids: Vec<i32>| {
                 let ctx = ctx.clone();
                 let fl = fl.clone();
                 async move {
                     Ok::<Vec<i32>, AppError>(
                         sqlx::query_scalar(
-                            "SELECT pid FROM posts WHERE pid = ANY($1) AND ($2 OR fid = ANY($3))",
+                            "SELECT pid FROM posts WHERE pid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
                         )
                         .bind(&ids)
                         .bind(all)
@@ -633,10 +635,10 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             }
         }
         "attachments" => {
-            // Only attachments of posts in forums this moderator moderates.
+            // Only pending attachments of posts in forums this moderator moderates.
             sqlx::query(
                 "UPDATE attachments a SET visible = TRUE FROM posts p
-                 WHERE a.aid = ANY($1) AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))",
+                 WHERE a.aid = ANY($1) AND NOT a.visible AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))",
             )
             .bind(&f.approve)
             .bind(all)
@@ -669,7 +671,7 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
                 async move {
                     Ok::<Vec<i32>, AppError>(
                         sqlx::query_scalar(
-                            "SELECT tid FROM threads WHERE tid = ANY($1) AND ($2 OR fid = ANY($3))",
+                            "SELECT tid FROM threads WHERE tid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
                         )
                         .bind(&ids)
                         .bind(all)

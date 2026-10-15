@@ -573,7 +573,7 @@ async fn recent_posts_for_review(ctx: &Ctx, tid: i32) -> AppResult<Vec<serde_jso
         .collect())
 }
 
-fn check_can_reply(
+pub(crate) fn check_can_reply(
     ctx: &Ctx,
     thread: &crate::models::Thread,
     forum: &crate::models::Forum,
