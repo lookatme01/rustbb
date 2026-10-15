@@ -598,6 +598,19 @@ pub struct QueueForm {
     pub back: String,
 }
 
+/// The ids (first of each pair) whose forum (second) the viewer holds `right` in.
+fn allowed(
+    ctx: &Ctx,
+    items: Vec<(i32, i32)>,
+    right: impl Fn(&crate::perms::ModPerms) -> bool,
+) -> Vec<i32> {
+    items
+        .into_iter()
+        .filter(|(_, fid)| ctx.mod_perms(*fid).is_some_and(|m| right(&m)))
+        .map(|(id, _)| id)
+        .collect()
+}
+
 pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppResult<Response> {
     require_modcp(&ctx)?;
     if !ctx.can(Cap::ModQueue) {
@@ -613,9 +626,9 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
                 let ctx = ctx.clone();
                 let fl = fl.clone();
                 async move {
-                    Ok::<Vec<i32>, AppError>(
-                        sqlx::query_scalar(
-                            "SELECT pid FROM posts WHERE pid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
+                    Ok::<Vec<(i32, i32)>, AppError>(
+                        sqlx::query_as::<_, (i32, i32)>(
+                            "SELECT pid, fid FROM posts WHERE pid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
                         )
                         .bind(&ids)
                         .bind(all)
@@ -625,8 +638,12 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
                     )
                 }
             };
-            let a = ok(f.approve.clone()).await?;
-            let d = ok(f.delete.clone()).await?;
+            // Being in a forum's scope is not enough: approving and deleting need their own
+            // moderator rights there.
+            let a = allowed(&ctx, ok(f.approve.clone()).await?, |m| {
+                m.canapproveunapproveposts
+            });
+            let d = allowed(&ctx, ok(f.delete.clone()).await?, |m| m.candeleteposts);
             if !a.is_empty() {
                 crate::ops::set_posts_visibility_in(&mut uow, &a, 1).await?;
             }
@@ -635,14 +652,22 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             }
         }
         "attachments" => {
-            // Only pending attachments of posts in forums this moderator moderates.
+            // Only pending attachments of posts in forums where this moderator may handle them.
+            let fl_att: Vec<i32> = fl
+                .iter()
+                .copied()
+                .filter(|fid| {
+                    ctx.mod_perms(*fid)
+                        .is_some_and(|m| m.canapproveunapproveattachs)
+                })
+                .collect();
             sqlx::query(
                 "UPDATE attachments a SET visible = TRUE FROM posts p
                  WHERE a.aid = ANY($1) AND NOT a.visible AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))",
             )
             .bind(&f.approve)
             .bind(all)
-            .bind(&fl)
+            .bind(&fl_att)
             .execute(uow.conn())
             .await?;
             let files: Vec<(String, String)> = sqlx::query_as(
@@ -652,7 +677,7 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             )
             .bind(&f.delete)
             .bind(all)
-            .bind(&fl)
+            .bind(&fl_att)
             .fetch_all(uow.conn())
             .await?;
             let paths: Vec<String> = files
@@ -669,9 +694,9 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
                 let ctx = ctx.clone();
                 let fl = fl.clone();
                 async move {
-                    Ok::<Vec<i32>, AppError>(
-                        sqlx::query_scalar(
-                            "SELECT tid FROM threads WHERE tid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
+                    Ok::<Vec<(i32, i32)>, AppError>(
+                        sqlx::query_as::<_, (i32, i32)>(
+                            "SELECT tid, fid FROM threads WHERE tid = ANY($1) AND visible = 0 AND ($2 OR fid = ANY($3))",
                         )
                         .bind(&ids)
                         .bind(all)
@@ -681,8 +706,10 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
                     )
                 }
             };
-            let a = ok(f.approve.clone()).await?;
-            let d = ok(f.delete.clone()).await?;
+            let a = allowed(&ctx, ok(f.approve.clone()).await?, |m| {
+                m.canapproveunapprovethreads
+            });
+            let d = allowed(&ctx, ok(f.delete.clone()).await?, |m| m.candeletethreads);
             if !a.is_empty() {
                 crate::ops::set_threads_visibility_in(&mut uow, &a, 1).await?;
             }

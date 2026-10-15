@@ -741,3 +741,59 @@ async fn twitch_embeds_name_the_boards_own_host_as_their_parent() {
     );
     assert!(!page.body.contains("parent=localhost"));
 }
+
+#[tokio::test]
+async fn the_moderation_queue_honours_the_moderators_approve_and_delete_rights() {
+    let t = test_app!();
+    let fid = forum(&t).await;
+    let admin = t.login_as(1).await;
+    let author = t.create_user("queueauthor", "Passw0rd-queueauthor").await;
+    let moderator = t.create_user("limitedmod", "Passw0rd-limitedmod").await;
+    // May approve threads, may not delete them.
+    sqlx::query("INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, '{\"canapproveunapprovethreads\":true,\"candeletethreads\":false}')")
+        .bind(fid)
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    let _ = admin;
+    let mut pending = vec![];
+    for i in 0..2 {
+        let tid: i32 = sqlx::query_scalar(
+            "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, $2, $3, 'queueauthor', 100, 100, 0) RETURNING tid",
+        )
+        .bind(fid)
+        .bind(format!("Pending {i}"))
+        .bind(author)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+        pending.push(tid);
+    }
+    let c = t.login_as(moderator).await;
+    let (keep, approve) = (pending[0].to_string(), pending[1].to_string());
+    c.post_form("/modcp/modqueue", &[("kind", "threads"), ("delete", &keep)])
+        .await;
+    c.post_form(
+        "/modcp/modqueue",
+        &[("kind", "threads"), ("approve", &approve)],
+    )
+    .await;
+    let state = |tid: i32| {
+        let pool = t.db.pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i16>("SELECT visible FROM threads WHERE tid = $1")
+                .bind(tid)
+                .fetch_optional(&pool)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        state(pending[0]).await,
+        Some(0),
+        "deleting needs candeletethreads"
+    );
+    assert_eq!(state(pending[1]).await, Some(1), "approving was allowed");
+}
