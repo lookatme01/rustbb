@@ -400,13 +400,28 @@ impl CtxInner {
         *self.write_scope.lock().unwrap() = Some(tags);
     }
 
+    /// True when the request is not the member actually opening the page: a browser prefetch, or
+    /// a subresource load such as `<img src>`. Side effects of viewing (marking read, counting a
+    /// view) must skip these, or a post embedding `[img]/pm/read/5[/img]` could trigger them.
     pub fn is_prefetch(&self) -> bool {
-        self.headers
-            .get("sec-purpose")
-            .or_else(|| self.headers.get("purpose"))
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v.contains("prefetch"))
-            .unwrap_or(false)
+        let header = |name: &str| self.headers.get(name).and_then(|v| v.to_str().ok());
+        header("sec-purpose")
+            .or_else(|| header("purpose"))
+            .is_some_and(|v| v.contains("prefetch"))
+            || header("sec-fetch-dest").is_some_and(|d| {
+                matches!(
+                    d,
+                    "image"
+                        | "script"
+                        | "style"
+                        | "audio"
+                        | "video"
+                        | "font"
+                        | "track"
+                        | "object"
+                        | "embed"
+                )
+            })
     }
 
     fn viewer(&self) -> Option<ViewerInfo<'_>> {

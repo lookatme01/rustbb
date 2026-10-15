@@ -196,12 +196,30 @@ async fn concurrent_reads_only_decrement_unread_once() {
         .body(axum::body::Body::empty())
         .unwrap();
     assert_eq!(c.request(prefetch).await.status, 200);
+    // A post embedding the URL as an image makes the browser request it as a subresource.
+    let as_image = axum::http::Request::builder()
+        .uri(&path)
+        .header("sec-fetch-dest", "image")
+        .header(
+            "cookie",
+            format!(
+                "{}={}",
+                rbb::ctx::AUTH_COOKIE,
+                c.cookie(rbb::ctx::AUTH_COOKIE).unwrap()
+            ),
+        )
+        .body(axum::body::Body::empty())
+        .unwrap();
+    c.request(as_image).await;
     let unread: i32 = sqlx::query_scalar("SELECT unreadpms FROM users WHERE uid = $1")
         .bind(uid)
         .fetch_one(&t.db.pool)
         .await
         .unwrap();
-    assert_eq!(unread, 3, "hovering a message must not mark it read");
+    assert_eq!(
+        unread, 3,
+        "hovering a message or embedding its URL must not mark it read"
+    );
     for r in futures::future::join_all((0..8).map(|_| c.get(&path))).await {
         assert_eq!(r.status, 200, "{}", r.body);
     }
