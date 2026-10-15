@@ -523,7 +523,7 @@ pub async fn security(
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
     crate::system::guard(&ctx.cache, uid, "signed out")?;
-    guard_target(&ctx, &user, false).await?;
+    guard_target(&ctx, &user, true).await?;
     let mut done = vec![];
     if f.reset2fa {
         sqlx::query("UPDATE users SET totp_secret = '' WHERE uid = $1")
@@ -602,7 +602,7 @@ pub async fn edit_save(
 ) -> AppResult<Response> {
     crate::admin::acp_guard!(ctx, "users");
     let user = load(&ctx, uid).await?;
-    guard_target(&ctx, &user, false).await?;
+    guard_target(&ctx, &user, true).await?;
     let fl = &f.fields;
     let username = s(fl.get("username")).trim().to_string();
     // System keeps its email, groups and password; only cosmetic fields are editable.

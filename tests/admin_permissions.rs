@@ -327,3 +327,36 @@ async fn deleting_a_forum_takes_its_moderators_out_of_the_moderators_group() {
         "still moderates the other forum"
     );
 }
+
+#[tokio::test]
+async fn a_restricted_admin_cannot_reset_the_security_of_staff_accounts() {
+    let t = test_app!();
+    let c = restricted_admin(&t).await;
+    // "users" stays allowed so the module is reachable; another module is what restricts them.
+    sqlx::query(
+        "UPDATE adminoptions SET permissions = '{\"users\": true, \"tools\": false}' WHERE uid = 1",
+    )
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    let moderator = t.create_user("modwith2fa", "Passw0rd-modwith2fa").await;
+    sqlx::query("UPDATE users SET usergroup = 6, totp_secret = 'JBSWY3DPEHPK3PXP' WHERE uid = $1")
+        .bind(moderator)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["groups"]).await.unwrap();
+    let r = c
+        .post_form(
+            &format!("/admin/users/{moderator}/security"),
+            &[("reset2fa", "1")],
+        )
+        .await;
+    assert!(r.body.contains("staff account"), "{} {}", r.status, r.body);
+    let secret: String = sqlx::query_scalar("SELECT totp_secret FROM users WHERE uid = $1")
+        .bind(moderator)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(!secret.is_empty(), "the second factor was removed");
+}
