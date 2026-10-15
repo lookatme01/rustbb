@@ -660,3 +660,48 @@ async fn splitting_never_publishes_a_hidden_post() {
     assert_eq!(stayed, tid);
     assert_consistent(&t).await;
 }
+
+#[tokio::test]
+async fn subscribers_hear_nothing_about_a_reply_hidden_before_the_job_ran() {
+    let t = test_app!();
+    setting(&t, "postfloodcheck", "0").await;
+    let fid = forum(&t).await;
+    let admin = t.login_as(1).await;
+    let tid = new_thread(&t, &admin, fid).await;
+    let watcher = t.create_user("watcher", "Passw0rd-watcher").await;
+    sqlx::query(
+        "INSERT INTO threadsubscriptions (uid, tid, notification, dateline) VALUES ($1, $2, 0, 1)",
+    )
+    .bind(watcher)
+    .bind(tid)
+    .execute(&t.db.pool)
+    .await
+    .unwrap();
+    // Keep queued jobs from earlier requests out of the picture.
+    rbb::infra::outbox::run_batch(&t.app).await.unwrap();
+    let alerts = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM alerts WHERE uid = $1")
+            .bind(watcher)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap()
+    };
+    let before = alerts().await;
+    let r = admin
+        .post_form(
+            &format!("/newreply/{tid}"),
+            &[("message", "A reply that gets pulled.")],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let pid: i32 = sqlx::query_scalar("SELECT MAX(pid) FROM posts")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    // A moderator removes it before the notification job gets to run.
+    rbb::ops::set_posts_visibility(&t.app, &[pid], -1)
+        .await
+        .unwrap();
+    rbb::infra::outbox::run_batch(&t.app).await.unwrap();
+    assert_eq!(alerts().await, before, "no alert for a post nobody can see");
+}

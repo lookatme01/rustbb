@@ -212,8 +212,18 @@ async fn run(app: &App, id: i64, job: Job) -> anyhow::Result<()> {
             uid,
             username,
             subject,
-            message,
+            message: _,
         } => {
+            // The post may have been hidden, deleted or edited between queueing and running (the
+            // job retries with backoff): announce what is public now, or nothing.
+            let current: Option<String> =
+                sqlx::query_scalar("SELECT message FROM posts WHERE pid = $1 AND visible = 1")
+                    .bind(pid)
+                    .fetch_optional(&app.db)
+                    .await?;
+            let Some(message) = current else {
+                return Ok(());
+            };
             if new_thread {
                 crate::notify::forum_subscribers(app, d, fid, tid, uid, &subject, &username)
                     .await?;
