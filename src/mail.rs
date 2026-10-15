@@ -24,7 +24,9 @@ const BATCH: i64 = 8;
 const LEASE_SECS: f64 = 300.0;
 /// Each of connecting and sending is bounded by this, so a message finishes well inside its lease.
 const SEND_TIMEOUT: Duration = Duration::from_secs(30);
-pub const MAX_ATTEMPTS: i32 = 8;
+/// With the backoff capped at an hour this rides out an SMTP outage of about four hours;
+/// the old limit of 8 gave up after about twenty minutes, losing reset and activation mails.
+pub const MAX_ATTEMPTS: i32 = 14;
 
 pub async fn queue(app: &App, to: &str, subject: &str, body: &str) {
     if let Err(e) = deliver(app, None, to, subject, body).await {
