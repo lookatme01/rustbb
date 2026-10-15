@@ -21,7 +21,7 @@ jobs:
       matrix:
         target: [parser, form, theme_import, multipart]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
@@ -61,7 +61,7 @@ jobs:
       RBB_LOG_JSON: "true"
       PSQL: psql
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
@@ -107,7 +107,7 @@ jobs:
       E2E_SERVER_URL: postgres://rbb@localhost:5432
       PSQL: psql
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client

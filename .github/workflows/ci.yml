@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Installs the version pinned in rust-toolchain.toml.
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -39,7 +39,7 @@ jobs:
       RBB_TEST_DATABASE_URL: postgres://rbb@localhost:5432/postgres
       PROPTEST_CASES: "64"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - run: rustup toolchain install
@@ -80,8 +80,8 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Rich-text editor conversions (MyCode <-> editable HTML)
@@ -99,10 +99,10 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U rbb" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -119,7 +119,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: RustSec advisories, licenses, bans, sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
