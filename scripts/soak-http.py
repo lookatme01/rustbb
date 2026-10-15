@@ -27,6 +27,15 @@ def refresh():
     ids["pids"] = [int(x) for x in q("select pid from posts order by random() limit 300")]
     ids["pt"] = [tuple(int(y) for y in x.split("|")) for x in q("select pid, tid from posts order by random() limit 300")]
     ids["fids"] = [int(x) for x in q("select fid from forums where type='f'")]
+    ids["polls"] = [int(x) for x in q("select tid from polls")]
+    ids["uids"] = [tuple(x.split("|")) for x in q("select uid, username from users where username ~ '^user(2[5-9]|[3-5][0-9])$'")]
+    ids["banned"] = [int(x) for x in q("select uid from banned")]
+def prepare():
+    # Features beyond posting: warnings on, and some polls to vote in.
+    q("insert into settings (name,value) values ('enablewarningsystem','1'),('allowcustomwarnings','1'),('allowwarningsnopost','1'),('maxwarningpoints','10'),('enablepms','1') on conflict (name) do update set value=excluded.value")
+    q("insert into polls (tid, question, dateline, options, votes, numvotes) select tid, 'Soak poll', 1, '{A,B,C}', '{0,0,0}', 0 from threads where poll = 0 and closed not like 'moved|%' order by random() limit 20")
+    q("update threads t set poll = p.pid from polls p where p.tid = t.tid and t.poll = 0")
+prepare()
 refresh()
 def mk(name, admin=False):
     c = fz.Client(BASE)
@@ -51,8 +60,26 @@ def key_of(c, path):
     m = re.search(r'name="csrf-token" content="([^"]+)"', b)
     return fz.key(b) or (m.group(1) if m else "")
 def member_op(c):
-    op = random.choice(["reply", "reply", "reply", "thread"])
-    if op == "reply":
+    op = random.choice(["reply", "reply", "reply", "thread", "pm", "rate", "subscribe", "vote", "rep"])
+    if op == "pm":
+        k = key_of(c, "/pm/send")
+        code, _, _ = c.form("/pm/send", {"my_post_key": k, "to": f"user{random.randint(1, 60)}", "subject": "soak pm", "message": "soak private message text", "savecopy": "1"})
+    elif op == "rate":
+        tid = random.choice(ids["tids"]); k = key_of(c, f"/thread/{tid}")
+        code, _, _ = c.form(f"/thread/{tid}/rate", {"my_post_key": k, "rating": random.randint(1, 5)})
+    elif op == "subscribe":
+        tid = random.choice(ids["tids"]); k = key_of(c, f"/thread/{tid}")
+        d = {"my_post_key": k, "notification": random.choice([0, 1])}
+        if random.random() < 0.4: d["unsubscribe"] = "1"
+        code, _, _ = c.form(f"/thread/{tid}/subscribe", d)
+    elif op == "vote":
+        tid = random.choice(ids["polls"]); k = key_of(c, f"/thread/{tid}")
+        if random.random() < 0.3: code, _, _ = c.form(f"/thread/{tid}/poll/undo", {"my_post_key": k})
+        else: code, _, _ = c.form(f"/thread/{tid}/poll/vote", {"my_post_key": k, "option": random.randint(1, 3)})
+    elif op == "rep":
+        uid = random.randint(25, 60); k = key_of(c, "/")
+        code, _, _ = c.form(f"/reputation/{uid}/add", {"my_post_key": k, "reputation": random.choice([1, -1, 2]), "comments": "soak rep"})
+    elif op == "reply":
         tid = random.choice(ids["tids"]); k = key_of(c, f"/newreply/{tid}")
         code, _, _ = c.form(f"/newreply/{tid}", {"my_post_key": k, "message": f"soak reply {random.random()} to the thread"})
     else:
@@ -60,9 +87,23 @@ def member_op(c):
         code, _, _ = c.form(f"/newthread/{fid}", {"my_post_key": k, "subject": f"soak thread {random.random()}", "message": "soak opening post text"})
     return op, code
 def admin_op(c):
-    op = random.choice(["softdelete", "restore", "close", "open", "stick", "unstick", "approve", "unapprove", "move", "move", "delete", "postdelete", "postsoft", "postrestore", "postapprove", "edit", "split", "merge"])
+    op = random.choice(["softdelete", "restore", "close", "open", "stick", "unstick", "approve", "unapprove", "move", "move", "delete", "postdelete", "postsoft", "postrestore", "postapprove", "edit", "split", "merge", "warn", "ban", "liftban", "usermerge"])
     k = key_of(c, "/")
-    if op.startswith("post"):
+    if op == "warn" and ids["uids"]:
+        uid, _ = random.choice(ids["uids"])
+        code, _, _ = c.form(f"/warnings/{uid}/warn", {"my_post_key": k, "custom_reason": "soak warning", "custom_points": random.randint(1, 4)})
+    elif op == "ban" and ids["uids"]:
+        _, name = random.choice(ids["uids"])
+        code, _, _ = c.form("/modcp/ban", {"my_post_key": k, "username": name, "reason": "soak", "days": 0, "gid": 7})
+    elif op == "liftban" and ids["banned"]:
+        code, _, _ = c.form("/modcp/liftban", {"my_post_key": k, "uid": random.choice(ids["banned"])})
+    elif op == "usermerge" and len(ids["uids"]) > 6 and random.random() < 0.15:
+        (_, a), (_, b) = random.sample(ids["uids"], 2)
+        kk = key_of(c, "/admin/users/merge")
+        code, _, _ = c.form("/admin/users/merge", {"my_post_key": kk, "source": a, "destination": b})
+    elif op in ("warn", "ban", "liftban", "usermerge"):
+        code, _, _ = c.form("/moderation/threads", {"my_post_key": k, "action": "close", "tids": random.choice(ids["tids"])})
+    elif op.startswith("post"):
         a = {"postdelete": "delete", "postsoft": "softdelete", "postrestore": "restore", "postapprove": "approve"}[op]
         pid, tid = random.choice(ids["pt"])
         code, _, _ = c.form("/moderation/posts", {"my_post_key": k, "action": a, "tid": tid, "pids": pid})

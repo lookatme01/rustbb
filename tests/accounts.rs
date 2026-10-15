@@ -652,3 +652,20 @@ async fn a_nul_byte_is_refused_at_the_door_instead_of_failing_deep_in_a_handler(
         .await;
     assert!(r.status.is_redirection() || r.status == 200, "{}", r.status);
 }
+
+#[tokio::test]
+async fn database_errors_a_race_can_cause_are_not_reported_as_internal_errors() {
+    let t = test_app!();
+    // A rating for a thread that has just been merged away: the foreign key refuses it.
+    let e = sqlx::query("INSERT INTO threadratings (tid, uid, rating) VALUES (987654, 1, 5)")
+        .execute(&t.db.pool)
+        .await
+        .unwrap_err();
+    let app: rbb::error::AppError = e.into();
+    assert_eq!(app.status(), 404);
+    assert!(
+        app.public_message().contains("no longer exists"),
+        "{}",
+        app.public_message()
+    );
+}

@@ -66,10 +66,29 @@ pub const SYSTEM_PROTECTED: &str = "RBSYS";
 
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
-        if let Some(db) = e.as_database_error()
-            && db.code().as_deref() == Some(SYSTEM_PROTECTED)
-        {
-            return AppError::User(db.message().to_string());
+        if let Some(db) = e.as_database_error() {
+            match db.code().as_deref() {
+                Some(SYSTEM_PROTECTED) => return AppError::User(db.message().to_string()),
+                // The row this insert points at was deleted or merged away after the request
+                // looked at it (a rating or subscription on a thread a moderator just merged).
+                Some("23503") => {
+                    return AppError::NotFound(
+                        "That no longer exists: it may have been deleted or merged just now."
+                            .into(),
+                    );
+                }
+                // Two requests wanted the same rows in opposite orders and this one lost. The
+                // writers share one lock order so this should be rare; say so, don't blame the
+                // member with an "internal error".
+                Some("40P01") | Some("40001") => {
+                    tracing::warn!("database conflict, request refused: {}", db.message());
+                    return AppError::User(
+                        "The board was busy with another change to the same content. Please try again."
+                            .into(),
+                    );
+                }
+                _ => {}
+            }
         }
         AppError::Db(e)
     }

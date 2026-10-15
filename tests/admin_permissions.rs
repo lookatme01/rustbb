@@ -452,6 +452,22 @@ async fn merging_users_leaves_no_self_reputation_and_one_vote_and_rating_per_per
         .execute(&t.db.pool)
         .await
         .unwrap();
+    // A post of the source's in a soft-deleted thread: it must not be counted for the destination.
+    let hidden: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible) VALUES ($1, 'Hidden', $2, 'mergesrc', 1, 1, -1) RETURNING tid",
+    )
+    .bind(fid)
+    .bind(src)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO posts (tid, fid, subject, uid, username, dateline, message, visible) VALUES ($1, $2, 'Hidden', $3, 'mergesrc', 1, 'text', 1)")
+        .bind(hidden)
+        .bind(fid)
+        .bind(src)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
     let r = c
         .post_form(
             "/admin/users/merge",
@@ -478,4 +494,11 @@ async fn merging_users_leaves_no_self_reputation_and_one_vote_and_rating_per_per
         .await
         .unwrap();
     assert_eq!(self_rep, 0);
+    let user_problems: Vec<String> = rbb::ops::check_counters(&t.db.pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.starts_with("user "))
+        .collect();
+    assert!(user_problems.is_empty(), "{user_problems:?}");
 }

@@ -1085,8 +1085,14 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
     }
     // Recount in the same transaction: the moved content and the new totals land together.
     sqlx::query(
-        "UPDATE users SET postnum = (SELECT COUNT(*) FROM posts p JOIN forums f ON f.fid = p.fid WHERE p.uid = $1 AND p.visible = 1 AND f.usepostcounts),
-            threadnum = (SELECT COUNT(*) FROM threads WHERE uid = $1 AND visible = 1), reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1),
+        // The same definitions as `rbb recount` / `rbb check` (ops::rebuild_user_counters): a post
+        // counts only in a visible thread, a thread only in a forum that counts threads and not
+        // as a redirect stub.
+        "UPDATE users SET postnum = (SELECT COUNT(*) FROM posts p JOIN threads t ON t.tid = p.tid JOIN forums f ON f.fid = p.fid
+                                     WHERE p.uid = $1 AND p.visible = 1 AND t.visible = 1 AND f.usepostcounts),
+            threadnum = (SELECT COUNT(*) FROM threads t JOIN forums f ON f.fid = t.fid
+                         WHERE t.uid = $1 AND t.visible = 1 AND f.usethreadcounts AND t.closed NOT LIKE 'moved|%'),
+            reputation = (SELECT COALESCE(SUM(reputation), 0) FROM reputation WHERE uid = $1),
             totalpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1), unreadpms = (SELECT COUNT(*) FROM privatemessages WHERE uid = $1 AND status = 0 AND folder NOT IN (2,3))
          WHERE uid = $1",
     )
