@@ -1007,6 +1007,60 @@ pub async fn merge_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<R
             .execute(&mut *tx)
             .await?;
     }
+    // Rows that would collide or become meaningless once both accounts are one person.
+    // Reputation the two gave each other would turn into self-reputation.
+    sqlx::query(
+        "DELETE FROM reputation WHERE (uid = $1 AND adduid = $2) OR (uid = $2 AND adduid = $1)",
+    )
+    .bind(src)
+    .bind(dst)
+    .execute(&mut *tx)
+    .await?;
+    // A poll both accounts voted in keeps only the destination's vote; its tallies are rebuilt.
+    let shared_polls: Vec<i32> = sqlx::query_scalar(
+        "DELETE FROM pollvotes WHERE uid = $1 AND pid IN (SELECT pid FROM pollvotes WHERE uid = $2) RETURNING pid",
+    )
+    .bind(src)
+    .bind(dst)
+    .fetch_all(&mut *tx)
+    .await?;
+    if !shared_polls.is_empty() {
+        sqlx::query(
+            "UPDATE polls p SET
+                votes = (SELECT COALESCE(array_agg(COALESCE(c.n, 0)::int ORDER BY i), '{}')
+                         FROM generate_series(1, COALESCE(array_length(p.options, 1), 0)) i
+                         LEFT JOIN (SELECT voteoption, COUNT(*) n FROM pollvotes WHERE pid = p.pid GROUP BY voteoption) c
+                           ON c.voteoption = i),
+                numvotes = (SELECT COUNT(DISTINCT uid) FROM pollvotes WHERE pid = p.pid)
+             WHERE p.pid = ANY($1)",
+        )
+        .bind(&shared_polls)
+        .execute(&mut *tx)
+        .await?;
+    }
+    // Thread ratings are one per member and thread; keep the destination's and move the rest.
+    let rated: Vec<i32> = sqlx::query_scalar(
+        "DELETE FROM threadratings WHERE uid = $1 AND tid IN (SELECT tid FROM threadratings WHERE uid = $2) RETURNING tid",
+    )
+    .bind(src)
+    .bind(dst)
+    .fetch_all(&mut *tx)
+    .await?;
+    sqlx::query("UPDATE threadratings SET uid = $2 WHERE uid = $1")
+        .bind(src)
+        .bind(dst)
+        .execute(&mut *tx)
+        .await?;
+    if !rated.is_empty() {
+        sqlx::query(
+            "UPDATE threads t SET numratings = (SELECT COUNT(*) FROM threadratings WHERE tid = t.tid),
+                totalratings = (SELECT COALESCE(SUM(rating), 0) FROM threadratings WHERE tid = t.tid)
+             WHERE t.tid = ANY($1)",
+        )
+        .bind(&rated)
+        .execute(&mut *tx)
+        .await?;
+    }
     for sql in [
         "UPDATE privatemessages SET uid = $2 WHERE uid = $1",
         "UPDATE privatemessages SET fromid = $2 WHERE fromid = $1",

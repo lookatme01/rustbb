@@ -396,3 +396,86 @@ async fn the_generic_editor_refuses_numbers_that_do_not_fit_instead_of_wrapping_
         .unwrap();
     assert_eq!(order, 7);
 }
+
+#[tokio::test]
+async fn merging_users_leaves_no_self_reputation_and_one_vote_and_rating_per_person() {
+    let t = test_app!();
+    let c = t.login_as(1).await;
+    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+        .bind(now())
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let src = t.create_user("mergesrc", "Passw0rd-mergesrc").await;
+    let dst = t.create_user("mergedst", "Passw0rd-mergedst").await;
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let tid: i32 = sqlx::query_scalar(
+        "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, visible, numratings, totalratings) VALUES ($1, 'Merged', 1, 'admin', 1, 1, 1, 2, 9) RETURNING tid",
+    )
+    .bind(fid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    let poll: i32 = sqlx::query_scalar(
+        "INSERT INTO polls (tid, question, dateline, options, votes, numvotes) VALUES ($1, 'Q', 1, '{A,B}', '{1,1}', 2) RETURNING pid",
+    )
+    .bind(tid)
+    .fetch_one(&t.db.pool)
+    .await
+    .unwrap();
+    for (uid, option) in [(src, 1), (dst, 2)] {
+        sqlx::query(
+            "INSERT INTO pollvotes (pid, uid, voteoption, dateline) VALUES ($1, $2, $3, 1)",
+        )
+        .bind(poll)
+        .bind(uid)
+        .bind(option)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    }
+    for (uid, rating) in [(src, 4), (dst, 5)] {
+        sqlx::query("INSERT INTO threadratings (tid, uid, rating) VALUES ($1, $2, $3)")
+            .bind(tid)
+            .bind(uid)
+            .bind(rating)
+            .execute(&t.db.pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO reputation (uid, adduid, reputation, dateline) VALUES ($1, $2, 1, 1), ($2, $1, 1, 1)")
+        .bind(src)
+        .bind(dst)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    let r = c
+        .post_form(
+            "/admin/users/merge",
+            &[("source", "mergesrc"), ("destination", "mergedst")],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let (votes, numvotes): (Vec<i32>, i32) =
+        sqlx::query_as("SELECT votes, numvotes FROM polls WHERE pid = $1")
+            .bind(poll)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!((votes, numvotes), (vec![0, 1], 1));
+    let (n, total): (i32, i32) =
+        sqlx::query_as("SELECT numratings, totalratings FROM threads WHERE tid = $1")
+            .bind(tid)
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    assert_eq!((n, total), (1, 5));
+    let self_rep: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reputation WHERE uid = adduid")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(self_rep, 0);
+}
