@@ -194,6 +194,41 @@ pub fn img_filter(state: &minijinja::State, url: String) -> String {
 /// Fetches running at once.
 static FETCHES: LazyLock<tokio::sync::Semaphore> =
     LazyLock::new(|| tokio::sync::Semaphore::new(16));
+/// Fetches running at once against one host, so a few slow hosts cannot hold every permit.
+const PER_HOST: usize = 4;
+static HOST_FETCHES: LazyLock<dashmap::DashMap<String, usize>> =
+    LazyLock::new(dashmap::DashMap::new);
+/// URLs that failed or timed out lately: not fetched again for a minute.
+static FAILED: LazyLock<moka::sync::Cache<String, ()>> = LazyLock::new(|| {
+    moka::sync::Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(60))
+        .build()
+});
+
+/// One of a host's `PER_HOST` fetch slots, given back on drop.
+struct HostSlot(String);
+
+impl HostSlot {
+    fn take(host: &str) -> Option<HostSlot> {
+        let mut n = HOST_FETCHES.entry(host.to_string()).or_insert(0);
+        if *n >= PER_HOST {
+            return None;
+        }
+        *n += 1;
+        Some(HostSlot(host.to_string()))
+    }
+}
+
+impl Drop for HostSlot {
+    fn drop(&mut self) {
+        if let Some(mut n) = HOST_FETCHES.get_mut(&self.0) {
+            *n = n.saturating_sub(1);
+        }
+        HOST_FETCHES.remove_if(&self.0, |_, n| *n == 0);
+    }
+}
+
 /// Recently fetched images (URL → bytes, type), up to 64 MB.
 static RECENT: LazyLock<moka::sync::Cache<String, (Bytes, &'static str)>> = LazyLock::new(|| {
     moka::sync::Cache::builder()
@@ -468,6 +503,12 @@ pub async fn handler(
         );
         return image_response(bytes, kind);
     }
+    if FAILED.contains_key(&raw) {
+        return refuse(StatusCode::BAD_GATEWAY, "recently_failed");
+    }
+    let Some(_slot) = HostSlot::take(url.host_str().unwrap_or("")) else {
+        return refuse(StatusCode::SERVICE_UNAVAILABLE, "host_busy");
+    };
     let Ok(_permit) = tokio::time::timeout(Duration::from_secs(5), FETCHES.acquire()).await else {
         return refuse(StatusCode::SERVICE_UNAVAILABLE, "busy");
     };
@@ -490,10 +531,12 @@ pub async fn handler(
             image_response(bytes, kind)
         }
         Err(FetchError::Refused(why)) => {
+            FAILED.insert(raw, ());
             tracing::debug!("image proxy refused {url}: {why}");
             refuse(StatusCode::UNPROCESSABLE_ENTITY, "refused")
         }
         Err(FetchError::Upstream(e)) => {
+            FAILED.insert(raw, ());
             tracing::debug!("image proxy fetch of {url} failed: {e}");
             refuse(StatusCode::BAD_GATEWAY, "upstream_error")
         }
@@ -511,6 +554,28 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
         )
+    }
+
+    #[test]
+    fn one_host_cannot_take_more_than_its_share_of_fetch_slots() {
+        let host = "slow.example.test";
+        let held: Vec<_> = (0..PER_HOST)
+            .map(|_| HostSlot::take(host).unwrap())
+            .collect();
+        assert!(HostSlot::take(host).is_none(), "the host is at its limit");
+        assert!(
+            HostSlot::take("other.example.test").is_some(),
+            "other hosts are unaffected"
+        );
+        drop(held);
+        assert!(
+            HostSlot::take(host).is_some(),
+            "slots come back when fetches end"
+        );
+        assert!(
+            !HOST_FETCHES.contains_key("slow.example.test"),
+            "idle hosts are forgotten"
+        );
     }
 
     fn external() -> ImageProxy {
