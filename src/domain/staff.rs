@@ -76,6 +76,10 @@ pub struct Staff {
     global: bool,
     /// Forums moderated through moderator assignments (with their subforums).
     moderated: Vec<i32>,
+    /// Of those, the forums where the assignment allows handling reported posts.
+    report_forums: Vec<i32>,
+    /// ... and viewing the moderator log.
+    log_forums: Vec<i32>,
 }
 
 impl Staff {
@@ -88,10 +92,26 @@ impl Staff {
                 .moderated_forums(uid, groups, perms)
                 .unwrap_or_default()
         };
+        // An assignment can withhold individual rights; they apply per forum.
+        let with = |right: fn(&crate::perms::ModPerms) -> bool| -> Vec<i32> {
+            moderated
+                .iter()
+                .copied()
+                .filter(|fid| {
+                    cache
+                        .mod_perms(uid, groups, perms, *fid)
+                        .is_some_and(|m| right(&m))
+                })
+                .collect()
+        };
+        let report_forums = with(|m| m.canmanagereportedposts);
+        let log_forums = with(|m| m.canviewmodlog);
         Staff {
             perms: perms.clone(),
             global,
             moderated,
+            report_forums,
+            log_forums,
         }
     }
 
@@ -113,11 +133,11 @@ impl Staff {
             Cap::ViewWarnLogs => p.canviewwarnlogs,
             Cap::Ban => p.canbanusers,
             Cap::PostReports => {
-                (p.canmodcp && p.canmanagereportedcontent) || !self.moderated.is_empty()
+                (p.canmodcp && p.canmanagereportedcontent) || !self.report_forums.is_empty()
             }
             Cap::MemberReports => p.canmodcp && p.canmanagereportedcontent,
             Cap::PmReports => p.canviewpmreports,
-            Cap::ModLog => (p.canmodcp && p.canviewmodlogs) || !self.moderated.is_empty(),
+            Cap::ModLog => (p.canmodcp && p.canviewmodlogs) || !self.log_forums.is_empty(),
             Cap::ModQueue => (p.canmodcp && p.canmanagemodqueue) || !self.moderated.is_empty(),
             Cap::CrossForumHistory => p.canviewallmodhistory,
             Cap::IpSearch => p.canuseipsearch,
@@ -138,7 +158,11 @@ impl Staff {
         if board_wide {
             Scope::All
         } else {
-            Scope::Forums(self.moderated.clone())
+            Scope::Forums(match cap {
+                Cap::PostReports => self.report_forums.clone(),
+                Cap::ModLog => self.log_forums.clone(),
+                _ => self.moderated.clone(),
+            })
         }
     }
 
@@ -219,6 +243,8 @@ mod tests {
         Staff {
             perms,
             global,
+            report_forums: moderated.clone(),
+            log_forums: moderated.clone(),
             moderated,
         }
     }

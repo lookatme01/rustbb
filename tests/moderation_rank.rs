@@ -288,3 +288,38 @@ async fn a_moderator_can_only_cancel_scheduled_actions_they_could_have_scheduled
         "only the close could be cancelled"
     );
 }
+
+#[tokio::test]
+async fn moderator_assignments_can_withhold_report_handling_and_the_mod_log() {
+    let t = test_app!();
+    let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let limited = t.create_user("limitedstaff", "Passw0rd-limitedstaff").await;
+    let full = t.create_user("fullstaff", "Passw0rd-fullstaff").await;
+    for (uid, perms) in [
+        (
+            limited,
+            "{\"canmanagereportedposts\":false,\"canviewmodlog\":false}",
+        ),
+        (full, "{}"),
+    ] {
+        sqlx::query(
+            "INSERT INTO moderators (fid, id, isgroup, perms) VALUES ($1, $2, FALSE, $3::jsonb)",
+        )
+        .bind(fid)
+        .bind(uid)
+        .bind(perms)
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    }
+    t.app.invalidate(&["moderators"]).await.unwrap();
+    for path in ["/modcp/reports", "/modcp/modlogs"] {
+        let denied = t.login_as(limited).await.get(path).await;
+        assert!(denied.status.is_client_error(), "{path}: {}", denied.status);
+        let allowed = t.login_as(full).await.get(path).await;
+        assert_eq!(allowed.status, 200, "{path}: {}", allowed.status);
+    }
+}
