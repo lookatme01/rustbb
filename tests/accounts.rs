@@ -367,23 +367,34 @@ async fn activity_flushes_rewrite_a_members_row_at_most_once_a_minute() {
 async fn a_forged_undo_cookie_cannot_aim_the_csrf_token_off_site() {
     let t = test_app!();
     let c = t.login_as(1).await;
-    let page = |action: &str| {
+    let secret = t.app.cfg.secret.clone();
+    let page = |action: &str, signed: bool| {
         let json = serde_json::json!({"action": action, "fields": []}).to_string();
+        let sig = if signed {
+            rbb::util::hmac_hex(&secret, &format!("undo:{json}"))
+        } else {
+            "0".repeat(64)
+        };
         c.set_cookie("rbb_flash", "Done.");
-        c.set_cookie("rbb_undo", &percent_encode(&json));
+        c.set_cookie("rbb_undo", &percent_encode(&format!("{sig}.{json}")));
         c.get("/")
     };
-    let ok = page("/thread/1/undo").await;
+    let ok = page("/thread/1/undo", true).await;
     assert!(
         ok.body.contains("class=\"js-undo\""),
         "a local undo is still offered"
+    );
+    let unsigned = page("/thread/1/undo", false).await;
+    assert!(
+        !unsigned.body.contains("class=\"js-undo\""),
+        "an undo the server did not sign is ignored"
     );
     for bad in [
         "/\\evil.example/x",
         "//evil.example/x",
         "https://evil.example/x",
     ] {
-        let r = page(bad).await;
+        let r = page(bad, true).await;
         assert!(!r.body.contains("evil.example"), "{bad}");
     }
 }

@@ -3,7 +3,9 @@ mod common;
 /// Read the undo cookie the way the Undo button does: its action and fields, as posted.
 fn undo_form(c: &common::Client) -> (String, Vec<(String, String)>) {
     let raw = c.cookie("rbb_undo").expect("undo cookie");
-    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    // The cookie is `<signature>.<json>`.
+    let (_, json) = raw.split_once('.').expect("signed undo cookie");
+    let v: serde_json::Value = serde_json::from_str(json).unwrap();
     let fields = v["fields"]
         .as_array()
         .unwrap()
