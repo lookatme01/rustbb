@@ -1926,3 +1926,17 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
   .post-who > .post-facts { grid-column: 2 / -1; }
   .post-when { grid-column: 2 / -1; grid-row: 3; }
 }
+
+/* The member list as cards: name and post count on top, flags under them, then group, join date
+   and last visit on one quiet line, instead of six labelled blocks per member. */
+@media (max-width: 860px) {
+  .cp-content .acp-users.cp-table-cards tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 12px var(--box-pad); }
+  .cp-content .acp-users.cp-table-cards td { width: auto; padding: 0; }
+  .cp-content .acp-users.cp-table-cards td:nth-child(1) { flex: 1 1 0; min-width: 0; }
+  .cp-content .acp-users.cp-table-cards td:nth-child(2) { order: 2; flex-basis: 100%; }
+  .cp-content .acp-users.cp-table-cards td:nth-child(2):not(:has(.mf-flag)) { display: none; }
+  .cp-content .acp-users.cp-table-cards td:nth-child(n+3):nth-child(-n+5) { order: 3; color: var(--soft); }
+  .cp-content .acp-users.cp-table-cards td:nth-child(6) { order: 1; }
+  .acp-users.cp-table-cards td:nth-child(-n+2) .cp-cell-label { display: none; }
+  .acp-users.cp-table-cards td:nth-child(n+3) .cp-cell-label { display: inline; margin: 0 4px 0 0; color: var(--faint); font-weight: var(--w-label); }
+}
