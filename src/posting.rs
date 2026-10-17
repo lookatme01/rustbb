@@ -203,7 +203,11 @@ pub async fn check_posting_allowed(ctx: &CtxInner) -> AppResult<()> {
         let secs = s.int("postfloodsecs").max(10);
         if !ctx
             .app
-            .throttle(&format!("guestpost:{}", ctx.ip), 1, secs)
+            .throttle(
+                &format!("guestpost:{}", crate::util::ip_bucket(&ctx.ip)),
+                1,
+                secs,
+            )
             .await
         {
             return Err(AppError::user(
@@ -511,12 +515,20 @@ async fn insert_reply(
     let t = now();
 
     // Serialize writes to this thread (replies, merges, edits, moderation) and keep counters right.
-    let (tvis, locked_fid): (i16, i32) =
-        sqlx::query_as("SELECT visible, fid FROM threads WHERE tid = $1 FOR UPDATE")
+    let (tvis, locked_fid, closed): (i16, i32, String) =
+        sqlx::query_as("SELECT visible, fid, closed FROM threads WHERE tid = $1 FOR UPDATE")
             .bind(tid)
             .fetch_optional(uow.conn())
             .await?
             .ok_or_else(|| AppError::not_found("thread"))?;
+    // The caller checked the thread was open, but a moderator may have closed it (or turned it
+    // into a redirect) while we waited for the lock. Staff tools (`limits == false`) and
+    // moderators who may post in closed threads still go through.
+    if limits && !closed.is_empty() && !ctx.mod_perms(fid).is_some_and(|m| m.canpostclosedthreads) {
+        return Err(AppError::user(
+            "This thread is closed. You cannot post replies to it.",
+        ));
+    }
     // The forum the caller checked permissions against may be stale: a move that committed while
     // we waited for the lock changed it, and the counters below would go to the wrong forum.
     if locked_fid != fid {
