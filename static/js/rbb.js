@@ -15,6 +15,16 @@
     const r = await fetch(url, { method: "POST", body, headers: { "X-Requested-With": "fetch", Accept: "application/json" }, credentials: "same-origin" });
     return r;
   }
+  // Transient error banner at the top of the page (role=alert so screen readers announce it).
+  function notifyError(msg) {
+    const host = $("#content") || document.body;
+    const n = document.createElement("div");
+    n.className = "notice bad";
+    n.setAttribute("role", "alert");
+    n.textContent = msg;
+    host.prepend(n);
+    setTimeout(() => n.remove(), 6000);
+  }
   function cookie(name, value, maxAge) {
     document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; SameSite=Lax" + (maxAge !== undefined ? "; max-age=" + maxAge : "");
   }
@@ -181,7 +191,7 @@
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !["j", "k", "n"].includes(e.key)) return;
       const t = e.target;
-      if (t.closest && t.closest("input, textarea, select, [contenteditable], dialog, details[open]")) return;
+      if (t.closest && t.closest("input, textarea, select, dialog, details[open]") || t.isContentEditable) return;
       const links = rowLinks();
       if (!links.length) return;
       const at = links.findIndex((a) => a === document.activeElement);
@@ -199,13 +209,20 @@
     // Show/hide toggles.
     $$(".js-toggle").forEach((c) => { const t = $(c.dataset.target); if (t) c.addEventListener("change", () => { t.hidden = !c.checked; }); });
     // Ignored posts.
-    $$(".js-show-ignored").forEach((b) => b.addEventListener("click", () => { b.closest(".post").classList.remove("ignored-post"); b.parentElement.remove(); }));
+    // Delegated so posts inserted by live updates work too.
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".js-show-ignored");
+      if (!b) return;
+      b.closest(".post").classList.remove("ignored-post");
+      b.parentElement.remove();
+    });
 
-    // Localize quote dates.
-    $$("time.quote_date[data-ts]").forEach((t) => {
+    // Localize quote dates (re-run for live-inserted posts).
+    const localizeDates = () => $$("time.quote_date[data-ts]").forEach((t) => {
       const d = new Date(parseInt(t.dataset.ts, 10) * 1000);
       if (!isNaN(d)) { t.textContent = d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); t.dateTime = d.toISOString(); }
     });
+    localizeDates();
     // Copy code buttons. Labels come from the page (body data attributes) so they can be translated.
     const copyLabel = (k, d) => document.body.dataset[k] || d;
     const localizeCopy = () => $$(".copy_code").forEach((b) => { b.textContent = copyLabel("copy", b.textContent); b.title = copyLabel("copy", b.title); });
@@ -223,9 +240,10 @@
     // Inline moderation selection.
     const updateSel = () => $$(".js-selcount").forEach((c) => {
       const form = c.closest("form");
+      if (!form) return;
       c.textContent = $$('input.inline-check[form="' + form.id + '"]:checked').length;
     });
-    $$("input.inline-check").forEach((c) => c.addEventListener("change", updateSel));
+    document.addEventListener("change", (e) => { if (e.target.matches && e.target.matches("input.inline-check")) updateSel(); });
     $$(".js-check-all").forEach((b) => b.addEventListener("click", () => {
       const form = b.closest("form");
       const boxes = $$('input.inline-check[form="' + form.id + '"]');
@@ -236,11 +254,14 @@
 
     // Captcha refresh.
     $$(".js-captcha-refresh").forEach((b) => b.addEventListener("click", async () => {
-      const r = await fetch("/captcha/refresh", { credentials: "same-origin" });
-      const j = await r.json();
-      const wrap = b.closest(".captcha");
-      $(".js-captcha-img", wrap).src = "/captcha/" + j.hash;
-      $(".js-captcha-hash", wrap).value = j.hash;
+      try {
+        const r = await fetch("/captcha/refresh", { credentials: "same-origin" });
+        if (!r.ok) throw new Error(r.status);
+        const j = await r.json();
+        const wrap = b.closest(".captcha");
+        $(".js-captcha-img", wrap).src = "/captcha/" + j.hash;
+        $(".js-captcha-hash", wrap).value = j.hash;
+      } catch (err) { notifyError("Couldn't load a new image. Try again."); }
     }));
 
     // Registration helpers.
@@ -281,11 +302,26 @@
       });
     });
 
+    // Double-submit guard for POST forms, whichever way they were submitted (button, Enter,
+    // Ctrl+Enter). Runs after every other submit handler so cancelled and fetch-handled forms are
+    // left alone; the buttons are disabled after dispatch so the submitter's name/value still
+    // goes out. Opt out with data-no-lock (downloads); forms with a target are skipped too.
+    document.addEventListener("submit", (e) => {
+      const f = e.target;
+      if (!f.matches || !f.matches("form") || f.method !== "post" || f.hasAttribute("target") || f.hasAttribute("data-no-lock")) return;
+      setTimeout(() => {
+        if (e.defaultPrevented) return;
+        [...f.elements].filter((x) => x.type === "submit" && !x.disabled).forEach((x) => { x.disabled = true; x.dataset.rbbLocked = "1"; });
+      }, 0);
+    });
+    // Back/forward cache restores the page with the buttons still disabled.
+    window.addEventListener("pageshow", () => $$("[data-rbb-locked]").forEach((x) => { x.disabled = false; delete x.dataset.rbbLocked; }));
+
     initEditors();
     const syncMultiquote = initMultiquote();
     initReactions();
     initAttachments();
-    initLive(() => { syncMultiquote(); localizeCopy(); });
+    initLive(() => { syncMultiquote(); localizeCopy(); localizeDates(); });
   });
 
   // ------------------------------------------------------------------ editor
@@ -359,8 +395,10 @@
       if (tabP) tabP.addEventListener("click", async () => {
         showTab(true);
         pv.textContent = "Loading preview…";
-        const r = await post("/preview", { message: ta.value, fid: (form && form.dataset.fid) || 0 });
-        if (r.ok) { const j = await r.json(); pv.innerHTML = j.html; } else pv.textContent = "Preview failed.";
+        try {
+          const r = await post("/preview", { message: ta.value, fid: (form && form.dataset.fid) || 0 });
+          if (r.ok) { const j = await r.json(); pv.innerHTML = j.html; } else pv.textContent = "Preview failed.";
+        } catch (err) { pv.textContent = "Preview failed."; }
       });
       if (tabW) tabW.addEventListener("click", () => { showTab(false); const r = rich(); r ? $(".wy-surface", ed).focus() : ta.focus(); });
       // Character count.
@@ -375,7 +413,7 @@
         if (saved && !ta.value.trim()) { ta.value = saved; count(); ta.dispatchEvent(new CustomEvent("input", { detail: { restored: true } })); if (status) status.textContent = "Restored unsent text."; }
         let t;
         ta.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { if (form.dataset.noAutosave) { store.del(key); return; } ta.value.trim() ? store.set(key, ta.value) : store.del(key); if (status) status.textContent = "Saved locally"; }, 800); });
-        form.addEventListener("submit", (e) => { if (!e.submitter || !e.submitter.name || e.submitter.name === "savedraft") store.del(key); });
+        form.addEventListener("submit", (e) => { if (!e.submitter || !e.submitter.name || e.submitter.name === "savedraft") { clearTimeout(t); store.del(key); } });
       }
     });
   }
@@ -394,22 +432,28 @@
       sync();
     });
     sync();
-    return sync;
-    // Quote into the quick reply box without leaving the page.
+    // Quote into the quick reply box without leaving the page; with no box, the link works as normal.
     document.addEventListener("click", async (e) => {
       const q = e.target.closest(".js-quote");
-      if (!q) return;
-      const ta = $("#quickreply textarea") || (q.closest("form") ? null : $("textarea[name=message]"));
+      if (!q || q.rbbBusy) return;
+      const f = q.closest("form");
+      const ta = $("#quickreply textarea") || (f ? $("textarea[name=message]", f) : $("textarea[name=message]"));
       if (!ta) return;
       e.preventDefault();
-      const r = await fetch("/post/" + q.dataset.pid + "/quote", { credentials: "same-origin" });
-      if (!r.ok) return;
-      const j = await r.json();
-      ta.value += (ta.value && !ta.value.endsWith("\n") ? "\n" : "") + j.quote;
-      ta.dispatchEvent(new Event("input"));
-      ta.focus();
-      ta.scrollIntoView({ block: "center" });
+      q.rbbBusy = true;
+      try {
+        const r = await fetch("/post/" + q.dataset.pid + "/quote", { credentials: "same-origin" });
+        if (!r.ok) throw new Error(r.status);
+        const j = await r.json();
+        ta.value += (ta.value && !ta.value.endsWith("\n") ? "\n" : "") + j.quote;
+        ta.dispatchEvent(new Event("input"));
+        ta.focus();
+        ta.scrollIntoView({ block: "center" });
+      } catch (err) {
+        if (q.href) location.href = q.href; else notifyError("Couldn't load that quote. Try again.");
+      } finally { q.rbbBusy = false; }
     });
+    return sync;
   }
 
   // ------------------------------------------------------------------ reactions
@@ -420,9 +464,24 @@
       const b = e.target.closest(".js-react");
       if (!b) { $$(".reaction-picker.open").forEach((p) => { p.classList.remove("open"); $(".js-react-toggle", p)?.setAttribute("aria-expanded", "false"); }); return; }
       const box = b.closest(".reactions");
-      const r = await post("/post/" + box.dataset.pid + "/react", { kind: b.dataset.kind });
-      if (!r.ok) return;
-      const j = await r.json();
+      // The endpoint toggles, so a second click while one is in flight would undo the first.
+      if (b.disabled) return;
+      b.disabled = true;
+      let j;
+      try {
+        const r = await post("/post/" + box.dataset.pid + "/react", { kind: b.dataset.kind });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          notifyError(err.error || err.message || "Couldn't save your reaction.");
+          b.disabled = false;
+          return;
+        }
+        j = await r.json();
+      } catch (err) {
+        notifyError("Couldn't save your reaction.");
+        b.disabled = false;
+        return;
+      }
       $$(".reaction", box).forEach((x) => x.remove());
       const picker = $(".reaction-picker", box);
       j.reactions.forEach((x) => {
@@ -461,8 +520,11 @@
           fd.append("pid", wrapEl.dataset.pid || "0");
           fd.append("fid", form.dataset.fid || "0");
           fd.append("my_post_key", csrf());
-          const r = await fetch("/attachment/upload", { method: "POST", body: fd, credentials: "same-origin", headers: { "X-CSRF-Token": csrf() } });
-          const j = await r.json().catch(() => ({ error: "Upload failed" }));
+          let r, j;
+          try {
+            r = await fetch("/attachment/upload", { method: "POST", body: fd, credentials: "same-origin", headers: { "X-CSRF-Token": csrf() } });
+            j = await r.json().catch(() => ({ error: "Upload failed" }));
+          } catch (err) { r = { ok: false }; j = { error: "network error" }; }
           if (!r.ok || j.error) { li.textContent = f.name + ": " + (j.error || "upload failed"); li.style.color = "var(--bad)"; continue; }
           li.dataset.aid = j.aid;
           li.innerHTML = "";
@@ -475,12 +537,12 @@
       };
       if (ta) ta.rbbUpload = upload; // files pasted or dropped into the rich-text view
       const input = $(".js-file", wrapEl);
-      if (input) input.addEventListener("change", () => { upload(input.files); input.value = ""; });
+      if (input) input.addEventListener("change", () => { upload([...input.files]); input.value = ""; });
       const dz = $(".js-dropzone", wrapEl);
       if (dz) {
         ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
         ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
-        dz.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+        dz.addEventListener("drop", (e) => upload([...e.dataTransfer.files]));
       }
       if (ta) ta.addEventListener("paste", (e) => {
         const files = [...(e.clipboardData || {}).files || []];
@@ -518,17 +580,24 @@
       const c = $("#alert-count");
       if (c) { c.hidden = false; c.textContent = String((parseInt(c.textContent, 10) || 0) + 1); }
     });
+    let loading = false;
     if (banner) $("button", banner).addEventListener("click", async () => {
-      const r = await fetch("/thread/" + tid + "/since/" + posts.dataset.lastPid, { credentials: "same-origin" });
-      if (!r.ok) return;
-      const html = await r.text();
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const arts = $$("article.post", doc);
-      arts.forEach((a) => { if (!document.getElementById(a.id)) posts.appendChild(document.importNode(a, true)); });
-      if (arts.length) posts.dataset.lastPid = arts[arts.length - 1].dataset.pid;
-      if (onInsert) onInsert();
-      pending = 0;
-      banner.hidden = true;
+      if (loading) return;
+      loading = true;
+      try {
+        const r = await fetch("/thread/" + tid + "/since/" + posts.dataset.lastPid, { credentials: "same-origin" });
+        if (!r.ok) return; // leave the banner up so they can retry
+        const html = await r.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const arts = $$("article.post", doc);
+        arts.forEach((a) => { if (!document.getElementById(a.id)) posts.appendChild(document.importNode(a, true)); });
+        if (arts.length) posts.dataset.lastPid = arts[arts.length - 1].dataset.pid;
+        if (onInsert) onInsert();
+        pending = 0;
+        banner.hidden = true;
+      } catch (err) {
+        // network error: banner stays visible
+      } finally { loading = false; }
     });
   }
 

@@ -115,7 +115,7 @@
         const target = usePassword ? pw.querySelector("input[name=password]") : form.querySelector("button[type=submit]");
         if (target) target.focus();
       };
-      form.querySelector(".js-passkey-use-password").addEventListener("click", () => show(true));
+      form.querySelector(".js-passkey-use-password")?.addEventListener("click", () => show(true));
       const back = pw.querySelector(".js-passkey-use-passkey");
       back.hidden = false;
       back.addEventListener("click", () => show(false));
