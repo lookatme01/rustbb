@@ -193,7 +193,11 @@ pub async fn forum_password(
 ) -> AppResult<Response> {
     if !ctx
         .app
-        .throttle(&format!("forumpw:{}", ctx.ip), 10, 300)
+        .throttle(
+            &format!("forumpw:{}", crate::util::ip_bucket(&ctx.ip)),
+            10,
+            300,
+        )
         .await
     {
         return Err(AppError::RateLimited);
@@ -461,6 +465,13 @@ pub async fn announcement(ctx: Ctx, Path(aid): Path<i32>) -> AppResult<Response>
     if a.fid > 0 {
         ctx.check_forum(a.fid)?;
     }
+    // Same window the forum pages list; scheduled and expired notices stay staff-only.
+    let t = now();
+    let live = a.startdate <= t && (a.enddate == 0 || a.enddate > t);
+    if !live && !(ctx.is_admin() || (a.fid > 0 && ctx.is_mod(a.fid)) || ctx.staff().is_moderator())
+    {
+        return Err(AppError::not_found("announcement"));
+    }
     let author = crate::render::load_authors(&ctx, &[a.uid])
         .await?
         .remove(&a.uid);
@@ -594,7 +605,11 @@ pub async fn contact_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ContactForm>) -> App
     contact_allowed(&ctx)?;
     if !ctx
         .app
-        .throttle(&format!("contact:{}", ctx.ip), 3, 3600)
+        .throttle(
+            &format!("contact:{}", crate::util::ip_bucket(&ctx.ip)),
+            3,
+            3600,
+        )
         .await
     {
         return Err(AppError::RateLimited);
