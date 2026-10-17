@@ -20,7 +20,7 @@
       {% if user.away %}<p><span class="chip chip-warn">Away</span>{% if user.awayreason %} {{ user.awayreason }}{% endif %}{% if user.returndate %} — returning {{ user.returndate }}{% endif %}</p>{% endif %}
     </div>
     <div class="actions">
-      {% if can_pm %}<a class="btn" href="/pm/send?uid={{ user.uid }}">Message</a>{% endif %}
+      {% if me and me.uid == user.uid %}<a class="btn" href="/usercp/profile">Edit profile</a>{% elif can_pm %}<a class="btn" href="/pm/send?uid={{ user.uid }}">Message</a>{% endif %}
       {% if me and me.uid != user.uid and not user.is_system %}
       <form method="post" action="/usercp/lists/add">{{ m.csrf_field() }}<input type="hidden" name="uid" value="{{ user.uid }}"><input type="hidden" name="list" value="{{ 'removebuddy' if is_buddy else 'buddy' }}"><button class="btn btn-ghost" type="submit" aria-pressed="{{ 'true' if is_buddy else 'false' }}">{{ 'Friends' if is_buddy else 'Add friend' }}</button></form>
       {% endif %}

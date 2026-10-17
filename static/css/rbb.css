@@ -1952,3 +1952,14 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
   .acp-users.cp-table-cards td:nth-child(-n+2) .cp-cell-label { display: none; }
   .acp-users.cp-table-cards td:nth-child(n+3) .cp-cell-label { display: inline; margin: 0 4px 0 0; color: var(--faint); font-weight: var(--w-label); }
 }
+
+/* Profile counters stay on one row on phones instead of leaving one orphaned below the rest;
+   member-list dates never break between the day and the year. */
+@media (max-width: 560px) {
+  .profile-stats { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+  .profile-stats:has(> :nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-stats .stat { padding: 14px 12px; }
+  .profile-stats .stat b { font-size: 24px; }
+  .profile-stats .stat b a { display: inline-flex; align-items: center; min-height: var(--tap); margin-block: -4px; }
+}
+.member-table td.small { white-space: nowrap; }
