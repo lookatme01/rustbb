@@ -238,6 +238,14 @@ async fn birthdays_between(
     .await?;
     let mut out = vec![];
     for (uid, name, g, dg, b) in rows {
+        // Same group filter as the index's birthday list.
+        if !ctx
+            .cache
+            .group(g)
+            .is_some_and(|gr| gr.perms.0.showinbirthdaylist)
+        {
+            continue;
+        }
         let parts: Vec<u32> = b.split('-').filter_map(|x| x.parse().ok()).collect();
         if parts.len() < 2 {
             continue;
@@ -670,8 +678,9 @@ pub async fn edit_submit(
     }
     let (name, message) = event_text(&f)?;
     let (start, end, usingtime, repeats) = build_times(&ctx, &f)?;
-    // Private events skip moderation when added, so making one public goes to the queue.
-    let requeue = cal.moderation && e.private && !f.private && !(perms.bypass || perms.moderate);
+    // Private events skip moderation when added, and an edited public event is new content,
+    // so any public result from a non-moderator goes (back) to the queue.
+    let requeue = cal.moderation && !f.private && !(perms.bypass || perms.moderate);
     sqlx::query("UPDATE events SET name = $2, description = $3, private = $4, starttime = $5, endtime = $6, usingtime = $7, ignoretimezone = $8, repeats = $9, timezone = $10, visible = visible AND NOT $11 WHERE eid = $1")
         .bind(eid)
         .bind(name)

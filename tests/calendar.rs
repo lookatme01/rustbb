@@ -163,3 +163,42 @@ async fn making_a_private_event_public_sends_it_to_moderation() {
     assert!(!private);
     assert!(!visible, "a newly public event must wait for approval");
 }
+
+#[tokio::test]
+async fn editing_a_public_event_sends_it_back_to_moderation() {
+    let t = test_app!();
+    sqlx::query("UPDATE calendars SET moderation = TRUE")
+        .execute(&t.db.pool)
+        .await
+        .unwrap();
+    t.app.invalidate(&["calendars"]).await.unwrap();
+    let cid: i32 = sqlx::query_scalar("SELECT MIN(cid) FROM calendars")
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let uid = t.create_user("editor", "Passw0rd-editor").await;
+    let eid: i32 = sqlx::query_scalar("INSERT INTO events (cid, uid, name, description, visible, private, dateline, starttime) VALUES ($1, $2, 'Approved', 'ok', TRUE, FALSE, 1, 1793500000) RETURNING eid")
+        .bind(cid)
+        .bind(uid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    let c = t.login_as(uid).await;
+    let r = c
+        .post_form(
+            &format!("/calendar/event/{eid}/edit"),
+            &[
+                ("name", "Approved"),
+                ("message", "now something else entirely"),
+                ("date", "2026-11-01"),
+            ],
+        )
+        .await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    let visible: bool = sqlx::query_scalar("SELECT visible FROM events WHERE eid = $1")
+        .bind(eid)
+        .fetch_one(&t.db.pool)
+        .await
+        .unwrap();
+    assert!(!visible, "an edited public event must wait for approval");
+}
