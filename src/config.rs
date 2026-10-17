@@ -275,7 +275,7 @@ mod tests {
 }
 
 /// A true/false switch as written in an environment variable.
-fn parse_flag(v: &str) -> Option<bool> {
+pub fn parse_flag(v: &str) -> Option<bool> {
     match v.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Some(true),
         "false" | "0" | "no" | "off" | "" => Some(false),

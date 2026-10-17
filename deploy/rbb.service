@@ -12,6 +12,9 @@ Group=rbb
 WorkingDirectory=/opt/rbb
 EnvironmentFile=/opt/rbb/.env
 ExecStart=/opt/rbb/rbb serve
+# Behind a load balancer, keep serving a few seconds after SIGTERM so it can notice this node
+# is going away. Uncomment (and keep it below TimeoutStopSec) for that kind of setup.
+#Environment=RBB_SHUTDOWN_DRAIN_SECS=5
 # SIGTERM starts a graceful shutdown: readiness turns off, in-flight requests and background
 # batches finish, buffers are flushed.
 KillSignal=SIGTERM
@@ -24,7 +27,9 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/rbb/uploads
+# The dash tolerates a missing directory; create it with:
+#   install -d -o rbb -g rbb /opt/rbb/uploads
+ReadWritePaths=-/opt/rbb/uploads
 
 [Install]
 WantedBy=multi-user.target

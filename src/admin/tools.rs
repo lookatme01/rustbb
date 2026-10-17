@@ -512,22 +512,36 @@ pub async fn stats(ctx: Ctx) -> AppResult<Response> {
     crate::admin::page(&ctx, "admin/stats.html", "tools", "Statistics", minijinja::context! { rows => rows, top_forums => top_forums, activity => activity, max_act => max_act }).await
 }
 
+/// An explicit `RBB_PG_DUMP` wins, then `pg_dump` on PATH, then the usual install locations
+/// (newest first: pg_dump refuses a server newer than itself).
 fn pg_dump_path() -> Option<String> {
-    if let Ok(p) = std::env::var("RBB_PG_DUMP") {
+    if let Ok(p) = std::env::var("RBB_PG_DUMP")
+        && !p.is_empty()
+    {
         return Some(p);
     }
-    for p in [
+    if let Some(paths) = std::env::var_os("PATH")
+        && let Some(found) = std::env::split_paths(&paths)
+            .map(|d| d.join("pg_dump"))
+            .find(|p| p.is_file())
+    {
+        return Some(found.to_string_lossy().into_owned());
+    }
+    [
+        "/opt/homebrew/opt/postgresql@18/bin/pg_dump",
         "/opt/homebrew/opt/postgresql@17/bin/pg_dump",
-        "/usr/bin/pg_dump",
-        "/usr/local/bin/pg_dump",
+        "/opt/homebrew/opt/postgresql@16/bin/pg_dump",
+        "/opt/homebrew/opt/postgresql@15/bin/pg_dump",
+        "/usr/lib/postgresql/18/bin/pg_dump",
         "/usr/lib/postgresql/17/bin/pg_dump",
         "/usr/lib/postgresql/16/bin/pg_dump",
-    ] {
-        if std::path::Path::new(p).exists() {
-            return Some(p.to_string());
-        }
-    }
-    None
+        "/usr/lib/postgresql/15/bin/pg_dump",
+        "/usr/local/bin/pg_dump",
+        "/usr/bin/pg_dump",
+    ]
+    .into_iter()
+    .find(|p| std::path::Path::new(p).exists())
+    .map(str::to_string)
 }
 
 pub async fn backup_page(ctx: Ctx) -> AppResult<Response> {

@@ -320,6 +320,58 @@ fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
+/// A switch variable, read the same way `serve` reads it (unset or unparseable counts as off).
+fn env_flag(key: &str) -> bool {
+    env(key)
+        .and_then(|v| crate::config::parse_flag(&v))
+        .unwrap_or(false)
+}
+
+/// With `RBB_STORAGE=s3`, prove the bucket works the way uploads will use it: write, read back
+/// and delete a small object.
+async fn storage_checks(out: &mut Vec<Check>) {
+    const NAME: &str = "RBB_STORAGE";
+    if env("RBB_STORAGE").as_deref() != Some("s3") {
+        return;
+    }
+    // Only the S3 settings matter here, not the upload directory.
+    let storage = match crate::infra::storage::Storage::from_config(
+        &crate::config::Config::for_tests(""),
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            out.push(check("Configuration", NAME, Status::Fail, format!("the S3 settings are incomplete: {e}"),
+                Some("Set RBB_S3_BUCKET, and AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (plus RBB_S3_ENDPOINT for non-AWS stores).")));
+            return;
+        }
+    };
+    let key = format!("doctor-probe-{}", crate::util::random_token(8));
+    let body = bytes::Bytes::from_static(b"rbb doctor");
+    let probe = async {
+        storage.put_bytes(&key, body.clone()).await?;
+        let got = storage.get(&key).await;
+        // Clean up even when reading failed.
+        let deleted = storage.delete(&key).await;
+        let Some(mut dl) = got? else {
+            anyhow::bail!("the test file was written but could not be read back");
+        };
+        let mut read = Vec::new();
+        while let Some(chunk) = futures::StreamExt::next(&mut dl.stream).await {
+            read.extend_from_slice(&chunk?);
+        }
+        anyhow::ensure!(read == body, "the test file came back different");
+        deleted
+    };
+    let bucket = env("RBB_S3_BUCKET").unwrap_or_default();
+    out.push(match tokio::time::timeout(std::time::Duration::from_secs(20), probe).await {
+        Ok(Ok(())) => check("Configuration", NAME, Status::Ok, format!("bucket {bucket} accepts uploads"), None),
+        Ok(Err(e)) => check("Configuration", NAME, Status::Fail, format!("can't use bucket {bucket}: {e}"),
+            Some("Check the bucket name, region/endpoint and credentials, and that the key may read, write and delete objects.")),
+        Err(_) => check("Configuration", NAME, Status::Fail, format!("bucket {bucket} didn't answer within 20 seconds"),
+            Some("Check RBB_S3_ENDPOINT and that this machine can reach it.")),
+    });
+}
+
 /// DATABASE_URL without its password, for display.
 fn redacted(url: &str) -> String {
     match url::Url::parse(url) {
@@ -371,18 +423,33 @@ fn config_checks(out: &mut Vec<Check>) {
         },
     });
 
-    let dir = env("RBB_UPLOAD_DIR").unwrap_or_else(|| DEFAULT_UPLOAD_DIR.into());
-    let path = std::path::Path::new(&dir);
-    out.push(if !path.is_dir() {
-        check("Configuration", "RBB_UPLOAD_DIR", Status::Fail, format!("{dir} doesn't exist"),
-            Some("Create it and make it writable by the user rbb runs as. With several nodes, it must be the same shared folder on each."))
-    } else {
-        let probe = path.join(format!(".rbb-doctor-{}", crate::util::random_token(8)));
-        match std::fs::write(&probe, b"ok").and_then(|_| std::fs::remove_file(&probe)) {
-            Ok(()) => check("Configuration", "RBB_UPLOAD_DIR", Status::Ok, format!("{dir} is writable"), None),
-            Err(e) => check("Configuration", "RBB_UPLOAD_DIR", Status::Fail, format!("{dir} isn't writable: {e}"), Some("Give the user rbb runs as write access to it.")),
-        }
-    });
+    // With S3 storage there is no local upload directory; `storage_checks` probes the bucket.
+    if env("RBB_STORAGE").as_deref() != Some("s3") {
+        let dir = env("RBB_UPLOAD_DIR").unwrap_or_else(|| DEFAULT_UPLOAD_DIR.into());
+        let path = std::path::Path::new(&dir);
+        out.push(if !path.is_dir() {
+            // `serve` creates the upload subdirectories itself, so a missing directory is only
+            // a problem when it can't be created.
+            let parent = match path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => std::path::Path::new("."),
+            };
+            let parent_writable = std::fs::metadata(parent)
+                .is_ok_and(|m| m.is_dir() && !m.permissions().readonly());
+            if parent_writable {
+                check("Configuration", "RBB_UPLOAD_DIR", Status::Warn, format!("{dir} doesn't exist yet: it will be created on first start"), None)
+            } else {
+                check("Configuration", "RBB_UPLOAD_DIR", Status::Fail, format!("{dir} doesn't exist and can't be created"),
+                    Some("Create it and make it writable by the user rbb runs as. With several nodes, it must be the same shared folder on each."))
+            }
+        } else {
+            let probe = path.join(format!(".rbb-doctor-{}", crate::util::random_token(8)));
+            match std::fs::write(&probe, b"ok").and_then(|_| std::fs::remove_file(&probe)) {
+                Ok(()) => check("Configuration", "RBB_UPLOAD_DIR", Status::Ok, format!("{dir} is writable"), None),
+                Err(e) => check("Configuration", "RBB_UPLOAD_DIR", Status::Fail, format!("{dir} isn't writable: {e}"), Some("Give the user rbb runs as write access to it.")),
+            }
+        });
+    }
 
     for (key, default) in [
         ("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS),
@@ -617,8 +684,8 @@ async fn board_checks(out: &mut Vec<Check>, db: &sqlx::PgPool) {
     }
     out.extend(check_proxy_cookies(
         bburl,
-        env("RBB_SECURE_COOKIES").as_deref() == Some("true"),
-        env("RBB_TRUST_PROXY").as_deref() == Some("true"),
+        env_flag("RBB_SECURE_COOKIES"),
+        env_flag("RBB_TRUST_PROXY"),
     ));
     out.push(check_passkeys(s.bool("enablepasskeys"), bburl));
     out.push(check_image_proxy(&s));
@@ -635,6 +702,7 @@ async fn board_checks(out: &mut Vec<Check>, db: &sqlx::PgPool) {
 pub async fn run(strict: bool) -> i32 {
     let mut checks = vec![];
     config_checks(&mut checks);
+    storage_checks(&mut checks).await;
     database_checks(&mut checks).await;
 
     println!("rbb doctor ({})\n", env!("CARGO_PKG_VERSION"));

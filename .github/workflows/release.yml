@@ -62,6 +62,7 @@ jobs:
           name=rbb-$version-${{ matrix.target }}
           mkdir "$name"
           cp target/${{ matrix.target }}/release/rbb README.md .env.example "$name"/
+          cp -r deploy "$name"/
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:

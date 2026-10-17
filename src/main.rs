@@ -99,7 +99,8 @@ enum Cmd {
 async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
     let json_logs = std::env::var("RBB_LOG_JSON")
-        .map(|v| v == "true")
+        .ok()
+        .and_then(|v| config::parse_flag(&v))
         .unwrap_or(false);
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "rbb=info,tower_http=warn,sqlx=warn".into());

@@ -55,7 +55,11 @@ Then open <http://localhost:8080>. The Admin CP lives at `/admin`.
 If something's off, run `rbb doctor`. It checks your config, database and mail setup and tells
 you what to fix in plain English.
 
-Prefer Docker? Set `RBB_SECRET` and run `docker compose up --build`.
+Prefer Docker? `docker-compose.yml` runs Postgres, a migrate step and the app. Set
+`POSTGRES_PASSWORD` and `RBB_SECRET`, then `docker compose run --rm migrate`, run `rbb install`
+once through `docker compose run --rm web /app/rbb install ...`, and `docker compose up -d`. The
+exact commands are at the top of the file. It serves plain HTTP on port 80, so put TLS in front
+of it or set `RBB_SECURE_COOKIES=false` for a local try-out.
 
 ## Running it for real
 
@@ -73,7 +77,7 @@ Most settings live in the Admin CP. The few that don't are environment variables
 | `RBB_SECRET` | A long random string. Use the same one on every server. |
 | `RBB_LISTEN` | Address to listen on. Defaults to `127.0.0.1:8080`. |
 | `RBB_UPLOAD_DIR` | Where avatars and attachments go. Or set `RBB_STORAGE=s3` to use a bucket. |
-| `RBB_TRUST_PROXY` | Set to `true` when you're behind nginx or a load balancer. |
+| `RBB_TRUST_PROXY` | Set to `true` when you're behind nginx or a load balancer. On its own it only trusts a proxy on the same machine (loopback); if the proxy is on another host or container, also set `RBB_TRUSTED_PROXIES`. |
 | `RBB_SECURE_COOKIES` | Set to `true` when you're on HTTPS. |
 
 On/off variables accept `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`; anything else stops the server at startup instead of quietly counting as off.
@@ -84,8 +88,9 @@ On/off variables accept `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`; anyth
 | Variable | Default | What it does |
 |---|---|---|
 | `RBB_ROLE` | `all` | Any of `web`, `worker`, `scheduler`, comma-separated. |
-| `RBB_TRUSTED_PROXIES` | loopback | Which proxies to believe, e.g. `10.0.0.0/8`. |
-| `RBB_S3_BUCKET`, `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX` | – | S3 storage settings. |
+| `RBB_TRUSTED_PROXIES` | loopback | Which proxies to believe, e.g. `10.0.0.0/8`. Needed when the proxy isn't on this machine. |
+| `RBB_STORAGE` | `local` | `local` (the upload folder) or `s3`. |
+| `RBB_S3_BUCKET`, `RBB_S3_ENDPOINT`, `RBB_S3_REGION`, `RBB_S3_PREFIX` | – | S3 storage settings. The bucket is required; the endpoint is for non-AWS stores. Credentials come from the standard `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` variables. |
 | `RBB_DB_MAX_CONNECTIONS` | `32` | Database connections per server. |
 | `RBB_MAX_UPLOAD_MB` | `25` | Biggest file someone can upload. |
 | `RBB_ADMIN_LISTEN` | – | A private port for `/metrics`, `/livez` and `/readyz`. |
@@ -98,7 +103,7 @@ On/off variables accept `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`; anyth
 | `RBB_PLUGINS_DIR` | `plugins` | Where plugins live. |
 | `RBB_PLUGINS_TRUSTED` | `false` | Skip sanitizing plugin HTML. |
 | `RBB_LOG_JSON` | `false` | Log as JSON. |
-| `RUST_LOG` | `rbb=info,tower_http=warn` | How chatty the logs are. |
+| `RUST_LOG` | `rbb=info,tower_http=warn,sqlx=warn` | How chatty the logs are. |
 | `RBB_DEV_TEMPLATES` | – | Reload templates from this folder on every request. For development. |
 
 </details>
@@ -108,6 +113,14 @@ On/off variables accept `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`; anyth
 Run more. Every server talks to the same Postgres and the same uploads (S3 or a shared folder), and
 they keep each other in sync through Postgres. You don't need Redis or a message queue. On a busy
 board you can split background work into its own processes with `rbb worker` and `rbb scheduler`.
+
+## Backups
+
+Two things need saving. The database: download a dump from the Admin CP (Tools), or run
+`pg_dump -Fc "$DATABASE_URL" > rbb.dump`. To restore into an empty database, run
+`pg_restore --clean --no-owner -d "$DATABASE_URL" rbb.dump`.
+
+Uploads aren't in the dump. Back up the upload folder (or your S3 bucket) separately.
 
 ## Moving from MyBB
 

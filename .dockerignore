@@ -1,0 +1,11 @@
+target/
+data/
+uploads/
+.env
+.git
+node_modules
+tests/a11y/node_modules
+docs/
+screenshots/
+fuzz/target
+.claude/

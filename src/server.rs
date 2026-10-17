@@ -165,6 +165,25 @@ async fn reject_nul(req: axum::extract::Request, next: axum::middleware::Next) -
     .await
 }
 
+/// Most requests get 60 seconds. Multipart uploads (attachments, avatars, theme import) get
+/// longer, since the clock covers the body arriving and a slow link would otherwise get a 408.
+async fn request_timeout(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let upload = req
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("multipart/form-data")
+        });
+    let limit = Duration::from_secs(if upload { 600 } else { 60 });
+    match tokio::time::timeout(limit, next.run(req)).await {
+        Ok(resp) => resp,
+        Err(_) => StatusCode::REQUEST_TIMEOUT.into_response(),
+    }
+}
+
 pub fn build_router(app: app::App) -> Router {
     let csp = "default-src 'self'; img-src * data: blob:; media-src *; style-src 'self' 'unsafe-inline'; script-src 'self'; \
                frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.dailymotion.com https://player.twitch.tv; \
@@ -242,10 +261,7 @@ pub fn build_router(app: app::App) -> Router {
         // (6) in size at a fraction of the CPU, and compression was the largest single cost of a
         // logged-in page view. Static assets are pre-compressed at maximum level separately.
         .layer(CompressionLayer::new().quality(tower_http::CompressionLevel::Precise(3)))
-        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(60),
-        ))
+        .layer(axum::middleware::from_fn(request_timeout))
         .layer(tower_http::catch_panic::CatchPanicLayer::new())
         .layer(
             // One span per request. Only the path goes in it: query strings can carry one-time

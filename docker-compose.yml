@@ -48,7 +48,9 @@ services:
       # Behind the reverse proxy below; only its forwarding headers are believed.
       RBB_TRUST_PROXY: "true"
       RBB_TRUSTED_PROXIES: 172.16.0.0/12
-      RBB_SECURE_COOKIES: "true"
+      # The bundled proxy speaks plain HTTP on :80: put TLS in front of it, or set
+      # RBB_SECURE_COOKIES=false for a local try-out.
+      RBB_SECURE_COOKIES: ${RBB_SECURE_COOKIES:-true}
     expose: ["8080"]
 
   worker:
