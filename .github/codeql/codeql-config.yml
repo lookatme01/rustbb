@@ -1,0 +1,6 @@
+name: rbb
+
+# Test fixtures are full of throwaway passwords and tokens, which the
+# hard-coded-credential queries flag by the dozen.
+paths-ignore:
+  - tests
