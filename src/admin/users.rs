@@ -648,6 +648,11 @@ pub async fn edit_save(
     if !sys && !util::valid_email(&email) {
         return Err(AppError::user("Invalid email address."));
     }
+    if !crate::routes::usercp::website_ok(&s(fl.get("website"))) {
+        return Err(AppError::user(
+            "The website must start with http:// or https://",
+        ));
+    }
     if username != user.username {
         if username.is_empty() || !crate::auth::valid_username_chars(&username) {
             return Err(AppError::user("Invalid username."));

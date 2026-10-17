@@ -652,32 +652,42 @@ pub async fn modqueue_action(ctx: Ctx, CsrfForm(f): CsrfForm<QueueForm>) -> AppR
             }
         }
         "attachments" => {
-            // Only pending attachments of posts in forums where this moderator may handle them.
-            let fl_att: Vec<i32> = fl
-                .iter()
-                .copied()
-                .filter(|fid| {
-                    ctx.mod_perms(*fid)
-                        .is_some_and(|m| m.canapproveunapproveattachs)
-                })
-                .collect();
+            // Only pending attachments, and only in forums where this moderator holds the
+            // attachment right: the "all forums" queue scope alone is not enough, as for posts.
+            let pending = |ids: Vec<i32>| {
+                let ctx = ctx.clone();
+                let fl = fl.clone();
+                async move {
+                    Ok::<Vec<(i32, i32)>, AppError>(
+                        sqlx::query_as::<_, (i32, i32)>(
+                            "SELECT a.aid, p.fid FROM attachments a JOIN posts p ON p.pid = a.pid
+                             WHERE a.aid = ANY($1) AND NOT a.visible AND ($2 OR p.fid = ANY($3))",
+                        )
+                        .bind(&ids)
+                        .bind(all)
+                        .bind(&fl)
+                        .fetch_all(&ctx.app.db)
+                        .await?,
+                    )
+                }
+            };
+            let a = allowed(&ctx, pending(f.approve.clone()).await?, |m| {
+                m.canapproveunapproveattachs
+            });
+            let d = allowed(&ctx, pending(f.delete.clone()).await?, |m| {
+                m.canapproveunapproveattachs
+            });
             sqlx::query(
-                "UPDATE attachments a SET visible = TRUE FROM posts p
-                 WHERE a.aid = ANY($1) AND NOT a.visible AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))",
+                "UPDATE attachments SET visible = TRUE WHERE aid = ANY($1) AND NOT visible",
             )
-            .bind(&f.approve)
-            .bind(all)
-            .bind(&fl_att)
+            .bind(&a)
             .execute(uow.conn())
             .await?;
             let files: Vec<(String, String)> = sqlx::query_as(
-                "DELETE FROM attachments a USING posts p
-                 WHERE a.aid = ANY($1) AND NOT a.visible AND p.pid = a.pid AND ($2 OR p.fid = ANY($3))
-                 RETURNING a.attachname, a.thumbnail",
+                "DELETE FROM attachments WHERE aid = ANY($1) AND NOT visible
+                 RETURNING attachname, thumbnail",
             )
-            .bind(&f.delete)
-            .bind(all)
-            .bind(&fl_att)
+            .bind(&d)
             .fetch_all(uow.conn())
             .await?;
             let paths: Vec<String> = files
@@ -1166,6 +1176,11 @@ pub async fn editprofile_save(
     let user = load_user(&ctx, uid).await?;
     if !can_act_on(&ctx, &user) {
         return Err(AppError::user("You cannot edit this user's profile."));
+    }
+    if !crate::routes::usercp::website_ok(&f.website) {
+        return Err(AppError::user(
+            "The website must start with http:// or https://",
+        ));
     }
     // The System account is never suspended or moderated.
     let sys = user.is_system;

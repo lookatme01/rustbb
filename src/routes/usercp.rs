@@ -386,7 +386,7 @@ pub async fn profile_save(ctx: Ctx, CsrfForm(f): CsrfForm<ProfileForm>) -> AppRe
     let me = require_ucp(&ctx).await?;
     let mut errors = vec![];
     let website = f.website.trim().to_string();
-    if !website.is_empty() && !(website.starts_with("http://") || website.starts_with("https://")) {
+    if !website_ok(&website) {
         errors.push("Your website must start with http:// or https://".to_string());
     }
     let birthday = if f.bday > 0 && f.bmonth > 0 {
@@ -2620,4 +2620,11 @@ pub async fn activity(ctx: Ctx, Query(q): Query<ActivityQuery>) -> AppResult<Res
         .fetch_one(&ctx.app.db)
         .await?;
     page(&ctx, "usercp/activity.html", "activity", "Account activity", minijinja::context! { events => events, pagination => pagination, kind => kind, failed_week => failed }).await
+}
+
+/// A profile website is empty or an http(s) link: it is rendered as an `href`, so anything else
+/// (`javascript:`, `data:`) must never be stored, whoever edits the profile.
+pub fn website_ok(website: &str) -> bool {
+    let w = website.trim().to_ascii_lowercase();
+    w.is_empty() || w.starts_with("http://") || w.starts_with("https://")
 }
