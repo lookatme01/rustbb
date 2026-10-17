@@ -228,7 +228,18 @@ pub async fn newthread_form(
     Query(q): Query<DraftQuery>,
 ) -> AppResult<Response> {
     let (forum, fp) = ctx.check_forum(fid)?;
-    if forum.is_category() || !forum.linkto.is_empty() {
+    // A "New thread" link aimed at a category (a bookmark, an old URL) lands on the category with
+    // a nudge, rather than on an error page.
+    if forum.is_category() {
+        return Ok(ctx.redirect(
+            &url_forum(forum.fid as i64, Some(&forum.name)),
+            &format!(
+                "Pick one of the forums in {} to start a thread.",
+                forum.name
+            ),
+        ));
+    }
+    if !forum.linkto.is_empty() {
         return Err(AppError::user("You cannot post threads in this forum."));
     }
     if !fp.canpostthreads || !ctx.perms.canpostthreads {

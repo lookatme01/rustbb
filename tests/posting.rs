@@ -924,3 +924,21 @@ async fn merging_with_a_thread_that_has_since_gone_is_refused_not_an_error() {
     assert!(err.is_err() && msg.contains("merged or deleted"), "{msg}");
     assert_consistent(&t).await;
 }
+
+#[tokio::test]
+async fn new_thread_in_a_category_lands_on_the_category() {
+    let t = test_app!();
+    let cat: i32 =
+        sqlx::query_scalar("SELECT fid FROM forums WHERE type = 'c' ORDER BY fid LIMIT 1")
+            .fetch_one(&t.db.pool)
+            .await
+            .unwrap();
+    let c = t.login_as(1).await;
+    let r = c.get(&format!("/newthread/{cat}")).await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    assert!(
+        r.location().starts_with(&format!("/forum/{cat}")),
+        "{}",
+        r.location()
+    );
+}
