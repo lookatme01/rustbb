@@ -240,6 +240,9 @@ pub async fn inline_threads(ctx: Ctx, CsrfForm(f): CsrfForm<InlineForm>) -> AppR
             if threads.len() < 2 {
                 return Err(AppError::user("Select at least two threads to merge."));
             }
+            if threads.iter().any(|t| t.moved_to().is_some()) {
+                return Err(AppError::user("A redirect cannot be merged."));
+            }
             // Merge all selected threads into the oldest one.
             let mut sorted = threads.clone();
             sorted.sort_by_key(|t| t.dateline);
@@ -738,6 +741,25 @@ pub async fn do_editthread(ctx: Ctx, CsrfForm(f): CsrfForm<EditThreadForm>) -> A
     if subject.is_empty() {
         return Err(AppError::user("The subject cannot be empty."));
     }
+    let sublen = ctx.settings().int("subjectlength").max(10) as usize;
+    if subject.chars().count() > sublen {
+        return Err(AppError::user(format!(
+            "The subject is too long. Please enter a subject shorter than {sublen} characters."
+        )));
+    }
+    // Keeping the current prefix is always fine; a new one must belong to this forum.
+    if f.prefix != 0
+        && f.prefix != threads[0].prefix
+        && !ctx
+            .cache
+            .prefixes_for(threads[0].fid, &ctx.groups)
+            .iter()
+            .any(|p| p.pid == f.prefix)
+    {
+        return Err(AppError::user(
+            "The selected prefix is not available in this forum.",
+        ));
+    }
     let mut uow = Uow::begin(&ctx.app).await?;
     ops::lock_threads(uow.conn(), &[f.tid]).await?;
     sqlx::query("UPDATE threads SET subject = $2, notes = $3, prefix = $4 WHERE tid = $1")
@@ -904,9 +926,13 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
         }
         let newsub = opt_str(&o, "newsubject");
         if !newsub.is_empty() && newsub != "{subject}" {
-            let s = newsub
+            let sublen = ctx.settings().int("subjectlength").max(10) as usize;
+            let s: String = newsub
                 .replace("{subject}", &t.subject)
-                .replace("{username}", ctx.username());
+                .replace("{username}", ctx.username())
+                .chars()
+                .take(sublen)
+                .collect();
             sqlx::query("UPDATE threads SET subject = $2 WHERE tid = $1")
                 .bind(tid)
                 .bind(&s)
@@ -917,7 +943,7 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
         if prefix > 0 || opt_str(&o, "threadprefix") == "0" {
             sqlx::query("UPDATE threads SET prefix = $2 WHERE tid = $1")
                 .bind(tid)
-                .bind(prefix as i32)
+                .bind(i32::try_from(prefix).unwrap_or(0))
                 .execute(uow.conn())
                 .await?;
         }
@@ -946,11 +972,11 @@ async fn run_thread_tool(ctx: &Ctx, id: i32, threads: &[Thread]) -> AppResult<St
                 message: msg,
             });
         }
-        let copy_to = opt_i(&o, "copythread") as i32;
+        let copy_to = i32::try_from(opt_i(&o, "copythread")).unwrap_or(0);
         if copy_to > 0 {
             ops::copy_thread_in(&mut uow, tid, copy_to).await?;
         }
-        let move_to = opt_i(&o, "movethread") as i32;
+        let move_to = i32::try_from(opt_i(&o, "movethread")).unwrap_or(0);
         if move_to > 0 && move_to != t.fid {
             let redirect = if opt_b(&o, "movethreadredirect") {
                 Some(opt_i(&o, "movethreadredirectexpire"))
@@ -997,7 +1023,11 @@ async fn run_post_tool(ctx: &Ctx, id: i32, t: &Thread, pids: &[i32]) -> AppResul
     }
     let split = opt_i(&o, "splitposts");
     if split != 0 && split != -1 {
-        let fid = if split == -2 { t.fid } else { split as i32 };
+        let fid = if split == -2 {
+            t.fid
+        } else {
+            i32::try_from(split).unwrap_or(0)
+        };
         let subj = opt_str(&o, "splitpostsnewsubject").replace("{subject}", &t.subject);
         let subj = if subj.is_empty() {
             format!("{} (split)", t.subject)

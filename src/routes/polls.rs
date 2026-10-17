@@ -318,6 +318,11 @@ pub async fn edit_save(
     if f.question.trim().is_empty() {
         return Err(AppError::user("Please enter a poll question."));
     }
+    if f.question.trim().chars().count() > 250 {
+        return Err(AppError::user(
+            "The poll question is too long. Please keep it under 250 characters.",
+        ));
+    }
     let timeout = crate::posting::poll_timeout(f.timeout)?;
     let opts = parse_options(&ctx, &f.options)?;
     let mut tx = ctx.app.db.begin().await?;
@@ -404,6 +409,11 @@ pub async fn new_save(
     }
     if f.question.trim().is_empty() {
         return Err(AppError::user("Please enter a poll question."));
+    }
+    if f.question.trim().chars().count() > 250 {
+        return Err(AppError::user(
+            "The poll question is too long. Please keep it under 250 characters.",
+        ));
     }
     let opts = parse_options(&ctx, &f.options)?;
     let timeout = crate::posting::poll_timeout(f.timeout)?;
