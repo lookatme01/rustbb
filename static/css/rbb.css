@@ -21,7 +21,7 @@ html { -webkit-text-size-adjust: 100%; scroll-padding-top: 24px; }
 body {
   margin: 0; min-height: 100vh; display: flex; flex-direction: column;
   background: var(--canvas); color: var(--ink);
-  font: var(--text)/var(--leading) var(--font); letter-spacing: var(--tracking); font-variant-numeric: tabular-nums;
+  font: var(--text)/var(--leading) var(--font); letter-spacing: var(--tracking);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
 }
 a { color: inherit; text-decoration: none; }
@@ -552,11 +552,14 @@ a.person:hover { background: var(--surface-3); text-decoration: none; transform:
 .post-who > .post-name { flex-basis: 100%; }
 .post-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .post-name .name { font-size: var(--text-read); font-weight: 700; overflow-wrap: anywhere; }
-.post-facts { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 0; font-size: var(--text-xs); color: var(--faint); }
-.post-facts > div { display: inline-flex; gap: 4px; }
-.post-facts > div + div::before { content: "·"; margin-right: 2px; }
+/* Every fact carries its "·" in the gutter before it; the list is pulled left by one gutter and
+   that strip is clipped, so whichever fact starts a line (first or wrapped) shows no dot. */
+.post-facts { display: flex; flex-wrap: wrap; margin: 0; font-size: var(--text-xs); color: var(--faint); }
+dl.post-facts { margin-left: -14px; clip-path: inset(-4px -4px -4px 10px); }
+.post-facts > div { position: relative; display: inline-flex; gap: 4px; padding-left: 14px; }
+.post-facts > div::before { content: "·"; position: absolute; left: 5px; }
 .post-facts dt { display: inline; }
-.post-facts dd { display: inline; margin: 0; color: var(--soft); }
+.post-facts dd { display: inline; margin: 0; color: var(--soft); white-space: nowrap; }
 .post-facts a { color: inherit; }
 .post-who .awards, .post-who .mf-flags { margin: 0; }
 .post-when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; font-size: var(--text-xs); color: var(--faint); }
@@ -1911,4 +1914,15 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
 @media (max-width: 480px) {
   .cp-content .admin-filter { grid-template-columns: minmax(0, 1fr); }
   .cp-requirement > label { flex-basis: 100%; }
+}
+
+/* Figures line up where they are compared in columns; running text keeps proportional ones
+   (tabular "1"s read as "1 1m ago"). */
+.forum-stats, .thread-stats, .forum-counts, .num { font-variant-numeric: tabular-nums; }
+
+/* Narrow phones: the number and date get their own line instead of squeezing the facts into a
+   column a date can't fit in. */
+@media (max-width: 400px) {
+  .post-who > .post-facts { grid-column: 2 / -1; }
+  .post-when { grid-column: 2 / -1; grid-row: 3; }
 }
