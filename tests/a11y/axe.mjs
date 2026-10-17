@@ -115,7 +115,13 @@ async function keyboard(context, path, label) {
   const page = await context.newPage();
   await page.goto(BASE + path);
   const problems = [];
-  // A page that focuses a field itself (autofocus) rightly starts there instead.
+  // A page that focuses a field itself (autofocus) rightly starts there instead. Browsers apply
+  // autofocus on a later rendering step, so wait for it rather than racing it.
+  if (await page.evaluate(() => !!document.querySelector("[autofocus]"))) {
+    await page
+      .waitForFunction(() => document.activeElement && document.activeElement !== document.body, null, { timeout: 2000 })
+      .catch(() => {});
+  }
   const autofocused = await page.evaluate(() => document.activeElement && document.activeElement !== document.body);
   await page.keyboard.press("Tab");
   const first = await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("href"));
