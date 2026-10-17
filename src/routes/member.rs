@@ -89,7 +89,11 @@ pub async fn check_credentials(
     let name_key = username.trim().to_lowercase();
     if !ctx
         .app
-        .throttle(&format!("login:{}", ctx.ip), 20, 300)
+        .throttle(
+            &format!("login:{}", crate::util::ip_bucket(&ctx.ip)),
+            20,
+            300,
+        )
         .await
         || !ctx
             .app
@@ -279,7 +283,11 @@ pub async fn totp_consume(
 }
 
 pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<Response> {
-    if !ctx.app.throttle(&format!("2fa:{}", ctx.ip), 10, 300).await {
+    if !ctx
+        .app
+        .throttle(&format!("2fa:{}", crate::util::ip_bucket(&ctx.ip)), 10, 300)
+        .await
+    {
         return Err(AppError::RateLimited);
     }
     let parts: Vec<&str> = f.pending.split('.').collect();
@@ -504,7 +512,11 @@ pub async fn register_submit(ctx: Ctx, CsrfForm(f): CsrfForm<RegisterForm>) -> A
     // many tries one address gets: otherwise it is a free lookup of who is registered.
     if !ctx
         .app
-        .throttle(&format!("register-try:{}", ctx.ip), 20, 600)
+        .throttle(
+            &format!("register-try:{}", crate::util::ip_bucket(&ctx.ip)),
+            20,
+            600,
+        )
         .await
     {
         return Err(AppError::RateLimited);
@@ -823,7 +835,11 @@ pub async fn resend_form(ctx: Ctx) -> AppResult<Response> {
 pub async fn resend_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppResult<Response> {
     if !ctx
         .app
-        .throttle(&format!("resend:{}", ctx.ip), 3, 3600)
+        .throttle(
+            &format!("resend:{}", crate::util::ip_bucket(&ctx.ip)),
+            3,
+            3600,
+        )
         .await
     {
         return Err(AppError::RateLimited);
@@ -843,7 +859,11 @@ pub async fn lostpw_form(ctx: Ctx) -> AppResult<Response> {
 pub async fn lostpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<EmailOnly>) -> AppResult<Response> {
     if !ctx
         .app
-        .throttle(&format!("lostpw:{}", ctx.ip), 5, 3600)
+        .throttle(
+            &format!("lostpw:{}", crate::util::ip_bucket(&ctx.ip)),
+            5,
+            3600,
+        )
         .await
     {
         return Err(AppError::RateLimited);
@@ -874,7 +894,11 @@ pub struct ResetForm {
 pub async fn resetpw_submit(ctx: Ctx, CsrfForm(f): CsrfForm<ResetForm>) -> AppResult<Response> {
     if !ctx
         .app
-        .throttle(&format!("resetpw:{}", ctx.ip), 10, 3600)
+        .throttle(
+            &format!("resetpw:{}", crate::util::ip_bucket(&ctx.ip)),
+            10,
+            3600,
+        )
         .await
         || !ctx
             .app
@@ -910,7 +934,11 @@ pub struct NameQuery {
 }
 
 pub async fn check_username(ctx: Ctx, Query(q): Query<NameQuery>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("checkname:{}", ctx.ip), 60, 60) {
+    if !ctx.app.rate_check(
+        &format!("checkname:{}", crate::util::ip_bucket(&ctx.ip)),
+        60,
+        60,
+    ) {
         return Err(AppError::RateLimited);
     }
     let name = q.username.trim();

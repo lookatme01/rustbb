@@ -298,9 +298,46 @@ pub fn valid_email(e: &str) -> bool {
 
 /// Decode an uploaded image with bounded dimensions and memory. A few-KB PNG can declare
 /// 60000×60000 pixels; decoding it unbounded would allocate gigabytes (decompression bomb).
+/// Collapse a client IP into the bucket per-IP limiters should key on. A single IPv6 subscriber
+/// usually holds a whole /64, so keying on the full address lets them rotate past any limit;
+/// IPv6 therefore maps to its /64 prefix and IPv4-mapped IPv6 to the plain IPv4 address.
+/// Unparseable input is returned unchanged.
+pub fn ip_bucket(ip: &str) -> String {
+    use std::net::IpAddr;
+    match ip.parse::<IpAddr>() {
+        Ok(IpAddr::V4(v4)) => v4.to_string(),
+        Ok(IpAddr::V6(v6)) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.to_string(),
+            None => {
+                let s = v6.segments();
+                format!(
+                    "{}/64",
+                    std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0)
+                )
+            }
+        },
+        Err(_) => ip.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ip_bucket_groups_ipv6_by_64() {
+        assert_eq!(
+            ip_bucket("2001:db8:1:2:aaaa:bbbb:cccc:dddd"),
+            "2001:db8:1:2::/64"
+        );
+        assert_eq!(
+            ip_bucket("2001:db8:1:2::1"),
+            ip_bucket("2001:db8:1:2:ffff::9")
+        );
+        assert_ne!(ip_bucket("2001:db8:1:2::1"), ip_bucket("2001:db8:1:3::1"));
+        assert_eq!(ip_bucket("::ffff:192.0.2.7"), "192.0.2.7");
+        assert_eq!(ip_bucket("192.0.2.7"), "192.0.2.7");
+        assert_eq!(ip_bucket("unknown"), "unknown");
+    }
     #[test]
     fn like_escape_is_literal() {
         assert_eq!(like_escape(r"50%_a\b"), r"50\%\_a\\b");

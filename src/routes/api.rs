@@ -68,7 +68,11 @@ pub struct TokenReq {
 pub async fn token_create(ctx: Ctx, Json(r): Json<TokenReq>) -> AppResult<Response> {
     if !ctx
         .app
-        .throttle(&format!("apilogin:{}", ctx.ip), 10, 300)
+        .throttle(
+            &format!("apilogin:{}", crate::util::ip_bucket(&ctx.ip)),
+            10,
+            300,
+        )
         .await
     {
         return Err(AppError::RateLimited);
@@ -475,7 +479,7 @@ pub async fn search(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
     let key = if ctx.uid() > 0 {
         format!("apisearch:u{}", ctx.uid())
     } else {
-        format!("apisearch:{}", ctx.ip)
+        format!("apisearch:{}", crate::util::ip_bucket(&ctx.ip))
     };
     if !ctx.app.rate_check(&key, 10, 60) {
         return Err(AppError::RateLimited);

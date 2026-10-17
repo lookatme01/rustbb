@@ -184,7 +184,11 @@ pub async fn remove(ctx: Ctx, CsrfForm(f): CsrfForm<RemoveForm>) -> AppResult<Re
 async fn sign_in_allowed(ctx: &Ctx) -> AppResult<()> {
     if !ctx
         .app
-        .throttle(&format!("login:{}", ctx.ip), 20, 300)
+        .throttle(
+            &format!("login:{}", crate::util::ip_bucket(&ctx.ip)),
+            20,
+            300,
+        )
         .await
     {
         return Err(AppError::user(

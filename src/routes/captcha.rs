@@ -244,7 +244,11 @@ pub async fn refresh(ctx: Ctx) -> AppResult<Response> {
     // Every call writes a row that stays until the hourly cleanup, and it needs no sign-in.
     if !ctx
         .app
-        .throttle(&format!("captcha-refresh:{}", ctx.ip), 30, 300)
+        .throttle(
+            &format!("captcha-refresh:{}", crate::util::ip_bucket(&ctx.ip)),
+            30,
+            300,
+        )
         .await
     {
         return Err(AppError::RateLimited);

@@ -1033,7 +1033,11 @@ pub struct PreviewForm {
 }
 
 pub async fn preview_json(ctx: Ctx, CsrfForm(f): CsrfForm<PreviewForm>) -> AppResult<Response> {
-    if !ctx.app.rate_check(&format!("preview:{}", ctx.ip), 60, 60) {
+    if !ctx.app.rate_check(
+        &format!("preview:{}", crate::util::ip_bucket(&ctx.ip)),
+        60,
+        60,
+    ) {
         return Err(AppError::RateLimited);
     }
     let html = preview_html(&ctx, f.fid, &f.message, false);

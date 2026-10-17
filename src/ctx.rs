@@ -574,7 +574,8 @@ impl CtxInner {
                 .collect(),
         };
         if let Ok(json) = serde_json::to_string(&undo) {
-            self.add_cookie(UNDO_COOKIE, &json, Some(60), false);
+            let sig = util::hmac_hex(&self.app.cfg.secret, &format!("undo:{json}"));
+            self.add_cookie(UNDO_COOKIE, &format!("{sig}.{json}"), Some(60), true);
         }
         self.redirect(to, msg)
     }
@@ -713,7 +714,7 @@ pub async fn context_middleware(
 
     // Global per-IP rate limit.
     let rl = cache.settings.int("ratelimit_requests") as u32;
-    if !app.rate_check(&format!("req:{ip}"), rl, 60) {
+    if !app.rate_check(&format!("req:{}", util::ip_bucket(&ip)), rl, 60) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [(header::RETRY_AFTER, "30")],
@@ -854,7 +855,14 @@ pub async fn context_middleware(
     if flash.is_some() {
         new_cookies.push(format!("{FLASH_COOKIE}=; Path=/; Max-Age=0"));
     }
+    // Signed, so a cookie planted from elsewhere (a sibling subdomain, plain HTTP) cannot make
+    // the page render a form that posts the viewer's CSRF token to an action of its choosing.
     let undo = get_cookie(&headers, UNDO_COOKIE)
+        .and_then(|u| {
+            let (sig, json) = u.split_once('.')?;
+            let want = util::hmac_hex(&app.cfg.secret, &format!("undo:{json}"));
+            util::ct_eq(sig, &want).then(|| json.to_string())
+        })
         .and_then(|u| serde_json::from_str::<Undo>(&u).ok())
         .filter(|u| safe_redirect(&u.action) == u.action);
     if get_cookie(&headers, UNDO_COOKIE).is_some() {

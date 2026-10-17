@@ -109,7 +109,7 @@ async fn flood_check(ctx: &Ctx) -> AppResult<()> {
     let key = if ctx.uid() > 0 {
         format!("search:u{}", ctx.uid())
     } else {
-        format!("search:{}", ctx.ip)
+        format!("search:{}", crate::util::ip_bucket(&ctx.ip))
     };
     if !ctx.app.rate_check(&key, 1, secs) {
         return Err(AppError::user(format!(
