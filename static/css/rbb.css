@@ -1927,6 +1927,18 @@ p > a:only-child:not(.btn) { display: inline-block; padding-block: 12px; margin-
   .post-when { grid-column: 2 / -1; grid-row: 3; }
 }
 
+/* Phone CP cards: short cells (counts, dates, other .num/.small values) share a line with their
+   label instead of each taking a labelled block of its own. */
+@media (max-width: 860px) {
+  .cp-content .cp-table-cards > tbody > tr { display: flex; flex-wrap: wrap; align-items: baseline; }
+  .cp-content .cp-table-cards > tbody > tr > td { flex: 1 1 100%; }
+  .cp-content .cp-table-cards > tbody > tr > td:is(.num, .small):not(:has(.btn, input, select, textarea)) { flex: 0 1 auto; width: auto; padding-right: 0; }
+  .cp-table-cards > tbody > tr > td:is(.num, .small):not(:has(.btn, input, select, textarea)) > .cp-cell-label { display: inline; margin: 0 4px 0 0; }
+  /* A lone number field (display order and the like) sits beside its label. */
+  .cp-content .cp-table-cards > tbody > tr > td:has(> input[type=number]:only-of-type) { display: flex; align-items: center; gap: 10px; }
+  .cp-table-cards > tbody > tr > td:has(> input[type=number]:only-of-type) > .cp-cell-label { margin: 0; }
+}
+
 /* The member list as cards: name and post count on top, flags under them, then group, join date
    and last visit on one quiet line, instead of six labelled blocks per member. */
 @media (max-width: 860px) {
