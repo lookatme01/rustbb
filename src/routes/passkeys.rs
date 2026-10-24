@@ -5,9 +5,9 @@ use crate::app::App;
 use crate::auth;
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
+use crate::routes::Empty;
 use axum::Json;
 use axum::Router;
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde::Deserialize;
@@ -31,12 +31,8 @@ fn json(r: AppResult<serde_json::Value>) -> Response {
             if matches!(e, AppError::Db(_) | AppError::Other(_)) {
                 tracing::error!(error = ?e, "passkey request failed");
             }
-            let status = match e.status() {
-                StatusCode::INTERNAL_SERVER_ERROR => StatusCode::INTERNAL_SERVER_ERROR,
-                s => s,
-            };
             (
-                status,
+                e.status(),
                 Json(serde_json::json!({"error": e.public_message()})),
             )
                 .into_response()
@@ -202,9 +198,6 @@ async fn sign_in_allowed(ctx: &Ctx) -> AppResult<()> {
     }
     Ok(())
 }
-
-#[derive(Deserialize)]
-pub struct Empty {}
 
 pub async fn sign_in_begin(ctx: Ctx, CsrfForm(_): CsrfForm<Empty>) -> Response {
     json(

@@ -1,5 +1,6 @@
 //! Board settings editor.
 
+use crate::admin::AnyForm;
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::settings::{DEFS, GROUPS};
@@ -8,7 +9,6 @@ use axum::extract::{Path, Query};
 use axum::response::Response;
 use axum::routing::get;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub fn router() -> Router<crate::app::App> {
     Router::new()
@@ -75,12 +75,6 @@ pub async fn edit(ctx: Ctx, Path(group): Path<String>) -> AppResult<Response> {
         minijinja::context! { group => g, items => items, groups => GROUPS },
     )
     .await
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
 }
 
 pub async fn save(

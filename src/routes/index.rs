@@ -385,8 +385,8 @@ pub async fn fill_avatars(ctx: &Ctx, nodes: &mut [ForumNode]) -> AppResult<()> {
 async fn compute_online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
     let mins = ctx.settings().int("wolcutoffmins").max(1);
     let cutoff = now() - mins * 60;
-    let rows: Vec<(i32, bool, String)> = sqlx::query_as(
-        "SELECT DISTINCT ON (uid, bot, CASE WHEN uid = 0 AND bot = '' THEN sid ELSE '' END) uid, anonymous, bot FROM sessions WHERE time > $1",
+    let rows: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (uid, bot, CASE WHEN uid = 0 AND bot = '' THEN sid ELSE '' END) uid, bot FROM sessions WHERE time > $1",
     )
     .bind(cutoff)
     .fetch_all(&ctx.app.db)
@@ -394,7 +394,7 @@ async fn compute_online_summary(ctx: &Ctx) -> AppResult<OnlineSummary> {
     let mut uids = Vec::new();
     let (mut guests, mut bots_n) = (0, 0);
     let mut bots = Vec::new();
-    for (uid, _anon, bot) in &rows {
+    for (uid, bot) in &rows {
         if !bot.is_empty() {
             bots_n += 1;
             if !bots.contains(bot) {

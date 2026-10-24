@@ -10,13 +10,10 @@ anyhow = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["multipart", "macros"] }
-axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
-tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.6", features = ["fs", "compression-full", "trace", "set-header", "catch-panic", "request-id", "timeout", "limit"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "json", "migrate", "uuid", "chrono", "ipnetwork"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_urlencoded = "0.7"
 minijinja = { version = "2", features = ["loader", "json", "urlencode", "speedups"] }
 minijinja-contrib = { version = "2", features = ["pycompat"] }
 tracing = "0.1"
@@ -27,7 +24,6 @@ sha2 = "0.10"
 hmac = "0.12"
 sha1 = "0.10"
 hex = "0.4"
-base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 chrono-tz = "0.10"
 regex = "1"
@@ -52,14 +48,12 @@ dotenvy = "0.15"
 uuid = { version = "1", features = ["v4"] }
 bytes = "1"
 http = "1"
-once_cell = "1"
 pgp = { version = "0.20", default-features = false }
 rsa = "0.9"
 brotli = "8"
 flate2 = "1"
 ammonia = "4"
 rhai = { version = "1", features = ["sync", "serde"] }
-fake = { version = "2", optional = true }
 object_store = { version = "0.14.2", features = ["aws"] }
 ipnetwork = "0.20"
 # Passkeys (WebAuthn relying party). Pure Rust (RustCrypto), so release builds stay OpenSSL-free.
@@ -97,6 +91,9 @@ opt-level = 2
 
 [dev-dependencies]
 proptest = "1.11.0"
+tower = { version = "0.5", features = ["util"] }
+serde_urlencoded = "0.7"
+base64 = "0.22"
 # A software WebAuthn client and authenticator, to drive the passkey flows in tests.
 passkey = "0.6"
 # Browsers send base64url strings, not byte arrays.

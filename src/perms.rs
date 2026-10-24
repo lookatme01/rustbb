@@ -7,15 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Combine {
-    Or,
-    Max,
-    /// 0 = unlimited wins, otherwise max.
-    ZeroUnlimited,
-    Min,
-}
-
 #[derive(Serialize, Clone, Debug)]
 pub struct PermMeta {
     pub name: &'static str,
@@ -91,7 +82,6 @@ perm_struct!(GroupPerms, GROUP_PERM_META {
     caneditposts: bool = true, Or, "Can edit own posts?";
     candeleteposts: bool = true, Or, "Can delete own posts?";
     candeletethreads: bool = true, Or, "Can delete own threads?";
-    caneditattachments: bool = true, Or, "Can update own attachments?";
     canpostpolls: bool = true, Or, "Can post polls?";
     canvotepolls: bool = true, Or, "Can vote in polls?";
     canundovotes: bool = false, Or, "Can undo votes in polls?";
@@ -107,7 +97,6 @@ perm_struct!(GroupPerms, GROUP_PERM_META {
     canusepms: bool = true, Or, "Can use private messaging?";
     cansendpms: bool = true, Or, "Can send private messages?";
     cantrackpms: bool = true, Or, "Can track sent private messages?";
-    candenypmreceipts: bool = true, Or, "Can deny message receipt requests?";
     canoverridepm: bool = false, Or, "Can send PMs to users who disabled them?";
     pmquota: i32 = 200, ZeroUnlimited, "Message quota (0 = unlimited)";
     maxpmrecipients: i32 = 5, ZeroUnlimited, "Max recipients per message (0 = unlimited)";
@@ -180,7 +169,6 @@ perm_struct!(ForumPerms, FORUM_PERM_META {
     caneditposts: bool = true, Or, "Can edit own posts?";
     candeleteposts: bool = true, Or, "Can delete own posts?";
     candeletethreads: bool = true, Or, "Can delete own threads?";
-    caneditattachments: bool = true, Or, "Can update own attachments?";
     ["Moderation"]
     modposts: bool = false, Or, "Moderate new posts?";
     modthreads: bool = false, Or, "Moderate new threads?";
@@ -237,7 +225,6 @@ impl ForumPerms {
             caneditposts: g.caneditposts,
             candeleteposts: g.candeleteposts,
             candeletethreads: g.candeletethreads,
-            caneditattachments: g.caneditattachments,
             modposts: g.modposts,
             modthreads: g.modthreads,
             mod_edit_posts: g.mod_edit_posts,
@@ -290,14 +277,12 @@ impl GroupPerms {
             caneditposts: false,
             candeleteposts: false,
             candeletethreads: false,
-            caneditattachments: false,
             canpostpolls: false,
             canvotepolls: false,
             canreact: false,
             canusepms: false,
             cansendpms: false,
             cantrackpms: false,
-            candenypmreceipts: false,
             pmquota: 0,
             cansendemail: false,
             canusercp: false,

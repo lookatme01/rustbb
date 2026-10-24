@@ -477,11 +477,9 @@ pub async fn do_move(ctx: Ctx, CsrfForm(f): CsrfForm<MoveForm>) -> AppResult<Res
     let mut uow = Uow::begin(&ctx.app).await?;
     let msg = match f.method.as_str() {
         "copy" => {
-            let mut last = 0;
             for t in &tids {
-                last = ops::copy_thread_in(&mut uow, *t, f.target).await?;
+                ops::copy_thread_in(&mut uow, *t, f.target).await?;
             }
-            let _ = last;
             "The threads have been copied."
         }
         "redirect" => {

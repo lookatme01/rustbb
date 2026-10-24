@@ -50,16 +50,15 @@ pub fn spawn_scheduler(app: App) -> tokio::task::JoinHandle<()> {
 
 pub async fn run_due(app: &App) -> anyhow::Result<()> {
     use futures::StreamExt;
-    let due: Vec<(i32, String, i32, bool)> = sqlx::query_as(
-        "SELECT tid, key, interval_secs, logging FROM tasks
+    let due: Vec<(i32, String, bool)> = sqlx::query_as(
+        "SELECT tid, key, logging FROM tasks
          WHERE enabled AND nextrun <= $1 AND (locked_until IS NULL OR locked_until < now()) ORDER BY nextrun",
     )
     .bind(now())
     .fetch_all(&app.db)
     .await?;
     futures::stream::iter(due)
-        .for_each_concurrent(PARALLEL, |(tid, key, interval, logging)| async move {
-            let _ = interval;
+        .for_each_concurrent(PARALLEL, |(tid, key, logging)| async move {
             if let Err(e) = run(app, tid, &key, logging, false).await {
                 tracing::warn!(task = %key, "task failed: {e:#}");
             }
@@ -96,13 +95,7 @@ async fn claim(app: &App, tid: i32, force: bool) -> sqlx::Result<bool> {
 }
 
 /// Run one task now, whatever its schedule (if no other node is running it), and log it.
-pub async fn run_task(
-    app: &App,
-    tid: i32,
-    key: &str,
-    _interval: i32,
-    logging: bool,
-) -> anyhow::Result<String> {
+pub async fn run_task(app: &App, tid: i32, key: &str, logging: bool) -> anyhow::Result<String> {
     run(app, tid, key, logging, true).await
 }
 

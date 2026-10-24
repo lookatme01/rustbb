@@ -127,7 +127,7 @@ ok(`logged in as ${alice.uid}, ${bob.uid}, ${mallory.uid} on ${board}`);
     execFileSync("psql", ["-h", "127.0.0.1", "-p", "5433", "-U", "rbb", "rbb", "-qc",
       `DELETE FROM pgp_keys WHERE uid IN (${alice.uid},${bob.uid},${mallory.uid}); DELETE FROM pgp_verifications WHERE verifier IN (${alice.uid},${bob.uid},${mallory.uid}); DELETE FROM privatemessages WHERE uid IN (${alice.uid},${bob.uid},${mallory.uid}); DELETE FROM alerts WHERE uid IN (${alice.uid},${bob.uid},${mallory.uid}); ` +
       // The test sends many messages in a row; lift PM flood control and tell the server.
-      `INSERT INTO settings (name, value) VALUES ('pmfloodsecs', '0') ON CONFLICT (name) DO UPDATE SET value = '0'; SELECT pg_notify('rbb_cache', 'pgp-e2e:settings');`],
+      `INSERT INTO settings (name, value) VALUES ('pmfloodsecs', '0') ON CONFLICT (name) DO UPDATE SET value = '0'; INSERT INTO cluster_events (origin, kind, payload) VALUES ('pgp-e2e', 'cache', '{"parts":["settings"]}'); SELECT pg_notify('rbb_cluster', '');`],
       { env: { ...process.env, PATH: `/opt/homebrew/opt/postgresql@17/bin:${process.env.PATH}` } });
     ok("reset test members' keys and messages; PM flood control off");
     await new Promise((r) => setTimeout(r, 300));
@@ -173,7 +173,6 @@ r = await bob.req(`/user/${alice.uid}/pgp.asc`);
 expect(r.status === 200 && r.text.includes("BEGIN PGP PUBLIC KEY BLOCK"), "public key download");
 r = await bob.api(`/pgp/lookup?names=alice_pgp,nobody_zz`);
 expect(r.json().users[0].key.fingerprint === ak.fpr && r.json().missing.includes("nobody_zz"), "recipient lookup");
-r = await alice.req("/pgp/key", { form: { public_key: "x" }, json: true });
 r = await (async () => { const s = new Session("anon"); return s.req("/pgp/me", { json: true }); })();
 expect(r.status === 401 || r.status === 403, "API requires login", String(r.status));
 
@@ -252,7 +251,6 @@ r = await sendPm(alice, { to: "bob_pgp", subject: subj2, message: armored, pgp_m
 expect(/your own key/.test(r.error), "a message the sender couldn't read back is refused", r.error);
 r = await sendPm(alice, { to: "bob_pgp", subject: subj2, message: "plain text pretending", pgp_mode: "encrypt" });
 expect(/not an armored OpenPGP message/.test(r.error), "plain text can't pass as encrypted", r.error);
-r = await alice.req("/pm/send?uid=" + bob.uid);
 expect(!!(await fetch(BASE + "/pm/send", { headers: { Cookie: alice.cookieHeader() } })).headers.get("content-security-policy")?.includes("wasm-unsafe-eval"), "compose page allows WebAssembly for Argon2");
 // Reply to an encrypted message: the server hands the ciphertext to the browser to quote.
 r = await bob.req(`/pm/send?pmid=${pmid}`);
@@ -327,7 +325,7 @@ expect(/pgp-flag is-encrypted/.test(r.text) && /pgp-flag is-signed/.test(r.text)
   const { execFileSync } = await import("node:child_process");
   try {
     execFileSync("psql", ["-h", "127.0.0.1", "-p", "5433", "-U", "rbb", "rbb", "-qc",
-      "DELETE FROM settings WHERE name = 'pmfloodsecs'; SELECT pg_notify('rbb_cache', 'pgp-e2e:settings');"],
+      "DELETE FROM settings WHERE name = 'pmfloodsecs'; INSERT INTO cluster_events (origin, kind, payload) VALUES ('pgp-e2e', 'cache', '{\"parts\":[\"settings\"]}'); SELECT pg_notify('rbb_cluster', '');"],
       { env: { ...process.env, PATH: `/opt/homebrew/opt/postgresql@17/bin:${process.env.PATH}` } });
   } catch (e) { /* ignore */ }
 }

@@ -132,14 +132,14 @@ pub async fn seed(db: &PgPool, users: i64, threads: i64, posts: i64) -> anyhow::
                 initcap((SELECT string_agg(w[1 + floor(random() * cardinality(w))::int], ' ') FROM (SELECT $3::text[] AS w) x, generate_series(1, 4 + (g % 5)))) || ' #' || g,
                 u.uid, u.username, d.t, d.t, 1, g % 997 = 0, (random() * 5000)::int
          FROM generate_series(1, $4) g
-         CROSS JOIN LATERAL (SELECT $6 - (random() * 3 * 365 * 86400)::bigint + g * 0 AS t) d
-         JOIN LATERAL (SELECT uid, username FROM users WHERE uid = $7 + (g * 7919) % ($8 - $7 + 1)) u ON TRUE",
+         -- `+ g * 0` ties the lateral to each row, so random() runs per thread rather than once.
+         CROSS JOIN LATERAL (SELECT $5 - (random() * 3 * 365 * 86400)::bigint + g * 0 AS t) d
+         JOIN LATERAL (SELECT uid, username FROM users WHERE uid = $6 + (g * 7919) % ($7 - $6 + 1)) u ON TRUE",
     )
     .bind(hot)
     .bind(&forum_ids)
     .bind(&words)
     .bind(threads)
-    .bind(0)
     .bind(now)
     .bind(umin)
     .bind(umax)

@@ -216,6 +216,30 @@ impl TestApp {
         c.set_cookie("__csrf", &csrf);
         c
     }
+
+    /// A client signed in as the admin (uid 1) who has just passed the ACP re-authentication.
+    pub async fn acp_admin(&self) -> Client {
+        let c = self.login_as(1).await;
+        sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
+            .bind(rbb::util::now())
+            .execute(&self.db.pool)
+            .await
+            .unwrap();
+        c
+    }
+
+    /// Store board settings and reload them.
+    pub async fn set_settings(&self, pairs: &[(&str, &str)]) {
+        for (k, v) in pairs {
+            sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
+                .bind(k)
+                .bind(v)
+                .execute(&self.db.pool)
+                .await
+                .unwrap();
+        }
+        self.app.invalidate(&["settings"]).await.unwrap();
+    }
 }
 
 pub struct Response {

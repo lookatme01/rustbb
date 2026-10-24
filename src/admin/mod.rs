@@ -25,6 +25,34 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use serde::Deserialize;
 
+/// Any ACP form: every field as JSON (a string, or an array when a name repeats).
+#[derive(Deserialize, Default)]
+pub struct AnyForm {
+    #[serde(default, flatten)]
+    pub fields: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// A form field as text: the last value when a name repeats, empty when missing.
+pub(crate) fn s(v: Option<&serde_json::Value>) -> String {
+    match v {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Array(a)) => {
+            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
+        }
+        _ => String::new(),
+    }
+}
+
+/// A checkbox-style form field.
+pub(crate) fn b(v: Option<&serde_json::Value>) -> bool {
+    matches!(s(v).as_str(), "1" | "on" | "true" | "yes")
+}
+
+/// A numeric form field, 0 when missing or malformed.
+pub(crate) fn i(v: Option<&serde_json::Value>) -> i32 {
+    s(v).trim().parse().unwrap_or(0)
+}
+
 pub fn router() -> Router<App> {
     Router::new()
         .route("/", get(dashboard))

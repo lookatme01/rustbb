@@ -829,7 +829,7 @@ pub struct NameChange {
 }
 
 /// Rename a user everywhere their name is denormalized.
-pub async fn rename_user(app: &crate::app::App, uid: i32, old: &str, new: &str) -> AppResult<()> {
+pub async fn rename_user(app: &crate::app::App, uid: i32, new: &str) -> AppResult<()> {
     let mut tx = app.db.begin().await?;
     // The unique index on lower(username) is what really guards against two people racing for a
     // name; the callers' "taken" lookups are only the friendly early answer.
@@ -871,7 +871,6 @@ pub async fn rename_user(app: &crate::app::App, uid: i32, old: &str, new: &str) 
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    let _ = old;
     Ok(())
 }
 
@@ -917,7 +916,7 @@ pub async fn username_save(ctx: Ctx, CsrfForm(f): CsrfForm<NameChange>) -> AppRe
         )
         .await;
     }
-    rename_user(&ctx.app, me.uid, &me.username, &new).await?;
+    rename_user(&ctx.app, me.uid, &new).await?;
     crate::audit::log(&ctx, ctx.uid(), "username_changed", serde_json::Value::Null).await;
     Ok(ctx.redirect("/usercp", "Your username has been changed."))
 }
@@ -1677,7 +1676,7 @@ pub async fn alerts(
 
 pub async fn alerts_read(
     ctx: Ctx,
-    CsrfForm(_): CsrfForm<crate::routes::misc::Empty>,
+    CsrfForm(_): CsrfForm<crate::routes::Empty>,
 ) -> AppResult<Response> {
     let me = require_ucp(&ctx).await?;
     sqlx::query("DELETE FROM alerts WHERE uid = $1")
@@ -2094,7 +2093,6 @@ pub struct DeleteForm {
     pub deleteposts: bool,
 }
 
-/// Delete a user account. Posts are kept (attributed to a guest with the old name) unless requested.
 /// Permanently delete all threads and posts made by a user.
 pub async fn delete_user_content(app: &crate::app::App, uid: i32) -> AppResult<()> {
     let tids: Vec<i32> = sqlx::query_scalar("SELECT tid FROM threads WHERE uid = $1")

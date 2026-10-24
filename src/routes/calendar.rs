@@ -3,6 +3,7 @@
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
 use crate::models::Calendar;
+use crate::routes::Empty;
 use crate::util::now;
 use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Response};
@@ -342,7 +343,7 @@ pub async fn calendar_cid(
         minijinja::context! {
             title => cal.name.clone(), cal => &cal, calendars => ctx.cache.calendars.to_vec(), weeks => weeks, dow => dow,
             month_name => first.format("%B %Y").to_string(), prev => (prev.year(), prev.month()), next => (next.year(), next.month()),
-            can_add => perms.canadd, year => year, month => month,
+            can_add => perms.canadd,
         },
     )
     .await
@@ -486,7 +487,7 @@ pub async fn add_form(
     } else {
         q.date
     };
-    ctx.render("calendar_form.html", minijinja::context! { title => "Add event", cal => &cal, e => minijinja::Value::UNDEFINED, date => date, enddate => "", starttime => "", endtime => "", repeat => "none", interval => 1, until => "", form => minijinja::context!{ message => "" } }).await
+    ctx.render("calendar_form.html", minijinja::context! { title => "Add event", cal => &cal, date => date, enddate => "", starttime => "", endtime => "", repeat => "none", interval => 1, until => "", form => minijinja::context!{ message => "" } }).await
 }
 
 #[derive(Deserialize, Default)]
@@ -704,9 +705,6 @@ pub async fn edit_submit(
         },
     ))
 }
-
-#[derive(Deserialize, Default)]
-pub struct Empty {}
 
 pub async fn delete(
     ctx: Ctx,

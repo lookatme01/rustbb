@@ -406,13 +406,6 @@ pub struct MemberFile {
     pub active_logins: i64,
 }
 
-impl MemberFile {
-    /// Check rows of one group (`identity`, `email`, `security`, `standing`).
-    pub fn group(&self, g: &str) -> Vec<&Signal> {
-        self.signals.iter().filter(|s| s.group == g).collect()
-    }
-}
-
 /// The full member file for one account, as `view` may see it.
 pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
     let db = &ctx.app.db;
@@ -480,10 +473,11 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
                 .join(" · "),
             Some(format!(
                 "/modcp/ipsearch?ip={}",
-                util_enc(
+                percent_encoding::utf8_percent_encode(
                     non_empty(&u.lastip)
                         .or(non_empty(&u.regip))
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    percent_encoding::NON_ALPHANUMERIC,
                 )
             )),
         );
@@ -600,7 +594,7 @@ pub async fn load(ctx: &Ctx, u: &User, view: View) -> AppResult<MemberFile> {
                 None,
             );
         }
-        let has2fa = !u.totp_secret.is_empty();
+        let has2fa = f.has2fa;
         sig(
             "security",
             if has2fa || f.passkeys > 0 {
@@ -819,10 +813,6 @@ pub async fn reason_suggestions(db: &sqlx::PgPool) -> AppResult<Vec<String>> {
 fn non_empty(s: &str) -> Option<&str> {
     let s = s.trim();
     if s.is_empty() { None } else { Some(s) }
-}
-
-fn util_enc(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
 #[cfg(test)]

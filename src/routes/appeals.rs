@@ -305,7 +305,6 @@ pub async fn detail(ctx: Ctx, Path(id): Path<i32>) -> AppResult<Response> {
     require_ban_rights(&ctx)?;
     let row = load(&ctx, id).await?;
     let uid = row.1;
-    let ban = current_ban(&ctx.app.db, uid).await?;
     let ban_lifts: Option<i64> = sqlx::query_scalar("SELECT lifted FROM banned WHERE uid = $1")
         .bind(uid)
         .fetch_optional(&ctx.app.db)
@@ -323,7 +322,7 @@ pub async fn detail(ctx: Ctx, Path(id): Path<i32>) -> AppResult<Response> {
         minijinja::context! {
             title => format!("Ban appeal #{id}"), mcp_active => "appeals",
             breadcrumb => vec![("Mod CP".to_string(), "/modcp".to_string()), ("Ban appeals".to_string(), "/modcp/appeals".to_string())],
-            appeal => appeal_view(row, &n), still_banned => ban.is_some(), ban_lifts => ban_lifts.unwrap_or(0),
+            appeal => appeal_view(row, &n), still_banned => ban_lifts.is_some(), ban_lifts => ban_lifts.unwrap_or(0),
             earlier => earlier.into_iter().map(|r| appeal_view(r, &n)).collect::<Vec<_>>(),
         },
     )

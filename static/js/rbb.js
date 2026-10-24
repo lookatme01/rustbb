@@ -657,12 +657,6 @@
     const letter = img.dataset.initial || "?";
     if (img.parentElement.classList.contains("face")) {
       img.replaceWith(document.createTextNode(letter));
-    } else if (img.dataset.fallback === "member") {
-      const s = document.createElement("span");
-      s.className = "avatar-fallback";
-      s.style.cssText = "width:32px;height:32px;font-size:.9rem;margin:0";
-      s.textContent = letter;
-      img.replaceWith(s);
     } else {
       const d = document.createElement("div");
       d.className = "avatar-fallback";

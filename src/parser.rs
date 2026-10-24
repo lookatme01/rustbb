@@ -423,7 +423,6 @@ pub struct Parser<'a> {
 struct Ctx {
     quote_depth: usize,
     in_link: bool,
-    images: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -467,7 +466,6 @@ impl<'a> Parser<'a> {
                 &mut Ctx {
                     quote_depth: 0,
                     in_link: false,
-                    images: 0,
                 },
             )
         } else {
@@ -475,7 +473,6 @@ impl<'a> Parser<'a> {
             let mut ctx = Ctx {
                 quote_depth: 0,
                 in_link: false,
-                images: 0,
             };
             let mut s = String::with_capacity(msg.len() * 2);
             self.render_nodes(&nodes, &mut ctx, &mut s);
@@ -742,7 +739,6 @@ impl<'a> Parser<'a> {
                     ));
                     return false;
                 }
-                ctx.images += 1;
                 let mut attrs = String::new();
                 if let Some(a) = arg {
                     if let Some(c) = DIM_RE.captures(a) {
@@ -921,10 +917,7 @@ impl<'a> Parser<'a> {
             for m in URL_RE.find_iter(&esc) {
                 // don't auto-link inside HTML produced by custom MyCode
                 let before = &esc[..m.start()];
-                if before.ends_with("=\"")
-                    || before.ends_with("='")
-                    || before.ends_with('>') && before.ends_with("\">")
-                {
+                if before.ends_with("=\"") || before.ends_with("='") || before.ends_with("\">") {
                     continue;
                 }
                 out.push_str(&self.decorate(&esc[last..m.start()]));
@@ -988,7 +981,6 @@ fn replace_smilies(s: &str, smilies: &[Smilie]) -> String {
     // Escape the smilie codes the same way the text was escaped.
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
-    let bytes = s.as_bytes();
     // Escaped once per call, not once per character of the post.
     let escaped: Vec<String> = smilies.iter().map(|sm| escape_html(&sm.find)).collect();
     'outer: while i < s.len() {
@@ -1020,7 +1012,6 @@ fn replace_smilies(s: &str, smilies: &[Smilie]) -> String {
         }
         let ch_len = s[i..].chars().next().unwrap().len_utf8();
         out.push_str(&s[i..i + ch_len]);
-        let _ = bytes;
         i += ch_len;
     }
     out
@@ -1108,10 +1099,7 @@ pub fn safe_url(u: &str) -> Option<String> {
     if u.starts_with('#') {
         return Some(u.to_string());
     }
-    // Reject any other scheme (javascript:, data:, vbscript:, ...)
-    if lower.contains(':') {
-        return None;
-    }
+    // Reject any other scheme (javascript:, data:, vbscript:, ...) and bare relative paths.
     None
 }
 
@@ -1334,7 +1322,6 @@ fn html_unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Convert MyCode to plain text (for emails, previews, feed summaries, meta descriptions).
 /// Text that renders literally when placed inside generated MyCode: usernames and subjects
 /// can't open tags (links, images, quotes…) or become auto-links. Each `[`-free segment, and
 /// each `[` on its own, is wrapped in `[noparse]`, so no segment can contain a closing tag.
@@ -1351,6 +1338,7 @@ pub fn literal(text: &str) -> String {
         .join("[noparse][[/noparse]")
 }
 
+/// Convert MyCode to plain text (for emails, previews, feed summaries, meta descriptions).
 pub fn to_plaintext(message: &str) -> String {
     static TAGS: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?is)\[(?:/?(?:b|i|u|s|sup|sub|color|size|font|align|left|center|right|justify|url|email|list|\*|hr|spoiler|indent|code|php|noparse)(?:=[^\]]*)?)\]").unwrap()

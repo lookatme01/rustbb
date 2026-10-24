@@ -605,7 +605,6 @@ pub async fn install(
     Ok(())
 }
 
-/// Idempotent data upgrades run at every startup.
 /// Midnight: no longer installed on new boards, but kept so an unedited Midnight on an older board still upgrades.
 pub const MIDNIGHT_CSS: &str = ":root, :root[data-colormode] {\n  --canvas: #070914; --surface: #0e1122; --surface-2: #12162b; --surface-3: #1a1f3a;\n}\n";
 pub const MIDNIGHT_BRAND: &str = "#a78bfa";
@@ -618,6 +617,7 @@ const ADMIN_STYLE: &str = "<span style=\"color: light-dark(#18753a, #5fd08a);\">
 const SUPERMOD_STYLE: &str =
     "<span style=\"color: light-dark(#a0109f, #f08cf0);\"><strong>{username}</strong></span>";
 
+/// Idempotent data upgrades run at every startup.
 pub async fn upgrade(db: &PgPool) -> anyhow::Result<()> {
     crate::system::ensure(db).await?;
     hash_forum_passwords(db).await?;

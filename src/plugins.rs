@@ -301,10 +301,6 @@ fn safe_style(v: &str) -> Option<String> {
 }
 
 impl Plugins {
-    pub fn load(dir: &str) -> Plugins {
-        Self::load_with(dir, false)
-    }
-
     /// Load plugins; `trusted` turns off sanitizing of their filter output.
     pub fn load_with(dir: &str, trusted: bool) -> Plugins {
         let e = engine();
@@ -375,20 +371,6 @@ impl Plugins {
             .collect();
         out.sort();
         out
-    }
-
-    /// Fire-and-forget action hook: runs in the background, never on the caller's thread.
-    pub fn run_hook(&self, hook: &str, data: serde_json::Value) {
-        if !self.has_hook(hook) {
-            return;
-        }
-        let me = self.clone();
-        let hook = hook.to_string();
-        tokio::spawn(async move {
-            if let Err(e) = me.run_hook_async(&hook, data).await {
-                tracing::warn!("{e:#}");
-            }
-        });
     }
 
     /// Run an action hook on a blocking thread (at most `MAX_CONCURRENT_ACTIONS` at once), each

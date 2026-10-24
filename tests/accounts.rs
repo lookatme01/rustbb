@@ -7,7 +7,8 @@ use common::TestApp;
 #[tokio::test]
 async fn concurrent_failed_logins_do_not_lose_attempts_or_clear_a_lockout() {
     let t = test_app!();
-    set(&t, &[("failedlogincount", "5"), ("failedlogintime", "15")]).await;
+    t.set_settings(&[("failedlogincount", "5"), ("failedlogintime", "15")])
+        .await;
     let uid = t.create_user("locked", "Correct-Passw0rd").await;
     let c = t.client();
     // API login uses the same credential checker without browser CSRF setup.
@@ -42,18 +43,6 @@ async fn concurrent_failed_logins_do_not_lose_attempts_or_clear_a_lockout() {
     assert!(r.status.is_client_error());
 }
 
-async fn set(t: &TestApp, pairs: &[(&str, &str)]) {
-    for (k, v) in pairs {
-        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
-            .bind(k)
-            .bind(v)
-            .execute(&t.db.pool)
-            .await
-            .unwrap();
-    }
-    t.app.invalidate(&["settings"]).await.unwrap();
-}
-
 fn formtoken(t: &TestApp) -> String {
     let ts = rbb::util::now() - 30;
     let sig = rbb::util::hmac_hex(&t.app.cfg.secret, &format!("reg:{ts}"));
@@ -61,18 +50,15 @@ fn formtoken(t: &TestApp) -> String {
 }
 
 async fn open_registration(t: &TestApp, regtype: &str) {
-    set(
-        t,
-        &[
-            ("regtype", regtype),
-            ("captchaimage", "0"),
-            ("securityquestion", "0"),
-            ("minregtime", "0"),
-            ("honeypot", "0"),
-            ("disableregs", "0"),
-            ("maxregsbetweentime", "0"),
-        ],
-    )
+    t.set_settings(&[
+        ("regtype", regtype),
+        ("captchaimage", "0"),
+        ("securityquestion", "0"),
+        ("minregtime", "0"),
+        ("honeypot", "0"),
+        ("disableregs", "0"),
+        ("maxregsbetweentime", "0"),
+    ])
     .await;
 }
 

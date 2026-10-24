@@ -5,6 +5,7 @@ use crate::auth;
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
 use crate::models::User;
+use crate::routes::Empty;
 use crate::templates::url_user;
 use crate::usecase::accounts::{self, Activation};
 use crate::util::{self, now};
@@ -170,7 +171,6 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
             .await
         }
     };
-    let s = ctx.settings();
     let user = match check_credentials(&ctx, &f.username, &f.password).await? {
         Ok(u) => u,
         Err(msg) => return render_err(msg).await,
@@ -182,9 +182,6 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
             .bind(h)
             .execute(&ctx.app.db)
             .await?;
-    }
-    if user.usergroup == 5 && s.get("regtype") != "instant" {
-        // awaiting activation users may log in but are restricted by group permissions
     }
     if !user.totp_secret.is_empty() {
         let exp = now() + 300;
@@ -208,18 +205,21 @@ pub async fn login_submit(ctx: Ctx, CsrfForm(f): CsrfForm<LoginForm>) -> AppResu
         serde_json::json!({"remember": f.remember}),
     )
     .await;
-    let to = if f.return_to.starts_with('/') && !f.return_to.starts_with("/member/") {
-        f.return_to.clone()
+    Ok(logged_in(&ctx, &user.username, &f.return_to))
+}
+
+/// Where a fresh login lands: back where the member came from, unless that was a login,
+/// 2FA or other `/member/` page.
+fn logged_in(ctx: &Ctx, username: &str, return_to: &str) -> Response {
+    let to = if return_to.starts_with('/') && !return_to.starts_with("/member/") {
+        return_to
     } else {
-        "/".into()
+        "/"
     };
-    Ok(ctx.redirect(
-        &to,
-        &format!(
-            "You have successfully been logged in. Welcome back, {}.",
-            user.username
-        ),
-    ))
+    ctx.redirect(
+        to,
+        &format!("You have successfully been logged in. Welcome back, {username}."),
+    )
 }
 
 #[derive(Deserialize)]
@@ -253,10 +253,6 @@ pub fn totp_step(secret: &str, code: &str) -> Option<i64> {
         .into_iter()
         .find(|ts| util::ct_eq(&t.generate(*ts), code))
         .map(|ts| (ts / 30) as i64)
-}
-
-pub fn totp_check(secret: &str, code: &str, _account: &str) -> bool {
-    totp_step(secret, code).is_some()
 }
 
 /// Verify a user's two-factor code and burn it, so each code signs in at most once (an
@@ -339,22 +335,8 @@ pub async fn login_2fa(ctx: Ctx, CsrfForm(f): CsrfForm<TwoFaForm>) -> AppResult<
         serde_json::json!({"remember": remember, "twofa": true}),
     )
     .await;
-    let to = if f.return_to.starts_with('/') {
-        f.return_to.clone()
-    } else {
-        "/".into()
-    };
-    Ok(ctx.redirect(
-        &to,
-        &format!(
-            "You have successfully been logged in. Welcome back, {}.",
-            user.username
-        ),
-    ))
+    Ok(logged_in(&ctx, &user.username, &f.return_to))
 }
-
-#[derive(Deserialize)]
-pub struct Empty {}
 
 pub async fn logout(ctx: Ctx, CsrfForm(_): CsrfForm<Empty>) -> AppResult<Response> {
     crate::audit::log(&ctx, ctx.uid(), "logout", serde_json::Value::Null).await;
@@ -410,8 +392,6 @@ pub struct RegisterForm {
     pub formtoken: String,
     #[serde(default, deserialize_with = "de::bool")]
     pub hideemail: bool,
-    #[serde(default, deserialize_with = "de::bool")]
-    pub receivepms: bool,
     #[serde(default, flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -491,7 +471,6 @@ pub async fn register_form(ctx: Ctx, Query(q): Query<RefQuery>) -> AppResult<Res
     }
     let f = RegisterForm {
         referrer: q.referrer,
-        receivepms: true,
         hideemail: true,
         ..Default::default()
     };
@@ -1163,7 +1142,7 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
             age => age,
             birthday => birthday,
             warnings_visible => warnings_visible,
-            warn_level => author_warn(&ctx, user.warningpoints),
+            warn_level => crate::member_file::warn_pct(user.warningpoints, ctx.settings().int("maxwarningpoints")),
             location => if user.is_system && ctx.perms.canviewonline { Some(crate::system::ONLINE_LOCATION.to_string()) } else if online && (ctx.perms.canviewonline) { location.map(|l| crate::routes::online::describe_location(&ctx, &l)) } else { None },
             can_email => !user.is_system && ctx.perms.cansendemail && (!user.hideemail || ctx.perms.cansendemailoverride) && ctx.uid() > 0,
             can_pm => ctx.perms.canusepms && ctx.settings().bool("enablepms") && user.receivepms && ctx.uid() > 0,
@@ -1182,10 +1161,6 @@ pub async fn profile(ctx: Ctx, Path(seg): Path<String>) -> AppResult<Response> {
         },
     )
     .await
-}
-
-fn author_warn(ctx: &Ctx, points: i32) -> i64 {
-    (points as i64 * 100 / ctx.settings().int("maxwarningpoints").max(1)).min(100)
 }
 
 /// What the System account has done, for its profile. Counts are public; the latest moderator-log

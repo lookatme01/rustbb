@@ -274,7 +274,7 @@ async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Resp
             "You revoked that key. Revoked keys can't be used again; please create a new one.",
         ));
     }
-    let old = active_key(&ctx, me.uid).await?;
+    // The current key, expired or not; `old` is the same key only while it is still valid.
     let old_any: Option<KeyRow> = sqlx::query_as(&format!(
         "SELECT {} FROM pgp_keys WHERE uid = $1 AND status = 0",
         KEY_COLUMNS
@@ -282,6 +282,9 @@ async fn publish(ctx: Ctx, CsrfForm(f): CsrfForm<PublishForm>) -> AppResult<Resp
     .bind(me.uid)
     .fetch_optional(&ctx.app.db)
     .await?;
+    let old = old_any
+        .clone()
+        .filter(|k| k.expires == 0 || k.expires > now());
     let source = if f.source == "imported" {
         "imported"
     } else {
@@ -665,7 +668,7 @@ async fn public_key_file(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> 
 // ------------------------------------------------------------------ pages
 
 async fn settings_page(ctx: Ctx) -> AppResult<Response> {
-    let me = require(&ctx)?;
+    require(&ctx)?;
     if !ctx.perms.canusercp {
         return Err(AppError::no_perm());
     }
@@ -675,7 +678,7 @@ async fn settings_page(ctx: Ctx) -> AppResult<Response> {
             minijinja::context! {
                 title => "Encryption & identity", ucp_active => "pgp",
                 breadcrumb => vec![("User CP".to_string(), "/usercp".to_string())],
-                board => board_id(&ctx), uid => me.uid,
+                board => board_id(&ctx),
             },
         )
         .await?;
@@ -690,7 +693,7 @@ async fn verify_page(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
             "The System account doesn't have an identity key.",
         ));
     }
-    let authors = crate::render::load_authors(&ctx, &[me.uid, uid]).await?;
+    let authors = crate::render::load_authors(&ctx, &[uid]).await?;
     let r = ctx
         .render(
             "pm/verify.html",
@@ -698,7 +701,7 @@ async fn verify_page(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
                 title => "Verify identity",
                 breadcrumb => vec![("Messages".to_string(), "/pm".to_string())],
                 folders => crate::routes::private::folder_list(&me),
-                me_author => authors.get(&me.uid), them => authors.get(&uid),
+                them => authors.get(&uid),
                 them_uid => uid, board => board_id(&ctx), self_view => uid == me.uid,
             },
         )

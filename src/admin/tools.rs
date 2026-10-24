@@ -1,5 +1,6 @@
 //! Tools & maintenance: system health, tasks, recount/rebuild, cache, logs, backups, plugins.
 
+use crate::admin::{AnyForm, s};
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::util::{self, now};
@@ -10,7 +11,6 @@ use axum::http::header;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub fn router() -> Router<crate::app::App> {
     Router::new()
@@ -32,22 +32,6 @@ pub fn router() -> Router<crate::app::App> {
             get(attachments).post(attachments_cleanup),
         )
         .route("/tools/testmail", post(testmail))
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 async fn dir_size(path: String) -> u64 {
@@ -123,7 +107,7 @@ pub async fn tasks_action(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult
             .ok_or_else(|| AppError::not_found("task"))?;
     let msg = match s(f.fields.get("action")).as_str() {
         "run" => {
-            let r = crate::tasks::run_task(&ctx.app, tid, &key, interval, logging)
+            let r = crate::tasks::run_task(&ctx.app, tid, &key, logging)
                 .await
                 .map_err(AppError::Other)?;
             format!("Task ran: {r}")

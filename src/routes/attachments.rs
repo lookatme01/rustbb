@@ -1,8 +1,9 @@
 //! Attachment upload (AJAX, with thumbnails and quotas) and permission-checked downloads.
 
-use crate::ctx::{CsrfForm, Ctx, de};
+use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::models::{POST_COLUMNS, Post};
+use crate::routes::Empty;
 use crate::util::{self, now};
 use axum::Json;
 use axum::body::Body;
@@ -340,9 +341,9 @@ pub async fn download(
     Path(aid): Path<i32>,
     Query(q): Query<DlQuery>,
 ) -> AppResult<Response> {
-    let row: Option<(i32, i32, String, String, i64, String, String, bool)> =
-        sqlx::query_as("SELECT pid, uid, filename, filetype, filesize, attachname, thumbnail, visible FROM attachments WHERE aid = $1").bind(aid).fetch_optional(&ctx.app.db).await?;
-    let (pid, uid, filename, filetype, size, attachname, thumbnail, visible) =
+    let row: Option<(i32, i32, String, String, String, String, bool)> =
+        sqlx::query_as("SELECT pid, uid, filename, filetype, attachname, thumbnail, visible FROM attachments WHERE aid = $1").bind(aid).fetch_optional(&ctx.app.db).await?;
+    let (pid, uid, filename, filetype, attachname, thumbnail, visible) =
         row.ok_or_else(|| AppError::not_found("attachment"))?;
     let thumb = q.thumb.is_some();
     if pid == 0 {
@@ -393,7 +394,6 @@ pub async fn download(
         return Err(AppError::not_found("attachment file"));
     };
     let len = stored.size;
-    let _ = size;
     if !thumb && ctx.method == "GET" {
         let db = ctx.app.db.clone();
         tokio::spawn(async move {
@@ -441,12 +441,6 @@ pub async fn download(
     );
     h.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox"));
     Ok(resp)
-}
-
-#[derive(Deserialize, Default)]
-pub struct Empty {
-    #[serde(default, deserialize_with = "de::string")]
-    pub _x: String,
 }
 
 pub async fn remove(

@@ -215,12 +215,7 @@ async fn activity_page_hides_the_staff_members_address_and_browser() {
     );
 
     // Staff still see the address on the Admin CP view of the same log.
-    let admin = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(rbb::util::now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let admin = t.acp_admin().await;
     let r = admin.get(&format!("/admin/users/{alice}/activity")).await;
     assert_eq!(r.status, 200, "{}", r.body);
     assert!(r.body.contains("198.51.100.77"), "{}", r.body);

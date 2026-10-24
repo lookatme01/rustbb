@@ -1,5 +1,6 @@
 //! User administration: search, add, edit, activate, merge, delete, admin permissions.
 
+use crate::admin::{AnyForm, b, i, s};
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::models::User;
@@ -205,27 +206,6 @@ pub async fn new_form(ctx: Ctx) -> AppResult<Response> {
     .await
 }
 
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
-}
-fn b(v: Option<&serde_json::Value>) -> bool {
-    matches!(s(v).as_str(), "1" | "on" | "true" | "yes")
-}
-fn i(v: Option<&serde_json::Value>) -> i32 {
-    s(v).trim().parse().unwrap_or(0)
-}
 fn ints(v: Option<&serde_json::Value>) -> Vec<i32> {
     match v {
         Some(serde_json::Value::String(s)) => {
@@ -465,8 +445,8 @@ pub async fn edit_form(
                 (ip, when, others)
             })
             .collect();
-        let logins: Vec<(String, i64, String, String)> = sqlx::query_as(
-            "SELECT token_hash, lastused, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC LIMIT 20",
+        let logins: Vec<(i64, String, String)> = sqlx::query_as(
+            "SELECT lastused, COALESCE(host(ip), ''), useragent FROM logins WHERE uid = $1 AND expires > $2 ORDER BY lastused DESC LIMIT 20",
         )
         .bind(uid)
         .bind(crate::util::now())
@@ -474,7 +454,7 @@ pub async fn edit_form(
         .await?;
         let logins = logins
             .into_iter()
-            .map(|(_, used, ip, ua)| (String::new(), used, ip, crate::audit::device_label(&ua)))
+            .map(|(used, ip, ua)| (String::new(), used, ip, crate::audit::device_label(&ua)))
             .collect();
         (ips, logins)
     } else {
@@ -667,7 +647,7 @@ pub async fn edit_save(
         if taken.is_some() {
             return Err(AppError::user("That username is already taken."));
         }
-        crate::routes::usercp::rename_user(&ctx.app, uid, &user.username, &username).await?;
+        crate::routes::usercp::rename_user(&ctx.app, uid, &username).await?;
     }
     sqlx::query(
         "UPDATE users SET email = $2, usergroup = $3, additionalgroups = $4, displaygroup = $5, usertitle = $6, website = $7, signature = $8,

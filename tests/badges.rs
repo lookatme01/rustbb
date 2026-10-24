@@ -7,18 +7,6 @@ use rbb::util::now;
 
 const DAY: i64 = 86400;
 
-async fn set(t: &TestApp, pairs: &[(&str, &str)]) {
-    for (k, v) in pairs {
-        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
-            .bind(k)
-            .bind(v)
-            .execute(&t.db.pool)
-            .await
-            .unwrap();
-    }
-    t.app.invalidate(&["settings"]).await.unwrap();
-}
-
 async fn badge_id(t: &TestApp, name: &str) -> i32 {
     sqlx::query_scalar("SELECT bid FROM badges WHERE name = $1")
         .bind(name)
@@ -46,17 +34,6 @@ async fn member(t: &TestApp, name: &str, days_ago: i64, group: i32) -> i32 {
         .await
         .unwrap();
     uid
-}
-
-/// An administrator's client that has passed the Admin CP password check.
-async fn admin(t: &TestApp) -> common::Client {
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
-    c
 }
 
 #[tokio::test]
@@ -149,7 +126,8 @@ async fn saving_a_badge_that_no_longer_exists_says_so() {
         .fetch_one(&t.db.pool)
         .await
         .unwrap();
-    let r = admin(&t)
+    let r = t
+        .acp_admin()
         .await
         .post_form(
             "/admin/badges/edit",
@@ -168,7 +146,8 @@ async fn saving_a_badge_that_no_longer_exists_says_so() {
 async fn badges_appear_on_profiles_posts_and_the_badge_pages() {
     let t = test_app!();
     let old = member(&t, "oldtimer", 400, 2).await;
-    set(&t, &[("postfloodcheck", "0"), ("postmergemins", "0")]).await;
+    t.set_settings(&[("postfloodcheck", "0"), ("postmergemins", "0")])
+        .await;
     let c = t.login_as(old).await;
     c.post_form(
         "/newthread/3",
@@ -193,7 +172,7 @@ async fn badges_appear_on_profiles_posts_and_the_badge_pages() {
     let thread = c.get(&format!("/thread/{tid}")).await;
     assert!(thread.body.contains(&format!("href=\"/badges/{year}\"")));
     // Limited by the setting: 1 shows only the first in display order (1 Year before First Post).
-    set(&t, &[("badgespostbit", "1")]).await;
+    t.set_settings(&[("badgespostbit", "1")]).await;
     let thread = c.get(&format!("/thread/{tid}")).await;
     assert!(thread.body.contains(&format!("href=\"/badges/{year}\"")));
     assert!(!thread.body.contains(&format!("href=\"/badges/{first}\"")));
@@ -212,7 +191,7 @@ async fn badges_appear_on_profiles_posts_and_the_badge_pages() {
 async fn staff_create_award_and_revoke_badges() {
     let t = test_app!();
     let helper = member(&t, "helper", 5, 2).await;
-    let a = admin(&t).await;
+    let a = t.acp_admin().await;
     let r = a
         .post_form(
             "/admin/badges/edit",
@@ -333,14 +312,11 @@ async fn members_choose_which_badges_show_and_their_order() {
     assert!(!profile.body.contains("<h3>First Post</h3>"), "hidden");
 
     // Posts show the first shown badges in the member's order.
-    set(
-        &t,
-        &[
-            ("badgespostbit", "1"),
-            ("postfloodcheck", "0"),
-            ("postmergemins", "0"),
-        ],
-    )
+    t.set_settings(&[
+        ("badgespostbit", "1"),
+        ("postfloodcheck", "0"),
+        ("postmergemins", "0"),
+    ])
     .await;
     c.post_form(
         "/newthread/3",

@@ -97,7 +97,7 @@ pub fn clickable_smilies(ctx: &Ctx) -> Vec<SmilieView> {
         .collect()
 }
 
-async fn need_captcha(ctx: &Ctx) -> bool {
+fn need_captcha(ctx: &Ctx) -> bool {
     ctx.uid() == 0
         && ctx.settings().bool("guestcaptcha")
         && ctx.settings().get("captchaimage") == "1"
@@ -160,7 +160,7 @@ async fn render_editor(
     } else {
         form.posthash.clone()
     };
-    let captcha = if need_captcha(ctx).await {
+    let captcha = if need_captcha(ctx) {
         Some(crate::routes::captcha::new_captcha(ctx).await?)
     } else {
         None
@@ -171,7 +171,6 @@ async fn render_editor(
         title => match mode { "newthread" => format!("Post new thread in {}", forum.name), "newreply" => "Post reply".to_string(), _ => "Edit post".to_string() },
         mode => mode,
         forum => &forum,
-        forum_url => url_forum(fid as i64, Some(&forum.name)),
         breadcrumb => breadcrumb(ctx, fid),
         tid => tid,
         pid => pid,
@@ -278,7 +277,7 @@ pub async fn newthread_form(
 }
 
 async fn check_captcha_if_needed(ctx: &Ctx, form: &PostForm) -> AppResult<()> {
-    if need_captcha(ctx).await {
+    if need_captcha(ctx) {
         crate::routes::captcha::check(ctx, &form.captcha_hash, &form.captcha).await?;
     }
     Ok(())
@@ -493,12 +492,12 @@ fn strip_all_quotes(m: &str) -> String {
         .to_string()
 }
 
-async fn quotes_for(ctx: &Ctx, tid: i32, pids: &[i32]) -> AppResult<String> {
+async fn quotes_for(ctx: &Ctx, pids: &[i32]) -> AppResult<String> {
     if pids.is_empty() {
         return Ok(String::new());
     }
-    let rows: Vec<(i32, i32, String, i64, String, i16, i32)> = sqlx::query_as(
-        "SELECT pid, tid, username, dateline, message, visible, fid FROM posts WHERE pid = ANY($1) ORDER BY dateline, pid",
+    let rows: Vec<(i32, i32, String, i64, String, i16)> = sqlx::query_as(
+        "SELECT pid, tid, username, dateline, message, visible FROM posts WHERE pid = ANY($1) ORDER BY dateline, pid",
     )
     .bind(pids)
     .fetch_all(&ctx.app.db)
@@ -509,7 +508,7 @@ async fn quotes_for(ctx: &Ctx, tid: i32, pids: &[i32]) -> AppResult<String> {
     // the same checks as viewing its thread (forum password, "own threads only", thread
     // visibility), not just a forum-level view permission.
     let mut allowed: std::collections::HashMap<i32, bool> = std::collections::HashMap::new();
-    for (pid, ptid, name, dl, msg, vis, _fid) in rows {
+    for (pid, ptid, name, dl, msg, vis) in rows {
         if vis != 1 {
             continue;
         }
@@ -524,7 +523,6 @@ async fn quotes_for(ctx: &Ctx, tid: i32, pids: &[i32]) -> AppResult<String> {
         if !ok {
             continue;
         }
-        let _ = tid;
         s.push_str(&build_quote(&name, pid, dl, &msg, depth));
         s.push('\n');
     }
@@ -552,7 +550,7 @@ pub async fn newreply_form(
     }
     pids.sort();
     pids.dedup();
-    form.message = quotes_for(&ctx, tid, &pids).await?;
+    form.message = quotes_for(&ctx, &pids).await?;
     form.replyto = q.pid.unwrap_or(0);
     if let Some(did) = q.did
         && let Some((m,)) =

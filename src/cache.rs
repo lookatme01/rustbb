@@ -1,7 +1,7 @@
 //! In-memory caches of rarely-changing board configuration.
 //!
-//! Everything here is loaded at startup and reloaded when any node publishes a
-//! `NOTIFY rbb_cache, '<part>'`, so multiple app servers stay coherent without Redis.
+//! Everything here is loaded at startup and reloaded when any node records a cluster event
+//! (`infra::cluster`, `NOTIFY rbb_cluster`), so multiple app servers stay coherent without Redis.
 
 use crate::models::*;
 use crate::parser::{ParserData, Smilie};
@@ -338,7 +338,8 @@ impl Cache {
         Ok(())
     }
 
-    /// Rebuild the fid → position index after changing `forums` directly (tests).
+    /// Rebuild the fid → position index after changing `forums` directly.
+    #[cfg(test)]
     pub fn reindex_forums(&mut self) {
         self.forum_idx = Arc::new(
             self.forums

@@ -36,7 +36,6 @@ pub struct CtxInner {
     pub groups: Vec<i32>,
     pub perms: GroupPerms,
     pub ip: String,
-    pub sid: String,
     pub csrf: String,
     pub token_hash: Option<String>,
     pub acp_verified: i64,
@@ -50,7 +49,6 @@ pub struct CtxInner {
     pub method: String,
     pub useragent: String,
     pub bot: Option<&'static str>,
-    pub is_api: bool,
     /// Authenticated with an API token (`Authorization: Bearer`, /api/v1 only; no ambient
     /// cookies, so CSRF does not apply).
     pub bearer: bool,
@@ -345,19 +343,7 @@ impl CtxInner {
     /// Which `visible` states of threads/posts the viewer may *see the content of* in a forum.
     /// Only moderators get unapproved (0) or soft-deleted (-1) content.
     pub fn visible_states(&self, fid: i32) -> Vec<i16> {
-        match self.mod_perms(fid) {
-            Some(m) => {
-                let mut v = vec![1];
-                if m.canviewunapprove {
-                    v.push(0);
-                }
-                if m.canviewdeleted {
-                    v.push(-1);
-                }
-                v
-            }
-            None => vec![1],
-        }
+        crate::domain::access::visible_states(self.mod_perms(fid).as_ref())
     }
 
     /// States of the posts *listed* in a thread the viewer can open: `visible_states` plus
@@ -379,12 +365,6 @@ impl CtxInner {
         util::format_date(ts, self.tz, &self.datefmt, &self.timefmt, style)
     }
 
-    pub fn format_user(&self, username: &str, usergroup: i32, displaygroup: i32) -> String {
-        self.cache.format_name(username, usergroup, displaygroup)
-    }
-
-    /// A browser speculative prefetch/prerender (`Sec-Purpose: prefetch`): serve the page but
-    /// skip visit side effects such as marking threads read or counting views.
     /// Mark this page as the same for every guest, so its HTML may be cached and reused, and
     /// say what it shows so writes elsewhere don't evict it.
     pub fn allow_guest_cache(&self, tags: &[String]) {
@@ -431,7 +411,7 @@ impl CtxInner {
             formatted: self
                 .cache
                 .format_name(&u.username, u.usergroup, u.displaygroup),
-            avatar: avatar_url(&u.avatar, &u.email, &self.cache),
+            avatar: u.avatar.clone(),
             usergroup: u.usergroup,
             unreadpms: u.unreadpms,
             unreadalerts: u.unreadalerts,
@@ -474,10 +454,8 @@ impl CtxInner {
     }
 
     pub async fn base_context(&self) -> Value {
-        let s = &self.cache.settings;
         let theme = self.cache.theme(self.theme_id());
         let (modq, reports, appeals) = self.mod_notice_counts().await;
-        let _ = s;
         let bb = self.cache.bb.clone();
         minijinja::context! {
             _tz => self.tz.name(),
@@ -639,10 +617,6 @@ pub fn safe_redirect(to: &str) -> &str {
             .chars()
             .any(|c| c.is_control() || c.is_whitespace() || c == '\\');
     if local { to } else { "/" }
-}
-
-pub fn avatar_url(avatar: &str, _email: &str, _cache: &Cache) -> String {
-    avatar.to_string()
 }
 
 /// The member behind a valid API token, with the token's id and scopes. Records when the token
@@ -908,7 +882,6 @@ pub async fn context_middleware(
         groups,
         perms,
         ip: ip.clone(),
-        sid: sid.clone(),
         csrf,
         token_hash,
         acp_verified,
@@ -922,7 +895,6 @@ pub async fn context_middleware(
         method: method.clone(),
         useragent: useragent.clone(),
         bot,
-        is_api,
         bearer,
         api_token,
         flash,
@@ -1195,7 +1167,6 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for CsrfForm<T> {
 pub fn serde_html_form_parse<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
     // Collect pairs; group repeated keys into JSON arrays so Vec<T> fields work.
     let mut map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-    let mut multi: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (k, v) in url::form_urlencoded::parse(bytes) {
         let (key, is_arr) = match k.strip_suffix("[]") {
             Some(base) => (base.to_string(), true),
@@ -1207,7 +1178,6 @@ pub fn serde_html_form_parse<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Str
             Some(existing) => {
                 let prev = existing.take();
                 *existing = serde_json::Value::Array(vec![prev, val]);
-                multi.insert(key);
             }
             None => {
                 if is_arr {
@@ -1218,7 +1188,6 @@ pub fn serde_html_form_parse<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Str
             }
         }
     }
-    let _ = multi;
     serde_json::from_value(serde_json::Value::Object(map)).map_err(|e| e.to_string())
 }
 
@@ -1286,14 +1255,6 @@ pub mod de {
                     .collect::<Vec<i32>>()
             })
             .collect())
-    }
-
-    pub fn vec_string<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
-        let v = OneOrMany::deserialize(d)?;
-        Ok(match v {
-            OneOrMany::Many(a) => a.iter().map(val_to_string).collect(),
-            OneOrMany::One(v) => vec![val_to_string(&v)],
-        })
     }
 }
 

@@ -61,14 +61,6 @@ pub fn fingerprint_of(k: &impl KeyDetails) -> String {
     format!("{:X}", k.fingerprint())
 }
 
-/// Normalise a fingerprint typed or pasted by a person: strip spaces, upper-case.
-pub fn normalize_fingerprint(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_ascii_hexdigit())
-        .collect::<String>()
-        .to_ascii_uppercase()
-}
-
 fn algorithm_label(params: &PublicParams, alg: PublicKeyAlgorithm) -> Result<String, String> {
     use rsa::traits::PublicKeyParts;
     Ok(match params {
@@ -533,6 +525,5 @@ mod tests {
         assert_eq!(normalize_body("a\r\nb\rc"), "a\nb\nc");
         assert_eq!(normalize_subject("  hi  "), "hi");
         assert_eq!(normalize_subject(&"é".repeat(130)).chars().count(), 120);
-        assert_eq!(normalize_fingerprint("8d61 9b1e"), "8D619B1E");
     }
 }

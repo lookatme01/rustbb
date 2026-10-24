@@ -72,7 +72,7 @@ impl LiveHub {
     }
     pub fn send(&self, ev: LiveEvent) {
         match ev.kind {
-            "newpost" | "editpost" | "typing" if ev.tid > 0 => {
+            "newpost" | "editpost" if ev.tid > 0 => {
                 if let Some(s) = self.threads.get(&ev.tid) {
                     let _ = s.send(ev);
                 }
@@ -541,7 +541,6 @@ fn relay_live(app: &App, payload: &str) {
         "alert" => "alert",
         "pm" => "pm",
         "editpost" => "editpost",
-        "typing" => "typing",
         _ => return,
     };
     app.publish(LiveEvent {

@@ -192,12 +192,7 @@ async fn external_proxy_rewrites_posts_and_avatars_and_builtin_route_is_off() {
 #[tokio::test]
 async fn admins_are_told_the_builtin_proxy_reveals_the_server() {
     let t = test_app!();
-    let admin = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(rbb::util::now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let admin = t.acp_admin().await;
     let r = admin.get("/admin/settings/images").await;
     assert_eq!(r.status, 200);
     assert!(

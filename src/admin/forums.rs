@@ -1,5 +1,6 @@
 //! Forum management: tree, add/edit/delete/reorder, per-group permissions, moderators.
 
+use crate::admin::{AnyForm, b, i, s};
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
 use crate::perms::{FORUM_PERM_META, ForumPerms, MOD_PERM_META, ModPerms};
@@ -65,28 +66,6 @@ pub async fn tree(ctx: Ctx) -> AppResult<Response> {
         minijinja::context! { forums => forums },
     )
     .await
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
-}
-fn b(v: Option<&serde_json::Value>) -> bool {
-    matches!(s(v).as_str(), "1" | "on" | "true" | "yes")
-}
-fn i(v: Option<&serde_json::Value>) -> i32 {
-    s(v).trim().parse().unwrap_or(0)
 }
 
 pub async fn save_order(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {

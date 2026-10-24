@@ -156,8 +156,6 @@ pub async fn thread_rows(ctx: &Ctx, threads: Vec<Thread>) -> AppResult<Vec<Threa
             && t.lastpost > read.get(&t.tid).copied().unwrap_or(0)
             && t.lastpost > forum_read.get(&t.fid).copied().unwrap_or(0);
         let forum = ctx.cache.forum(t.fid);
-        let (vtid, vsubject) = (t.tid, t.subject.clone());
-        let _ = vtid;
         out.push(ThreadRow {
             tid: t.tid,
             fid: t.fid,
@@ -201,7 +199,7 @@ pub async fn thread_rows(ctx: &Ctx, threads: Vec<Thread>) -> AppResult<Vec<Threa
                 .map(|a| a.to_string())
                 .unwrap_or_default(),
             forum_url: url_forum(t.fid as i64, forum.map(|f| f.name.as_str())),
-            subject: vsubject,
+            subject: t.subject.clone(),
         });
     }
     Ok(out)
@@ -303,6 +301,11 @@ pub async fn forumdisplay(
         .datecut
         .unwrap_or(forum.defaultdatecut as i64)
         .clamp(0, 100_000);
+    let since = if datecut > 0 {
+        now() - datecut * 86400
+    } else {
+        0
+    };
 
     if !forum.is_category() && fperms.canviewthreads {
         let tpp = ctx
@@ -367,7 +370,7 @@ pub async fn forumdisplay(
             .bind(fid)
             .bind(&states)
             .bind(owner_filter)
-            .bind(if datecut > 0 { now() - datecut * 86400 } else { 0 })
+            .bind(since)
             .bind(prefix)
             .fetch_one(&ctx.app.db)
             .await?
@@ -416,7 +419,7 @@ pub async fn forumdisplay(
         .bind(fid)
         .bind(&states)
         .bind(owner_filter)
-        .bind(if datecut > 0 { now() - datecut * 86400 } else { 0 })
+        .bind(since)
         .bind(prefix)
         .bind(limit)
         .bind(off)
@@ -473,12 +476,11 @@ pub async fn forumdisplay(
                 (rows, guests)
             }
         };
-        let users: Vec<(i32, String)> = rows
+        let mut users: Vec<(i32, String)> = rows
             .into_iter()
             .filter(|r| !r.4 || ctx.perms.canviewwolinvis || r.0 == ctx.uid())
             .map(|r| (r.0, ctx.cache.format_name(&r.1, r.2, r.3)))
             .collect();
-        let mut users = users;
         if let Some(me) = &ctx.user
             && !users.iter().any(|u| u.0 == me.uid)
         {

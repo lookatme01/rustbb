@@ -36,6 +36,10 @@ pub mod warnings;
 
 use crate::app::App;
 
+use axum::Router;
+use axum::response::Redirect;
+use axum::routing::{get, post};
+
 /// Local path of the Referer header (for "go back" redirects), or a fallback.
 pub fn misc_back(ctx: &crate::ctx::Ctx, fallback: &str) -> String {
     ctx.headers
@@ -52,9 +56,10 @@ pub fn misc_back(ctx: &crate::ctx::Ctx, fallback: &str) -> String {
         .filter(|p| p.starts_with('/') && !p.starts_with("//"))
         .unwrap_or_else(|| fallback.to_string())
 }
-use axum::Router;
-use axum::response::Redirect;
-use axum::routing::{get, post};
+
+/// A form with no fields of its own (only the CSRF token).
+#[derive(serde::Deserialize, Default)]
+pub struct Empty {}
 
 /// Body limit for upload routes: `RBB_MAX_UPLOAD_MB` plus room for the other form fields.
 /// (The configured value is read once; the file itself is also checked as it streams in.)

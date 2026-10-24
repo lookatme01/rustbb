@@ -1,5 +1,6 @@
 //! User group management: permissions, display, leaders.
 
+use crate::admin::{AnyForm, s};
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::perms::{GROUP_PERM_META, GroupPerms};
@@ -83,22 +84,6 @@ pub async fn edit_form(ctx: Ctx, Query(q): Query<GidQ>) -> AppResult<Response> {
         v
     };
     crate::admin::page(&ctx, "admin/group_edit.html", "users", if group.is_some() { "Edit Group" } else { "Add Group" }, minijinja::context! { group => group, items => items, sections => sections, groups => crate::admin::users::sorted_groups(&ctx) }).await
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 pub async fn edit_save(ctx: Ctx, CsrfForm(f): CsrfForm<AnyForm>) -> AppResult<Response> {

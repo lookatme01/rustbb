@@ -51,9 +51,6 @@ check "rss" 200 "$BASE/syndication?type=atom"
 
 echo "== register second user"
 T2=$(csrf "$JAR2" /member/register)
-FT=$(curl -s -b "$JAR2" -c "$JAR2" "$BASE/member/register" | sed -n 's/.*name="formtoken" value="\([^"]*\)".*/\1/p' | head -1)
-CAPH=$(sed -n 's/.*name="captcha_hash" value="\([^"]*\)".*/\1/p' /dev/null)
-T2=$(csrf "$JAR2" /member/register)
 REG=$(curl -s -b "$JAR2" -c "$JAR2" "$BASE/member/register")
 FT=$(echo "$REG" | sed -n 's/.*name="formtoken" value="\([^"]*\)".*/\1/p' | head -1)
 CAPH=$(echo "$REG" | sed -n 's/.*name="captcha_hash" value="\([^"]*\)".*/\1/p' | head -1)

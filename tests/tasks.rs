@@ -75,7 +75,7 @@ async fn idle_scheduled_runs_are_not_logged_but_manual_runs_are() {
         .unwrap();
     assert!(lastrun > 0, "the task ran");
     assert_eq!(logged().await, 0);
-    let msg = rbb::tasks::run_task(&t.app, tid, "banlifter", 300, true)
+    let msg = rbb::tasks::run_task(&t.app, tid, "banlifter", true)
         .await
         .unwrap();
     assert_eq!(msg, "lifted 0 bans");
@@ -117,9 +117,7 @@ async fn expiry_tasks_restore_groups_and_take_warning_points_off() {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-            rbb::tasks::run_task(&app, tid, key, 300, true)
-                .await
-                .unwrap()
+            rbb::tasks::run_task(&app, tid, key, true).await.unwrap()
         }
     };
     assert_eq!(run("banlifter").await, "lifted 1 bans");
@@ -171,7 +169,7 @@ async fn pruning_unactivated_accounts_keeps_the_board_counters_pointing_at_real_
         .fetch_one(&t.db.pool)
         .await
         .unwrap();
-    let msg = rbb::tasks::run_task(&t.app, tid, "userpruning", 86400, true)
+    let msg = rbb::tasks::run_task(&t.app, tid, "userpruning", true)
         .await
         .unwrap();
     assert_eq!(msg, "pruned 1 unactivated users");

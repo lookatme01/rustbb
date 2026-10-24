@@ -235,12 +235,7 @@ async fn batched_quotes_still_deduplicate_recipients_respect_ignores_and_retry_s
 #[tokio::test]
 async fn admin_ip_tab_keeps_the_matches_for_each_address() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(rbb::util::now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let a = t.create_user("shared-address-one", "Passw0rd-reader").await;
     let b = t.create_user("shared-address-two", "Passw0rd-reader").await;
     sqlx::query("UPDATE users SET lastip = '203.0.113.1' WHERE uid = $1")

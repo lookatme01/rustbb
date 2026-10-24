@@ -1,5 +1,6 @@
 //! Themes (stylesheets, properties, inheritance) and per-theme template overrides.
 
+use crate::admin::{AnyForm, s};
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::util::now;
@@ -32,22 +33,6 @@ pub fn router() -> Router<crate::app::App> {
             get(template_form).post(template_save),
         )
         .route("/themes/{tid}/template/revert", post(template_revert))
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 pub async fn list(ctx: Ctx) -> AppResult<Response> {

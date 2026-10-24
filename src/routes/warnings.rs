@@ -3,7 +3,7 @@
 
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
-use crate::models::User;
+use crate::routes::modcp::load_user;
 use crate::util::now;
 use axum::extract::{Path, Query};
 use axum::response::Response;
@@ -14,17 +14,6 @@ fn enabled(ctx: &Ctx) -> AppResult<()> {
         return Err(AppError::user("The warning system is disabled."));
     }
     Ok(())
-}
-
-async fn load_user(ctx: &Ctx, uid: i32) -> AppResult<User> {
-    sqlx::query_as(&format!(
-        "SELECT {} FROM users WHERE uid = $1",
-        crate::models::USER_COLUMNS
-    ))
-    .bind(uid)
-    .fetch_optional(&ctx.app.db)
-    .await?
-    .ok_or_else(|| AppError::not_found("user"))
 }
 
 pub async fn list(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
@@ -47,7 +36,7 @@ pub async fn list(ctx: Ctx, Path(uid): Path<i32>) -> AppResult<Response> {
     let max = ctx.settings().int("maxwarningpoints").max(1);
     ctx.render(
         "warnings.html",
-        minijinja::context! { title => format!("Warnings for {}", user.username), user => &user, warnings => rows, level => (user.warningpoints as i64 * 100 / max).min(100), can_warn => ctx.perms.canwarnusers && uid != ctx.uid() },
+        minijinja::context! { title => format!("Warnings for {}", user.username), user => &user, warnings => rows, level => crate::member_file::warn_pct(user.warningpoints, max), can_warn => ctx.perms.canwarnusers && uid != ctx.uid() },
     )
     .await
 }
@@ -79,7 +68,7 @@ pub async fn warn_form(
     let max = ctx.settings().int("maxwarningpoints").max(1);
     ctx.render(
         "warn.html",
-        minijinja::context! { title => format!("Warn {}", user.username), user => &user, types => types, post => post, custom => ctx.settings().bool("allowcustomwarnings"), level => (user.warningpoints as i64 * 100 / max).min(100) },
+        minijinja::context! { title => format!("Warn {}", user.username), user => &user, types => types, post => post, custom => ctx.settings().bool("allowcustomwarnings"), level => crate::member_file::warn_pct(user.warningpoints, max) },
     )
     .await
 }

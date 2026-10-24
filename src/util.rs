@@ -296,8 +296,6 @@ pub fn valid_email(e: &str) -> bool {
     e.len() <= 254 && RE.is_match(e)
 }
 
-/// Decode an uploaded image with bounded dimensions and memory. A few-KB PNG can declare
-/// 60000×60000 pixels; decoding it unbounded would allocate gigabytes (decompression bomb).
 /// Collapse a client IP into the bucket per-IP limiters should key on. A single IPv6 subscriber
 /// usually holds a whole /64, so keying on the full address lets them rotate past any limit;
 /// IPv6 therefore maps to its /64 prefix and IPv4-mapped IPv6 to the plain IPv4 address.

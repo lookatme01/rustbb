@@ -12,7 +12,7 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
     if !s.bool("portal") {
         return Err(AppError::not_found("page"));
     }
-    let (mut fids, _) = crate::routes::search::readable_forums(&ctx);
+    let (fids, _) = crate::routes::search::readable_forums(&ctx);
     let ann_fids: Vec<i32> = s
         .get("portal_announcementsfid")
         .split(',')
@@ -63,7 +63,6 @@ pub async fn portal(ctx: Ctx) -> AppResult<Response> {
         })
         .collect();
     crate::render::store_parsed(&ctx, stale);
-    fids.retain(|_| true);
     let latest: Vec<(i32, String, i64, String, i32, i32)> = if s.bool("portal_showdiscussions") {
         sqlx::query_as("SELECT tid, subject, lastpost, lastposter, lastposteruid, replies FROM threads WHERE fid = ANY($1) AND visible = 1 AND closed NOT LIKE 'moved|%' ORDER BY lastpost DESC LIMIT $2")
             .bind(&fids)

@@ -26,8 +26,6 @@ pub enum Cap {
     ModCp,
     ReadModNotes,
     WriteModNotes,
-    Warn,
-    ViewWarnLogs,
     Ban,
     /// Reports of posts (in the forums of [`Staff::scope`]).
     PostReports,
@@ -54,13 +52,6 @@ pub enum Scope {
 }
 
 impl Scope {
-    pub fn contains(&self, fid: i32) -> bool {
-        match self {
-            Scope::All => true,
-            Scope::Forums(f) => f.contains(&fid),
-        }
-    }
-
     /// For SQL: (`all`, forum ids) as in `($1 OR fid = ANY($2))`.
     pub fn sql(&self) -> (bool, Vec<i32>) {
         match self {
@@ -129,8 +120,6 @@ impl Staff {
             Cap::ModCp => p.canmodcp || self.is_moderator(),
             Cap::ReadModNotes => p.canviewmodnotes,
             Cap::WriteModNotes => p.canaddmodnotes,
-            Cap::Warn => p.canwarnusers,
-            Cap::ViewWarnLogs => p.canviewwarnlogs,
             Cap::Ban => p.canbanusers,
             Cap::PostReports => {
                 (p.canmodcp && p.canmanagereportedcontent) || !self.report_forums.is_empty()
@@ -261,7 +250,6 @@ mod tests {
         for cap in [
             Cap::ReadModNotes,
             Cap::WriteModNotes,
-            Cap::Warn,
             Cap::Ban,
             Cap::MemberReports,
             Cap::PmReports,

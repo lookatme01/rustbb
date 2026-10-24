@@ -52,16 +52,7 @@ pub struct Access {
 impl Access {
     /// `visible` states of threads/posts whose content the viewer may see.
     pub fn visible_states(&self) -> Vec<i16> {
-        let mut v = vec![1];
-        if let Some(m) = &self.moderator {
-            if m.canviewunapprove {
-                v.push(0);
-            }
-            if m.canviewdeleted {
-                v.push(-1);
-            }
-        }
-        v
+        visible_states(self.moderator.as_ref())
     }
 
     pub fn is_moderator(&self) -> bool {
@@ -191,12 +182,6 @@ impl ForumAccess {
         own.sort_unstable();
         (all, own)
     }
-
-    /// Forums whose latest activity and counters may be shown to this viewer (aggregated into
-    /// parent forums on the index): readable with all threads, not just the viewer's own.
-    pub fn counted(&self) -> Vec<i32> {
-        self.readable(Purpose::Read).0
-    }
 }
 
 /// What guests may see (sitemaps and other public listings, whoever asks for them).
@@ -231,6 +216,21 @@ pub fn member(cache: &Cache, uid: i32, groups: &[i32]) -> std::sync::Arc<ForumAc
         },
         Some(format!("{g:?}|{}", if personal { uid } else { 0 })),
     )
+}
+
+/// The post/thread `visible` states a viewer may see: approved, plus unapproved and soft-deleted
+/// for a moderator with those rights.
+pub fn visible_states(moderator: Option<&ModPerms>) -> Vec<i16> {
+    let mut v = vec![1];
+    if let Some(m) = moderator {
+        if m.canviewunapprove {
+            v.push(0);
+        }
+        if m.canviewdeleted {
+            v.push(-1);
+        }
+    }
+    v
 }
 
 #[cfg(test)]
@@ -287,12 +287,6 @@ mod tests {
             ),
             ..Default::default()
         };
-        c.forum_perms = std::sync::Arc::new(
-            [1, 5]
-                .into_iter()
-                .map(|fid| ((fid, 1), ForumPerms::default()))
-                .collect(),
-        );
         let mut cat = forum(1, 0, vec![1]);
         cat.kind = "c".into();
         c.forums = std::sync::Arc::new(vec![

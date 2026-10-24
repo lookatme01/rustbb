@@ -1,5 +1,6 @@
 //! Mass mail: email or PM a filtered set of members, delivered in batches by a task.
 
+use crate::admin::{AnyForm, s};
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
@@ -8,30 +9,12 @@ use crate::util::now;
 use axum::Router;
 use axum::response::Response;
 use axum::routing::{get, post};
-use serde::Deserialize;
-use std::collections::HashMap;
 
 pub fn router() -> Router<App> {
     Router::new()
         .route("/massmail", get(list))
         .route("/massmail/new", get(form).post(save))
         .route("/massmail/cancel", post(cancel))
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 const WHERE: &str = "(cardinality($1::int[]) = 0 OR usergroup = ANY($1) OR additionalgroups && $1) AND postnum >= $2 AND ($3 = 0 OR regdate <= $3) AND ($4 = FALSE OR allownotices) AND uid > $5";

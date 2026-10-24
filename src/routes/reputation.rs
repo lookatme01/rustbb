@@ -2,6 +2,7 @@
 
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
+use crate::routes::Empty;
 use crate::util::{self, now};
 use axum::extract::{Path, Query};
 use axum::response::Response;
@@ -277,9 +278,6 @@ pub async fn add_submit(
                 ));
             }
         }
-        if pid == 0 && !s.bool("multirep") {
-            // single overall rating per user: fall through to update below via existing check on pid 0
-        }
     }
     match existing {
         Some(rid) => {
@@ -313,9 +311,6 @@ pub async fn add_submit(
         &format!("Your rating of {username} has been saved."),
     ))
 }
-
-#[derive(Deserialize, Default)]
-pub struct Empty {}
 
 pub async fn delete(
     ctx: Ctx,

@@ -246,7 +246,7 @@ async fn hidden_subforum(t: &TestApp) -> (i32, i32) {
     (tid, uid)
 }
 
-async fn assert_hidden_everywhere(t: &TestApp, c: &common::Client, tid: i32) {
+async fn assert_hidden_everywhere(c: &common::Client, tid: i32) {
     let r = c.get("/forum/8").await;
     assert!(r.status.is_client_error(), "forum page: {}", r.status);
     let r = c.get(&format!("/thread/{tid}")).await;
@@ -267,7 +267,6 @@ async fn assert_hidden_everywhere(t: &TestApp, c: &common::Client, tid: i32) {
     assert!(!r.body.contains("Zebracorn"), "portal");
     let r = c.get("/archive").await;
     assert!(!r.body.contains("Inner Sanctum"), "archive");
-    let _ = t;
 }
 
 #[tokio::test]
@@ -284,7 +283,7 @@ async fn password_on_an_ancestor_hides_descendants_until_unlocked() {
     .unwrap();
     t.app.invalidate(&["forums"]).await.unwrap();
     let c = t.client();
-    assert_hidden_everywhere(&t, &c, tid).await;
+    assert_hidden_everywhere(&c, tid).await;
     // A wrong password does nothing; the right one unlocks the forum and its subforums.
     let page = c.get("/forum/3").await;
     let key = common::form_key(&page.body);
@@ -331,7 +330,7 @@ async fn inactive_ancestor_hides_descendants() {
         .unwrap();
     t.app.invalidate(&["forums"]).await.unwrap();
     let c = t.client();
-    assert_hidden_everywhere(&t, &c, tid).await;
+    assert_hidden_everywhere(&c, tid).await;
 }
 
 #[tokio::test]

@@ -35,11 +35,6 @@ impl Spooled {
     pub fn path(&self) -> &Path {
         self.path.as_deref().expect("spooled file already taken")
     }
-
-    /// Hand the file over (e.g. to storage); it is no longer removed on drop.
-    pub fn take(mut self) -> PathBuf {
-        self.path.take().expect("spooled file already taken")
-    }
 }
 
 impl Drop for Spooled {

@@ -74,8 +74,6 @@ pub struct User {
     pub referrer: i32,
     pub referrals: i32,
     #[serde(skip_serializing)]
-    pub usernotes: String,
-    #[serde(skip_serializing)]
     pub notepad: String,
     pub pmfolders: sqlx::types::Json<Vec<PmFolder>>,
     pub unreadpms: i32,
@@ -88,8 +86,6 @@ pub struct User {
     pub loginlockoutexpiry: i64,
     #[serde(skip)]
     pub totp_secret: String,
-    #[serde(skip)]
-    pub session_version: i32,
     pub coppauser: bool,
     /// The built-in System account (see `crate::system`).
     #[sqlx(default)]
@@ -439,7 +435,7 @@ pub struct Calendar {
 // Explicit column lists for each model (queries never use `SELECT *`, so adding a column to a
 // table cannot change or break what existing queries read). `tests/columns.rs` checks that every
 // list decodes into its struct.
-pub const USER_COLUMNS: &str = "uid, username, password, email, usergroup, additionalgroups, displaygroup, usertitle, regdate, lastactive, lastvisit, lastpost, website, avatar, avatardimensions, avatartype, signature, birthday, birthdayprivacy, timezone, postnum, threadnum, reputation, warningpoints, moderateposts, moderationtime, suspendposting, suspensiontime, suspendsignature, suspendsigtime, regip, lastip, language, style, away, awaydate, returndate, awayreason, pmnotice, pmnotify, receivepms, receivefrombuddy, buddylist, ignorelist, hideemail, allownotices, subscriptionmethod, invisible, showsigs, showavatars, showimages, showvideos, showquickreply, showredirect, tpp, ppp, threadmode, daysprune, dateformat, timeformat, colormode, accent, referrer, referrals, usernotes, notepad, pmfolders, unreadpms, totalpms, unreadalerts, timeonline, loginattempts, loginlockoutexpiry, totp_secret, session_version, coppauser, is_system";
+pub const USER_COLUMNS: &str = "uid, username, password, email, usergroup, additionalgroups, displaygroup, usertitle, regdate, lastactive, lastvisit, lastpost, website, avatar, avatardimensions, avatartype, signature, birthday, birthdayprivacy, timezone, postnum, threadnum, reputation, warningpoints, moderateposts, moderationtime, suspendposting, suspensiontime, suspendsignature, suspendsigtime, regip, lastip, language, style, away, awaydate, returndate, awayreason, pmnotice, pmnotify, receivepms, receivefrombuddy, buddylist, ignorelist, hideemail, allownotices, subscriptionmethod, invisible, showsigs, showavatars, showimages, showvideos, showquickreply, showredirect, tpp, ppp, threadmode, daysprune, dateformat, timeformat, colormode, accent, referrer, referrals, notepad, pmfolders, unreadpms, totalpms, unreadalerts, timeonline, loginattempts, loginlockoutexpiry, totp_secret, coppauser, is_system";
 pub const THREAD_COLUMNS: &str = "tid, fid, subject, prefix, icon, poll, uid, username, dateline, firstpost, lastpost, lastposter, lastposteruid, views, replies, closed, sticky, numratings, totalratings, notes, visible, unapprovedposts, deletedposts, attachmentcount, deletetime, redirect_expires";
 pub const GROUP_COLUMNS: &str = "gid, type, title, description, namestyle, usertitle, stars, starimage, image, disporder, isbannedgroup, perms, is_system";
 pub const THEME_COLUMNS: &str = "tid, name, pid, def, properties, stylesheet, allowedgroups";

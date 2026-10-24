@@ -243,9 +243,7 @@ pub async fn build_postbits(
             .into_iter()
             .filter(|a| !inline.contains(&a.aid))
             .collect();
-        let show_edit = p.edituid > 0
-            && s.bool("showeditedby")
-            && (s.bool("showeditedbyadmin") || !ctx.cache.group(1).is_some_and(|_| false));
+        let show_edit = p.edituid > 0 && s.bool("showeditedby");
         let edited = if show_edit {
             Some((
                 editors.get(&p.edituid).cloned().unwrap_or_default(),
@@ -555,13 +553,11 @@ pub async fn showthread(
             posts => postbits,
             pagination => pagination,
             poll => poll,
-            fperms => &fp,
             modperms => &mp,
             is_mod => mp.is_some(),
             can_reply => can_reply,
             subscription => subscription,
             rating => if thread.numratings > 0 { thread.totalratings as f64 / thread.numratings as f64 } else { 0.0 },
-            my_rating => my_rating,
             can_rate => forum.allowtratings && fp.canratethreads && ctx.uid() > 0 && my_rating.is_none() && thread.uid != ctx.uid() && s.bool("allowthreadratings"),
             similar => similar,
             forumjump => forum_jump(&ctx),

@@ -97,8 +97,6 @@ pub struct Config {
     pub secret: String,
     pub db_max_connections: u32,
     pub upload_dir: String,
-    /// Trust `X-Forwarded-For` / `X-Real-IP` (enable only behind a reverse proxy).
-    pub trust_proxy: bool,
     /// Addresses/CIDRs of the reverse proxies whose forwarding headers are believed
     /// (`RBB_TRUSTED_PROXIES`, comma-separated; default loopback when `RBB_TRUST_PROXY=true`).
     pub trusted_proxies: Vec<Cidr>,
@@ -155,7 +153,6 @@ impl Config {
                 .join(format!("rbb-test-uploads-{}", std::process::id()))
                 .to_string_lossy()
                 .into_owned(),
-            trust_proxy: false,
             trusted_proxies: vec![],
             secure_cookies: false,
             run_tasks: false,
@@ -204,7 +201,6 @@ impl Config {
             db_max_connections: get("RBB_DB_MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS)
                 .parse()?,
             upload_dir: get("RBB_UPLOAD_DIR", DEFAULT_UPLOAD_DIR),
-            trust_proxy: flag("RBB_TRUST_PROXY", false)?,
             trusted_proxies: {
                 let mut list = get("RBB_TRUSTED_PROXIES", "");
                 if list.trim().is_empty() && flag("RBB_TRUST_PROXY", false)? {

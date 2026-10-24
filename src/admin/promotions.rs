@@ -1,5 +1,6 @@
 //! Group promotions: automatically move users between groups based on activity.
 
+use crate::admin::{AnyForm, s};
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
@@ -9,7 +10,6 @@ use axum::extract::Query;
 use axum::response::Response;
 use axum::routing::{get, post};
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub fn router() -> Router<App> {
     Router::new()
@@ -42,22 +42,6 @@ pub fn op_sql(op: &str) -> &'static str {
         "=" => "=",
         "!=" => "<>",
         _ => ">=",
-    }
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn s(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
     }
 }
 

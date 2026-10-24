@@ -216,7 +216,6 @@ pub async fn destroy_login(ctx: &CtxInner) -> AppResult<()> {
     Ok(())
 }
 
-/// Invalidate all logins of a user (password change, ban, etc.), optionally keeping one.
 /// Invalidate all browser sessions of a user (optionally keeping one) and revoke all of their
 /// API tokens: after a password change, 2FA change or "log out everywhere".
 pub async fn destroy_all_logins(app: &App, uid: i32, keep: Option<&str>) -> AppResult<()> {

@@ -387,7 +387,7 @@ mod phrase_tests {
 
     #[test]
     fn links_inside_words_are_not_links() {
-        let re = super::LINK_RE.clone();
+        let re = &*super::LINK_RE;
         assert_eq!(
             re.find_iter("see www.example.org and https://x.test")
                 .count(),

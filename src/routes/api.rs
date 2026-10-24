@@ -244,7 +244,7 @@ pub async fn forum_threads(
     Path(fid): Path<i32>,
     Query(q): Query<PageQ>,
 ) -> AppResult<Response> {
-    let (_, _fp) = ctx.check_forum(fid)?;
+    ctx.check_forum(fid)?;
     let access = ctx.access().forum(fid).map_err(|_| AppError::no_perm())?;
     if access.threads == crate::domain::access::Threads::None
         || (access.threads == crate::domain::access::Threads::Own && ctx.uid() == 0)
@@ -508,18 +508,11 @@ pub async fn search(ctx: Ctx, Query(q): Query<SearchQ>) -> AppResult<Response> {
     .bind(ctx.uid())
     .fetch_all(&mut *tx)
     .await;
-    let rows = match rows {
-        Ok(rows) => {
-            tx.commit().await?;
-            rows
-        }
-        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("57014") => {
-            return Err(AppError::user(
-                "Your search took too long. Please use more specific search terms.",
-            ));
-        }
-        Err(e) => return Err(e.into()),
-    };
+    let rows = crate::routes::search::within_timeout(
+        rows,
+        "Your search took too long. Please use more specific search terms.",
+    )?;
+    tx.commit().await?;
     ok(
         serde_json::json!({ "results": rows.iter().map(|r| serde_json::json!({"pid": r.0, "tid": r.1, "subject": r.2, "username": r.3, "dateline": r.4, "rank": r.5})).collect::<Vec<_>>() }),
     )

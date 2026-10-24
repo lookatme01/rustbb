@@ -12,7 +12,7 @@
 //! * Pages carry tags for what they show (`board`, `forum:<fid>`, `thread:<tid>`). Writes that
 //!   know their scope (a reply, a reaction, a vote…) invalidate just those tags; any other
 //!   successful write clears the whole cache. Either way every node hears within ~50 ms through
-//!   the `rbb_cache` NOTIFY channel, and entries expire after `TTL` regardless. Entries rendered
+//!   the `rbb_cluster` NOTIFY channel, and entries expire after `TTL` regardless. Entries rendered
 //!   while an invalidation happened are discarded (epoch/generation check).
 
 use bytes::Bytes;

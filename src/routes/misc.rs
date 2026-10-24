@@ -3,6 +3,7 @@
 
 use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
+use crate::routes::Empty;
 use crate::routes::showthread::check_thread;
 use crate::templates::{url_forum, url_thread};
 use crate::util::{self, now};
@@ -11,13 +12,6 @@ use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-
-#[derive(Deserialize, Default)]
-pub struct Empty {}
-
-fn back(ctx: &Ctx, fallback: &str) -> String {
-    crate::routes::misc_back(ctx, fallback)
-}
 
 pub async fn mark_forum_read(
     ctx: Ctx,
@@ -289,7 +283,7 @@ pub async fn subscribe_thread(
         "You have subscribed to this thread."
     };
     Ok(ctx.redirect(
-        &back(&ctx, &url_thread(tid as i64, Some(&thread.subject))),
+        &crate::routes::misc_back(&ctx, &url_thread(tid as i64, Some(&thread.subject))),
         msg,
     ))
 }
@@ -784,7 +778,7 @@ pub async fn set_theme(
     } else {
         ctx.add_cookie("rbb_theme", &tid.to_string(), Some(365 * 86400), false);
     }
-    Ok(Redirect::to(&back(&ctx, "/")).into_response())
+    Ok(Redirect::to(&crate::routes::misc_back(&ctx, "/")).into_response())
 }
 
 #[derive(Deserialize)]
@@ -819,7 +813,7 @@ pub async fn set_lang(
             .await?;
     }
     ctx.add_cookie("rbb_lang", &code, Some(365 * 86400), false);
-    Ok(Redirect::to(&back(&ctx, "/")).into_response())
+    Ok(Redirect::to(&crate::routes::misc_back(&ctx, "/")).into_response())
 }
 
 #[derive(Deserialize)]
@@ -842,7 +836,7 @@ pub async fn set_colormode(ctx: Ctx, CsrfForm(f): CsrfForm<ModeForm>) -> AppResu
     } else {
         ctx.add_cookie("rbb_colormode", &mode, Some(365 * 86400), false);
     }
-    Ok(Redirect::to(&back(&ctx, "/")).into_response())
+    Ok(Redirect::to(&crate::routes::misc_back(&ctx, "/")).into_response())
 }
 
 #[derive(Deserialize, Default)]

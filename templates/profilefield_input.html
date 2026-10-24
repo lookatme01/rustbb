@@ -1,4 +1,4 @@
-{# f: ProfileField, value: current value (optional) #}
+{# f: ProfileField, values: fid → current value map (optional) #}
 {% set fname = "profile_fields[" ~ f.fid ~ "]" %}
 {% set val = (values[f.fid|string] if values is defined and values and values[f.fid|string] is defined else '') %}
 <div class="form-row"><label for="pf{{ f.fid }}">{{ f.name }}{% if f.required %} *{% endif %}</label>

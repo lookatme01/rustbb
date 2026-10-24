@@ -133,10 +133,8 @@ pub async fn thread_subscribers(
 ) -> anyhow::Result<()> {
     let cache = app.cache();
     let s = &cache.settings;
-    // Only notify subscribers who have visited since the last notification (MyBB behaviour):
-    // lastactive > previous post's dateline avoids flooding inactive users.
-    let subs: Vec<(i32, i16, String, String, i64)> = sqlx::query_as(
-        "SELECT u.uid, ts.notification, u.email, u.username, u.lastactive FROM threadsubscriptions ts
+    let subs: Vec<(i32, i16, String, String)> = sqlx::query_as(
+        "SELECT u.uid, ts.notification, u.email, u.username FROM threadsubscriptions ts
          JOIN users u ON u.uid = ts.uid WHERE ts.tid = $1 AND ts.uid <> $2",
     )
     .bind(tid)
@@ -146,7 +144,7 @@ pub async fn thread_subscribers(
     let bburl = s.get("bburl").trim_end_matches('/').to_string();
     let excerpt = crate::util::truncate_chars(&crate::parser::to_plaintext(message), 500);
     let allowed = readers(app, tid, &subs.iter().map(|s| s.0).collect::<Vec<_>>()).await?;
-    for (uid, notification, email, username, _lastactive) in subs {
+    for (uid, notification, email, username) in subs {
         if !allowed.contains(&uid) {
             continue;
         }

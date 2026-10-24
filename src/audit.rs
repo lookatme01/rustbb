@@ -127,11 +127,6 @@ impl Actor {
             useragent: ctx.useragent.clone(),
         }
     }
-
-    /// Background work with no request behind it.
-    pub fn system() -> Actor {
-        Actor::default()
-    }
 }
 
 /// Record an event for `uid` on `conn` (normally the transaction making the audited change, so

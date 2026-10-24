@@ -31,16 +31,6 @@ async fn api_requires_an_available_prefix_when_the_forum_requires_one() {
     assert_eq!(r.status, 200, "{}", r.body);
 }
 
-async fn setting(t: &TestApp, k: &str, v: &str) {
-    sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
-        .bind(k)
-        .bind(v)
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
-    t.app.invalidate(&["settings"]).await.unwrap();
-}
-
 async fn forum(t: &TestApp) -> i32 {
     sqlx::query_scalar("SELECT fid FROM forums WHERE name = 'General Discussion'")
         .fetch_one(&t.db.pool)
@@ -100,8 +90,8 @@ async fn copying_a_thread_updates_its_authors_thread_count() {
 #[tokio::test]
 async fn concurrent_replies_keep_counters_consistent() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let author = t.create_user("starter", "Passw0rd-starter").await;
     let tid = new_thread(&t, &t.login_as(author).await, fid).await;
@@ -138,8 +128,8 @@ async fn concurrent_replies_keep_counters_consistent() {
 #[tokio::test]
 async fn simultaneous_double_posts_merge_into_one() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "60").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "60")]).await;
     let fid = forum(&t).await;
     let starter = t.create_user("opener", "Passw0rd-opener").await;
     let tid = new_thread(&t, &t.login_as(starter).await, fid).await;
@@ -170,9 +160,9 @@ async fn simultaneous_double_posts_merge_into_one() {
 #[tokio::test]
 async fn parallel_posts_cannot_dodge_flood_control() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "1").await;
-    setting(&t, "postfloodsecs", "600").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "1")]).await;
+    t.set_settings(&[("postfloodsecs", "600")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let starter = t.create_user("floodopener", "Passw0rd-opener").await;
     let tid = new_thread(&t, &t.login_as(starter).await, fid).await;
@@ -205,8 +195,8 @@ async fn parallel_posts_cannot_dodge_flood_control() {
 #[tokio::test]
 async fn editing_keeps_history_and_subject_together() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "keepedithistory", "1").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("keepedithistory", "1")]).await;
     let fid = forum(&t).await;
     let uid = t.create_user("editor", "Passw0rd-editor").await;
     let c = t.login_as(uid).await;
@@ -249,8 +239,8 @@ async fn editing_keeps_history_and_subject_together() {
 #[tokio::test]
 async fn moderator_merge_and_delete_of_the_same_posts_serialize() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let uid = t.create_user("poster", "Passw0rd-poster").await;
     let c = t.login_as(uid).await;
@@ -280,7 +270,7 @@ async fn moderator_merge_and_delete_of_the_same_posts_serialize() {
 #[tokio::test]
 async fn the_api_honours_reply_own_threads_only_and_deleted_threads() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
     let fid = forum(&t).await;
     let admin = t.login_as(1).await;
     let tid = new_thread(&t, &admin, fid).await;
@@ -430,7 +420,7 @@ async fn drafts_cannot_point_at_threads_the_member_cannot_see() {
 #[tokio::test]
 async fn a_suspended_member_cannot_edit_posts_or_add_polls() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
     let fid = forum(&t).await;
     let uid = t.create_user("suspended", "Passw0rd-suspended").await;
     let c = t.login_as(uid).await;
@@ -533,7 +523,7 @@ async fn moving_a_thread_re_renders_posts_with_the_new_forums_settings() {
 #[tokio::test]
 async fn the_recycle_bin_purge_only_removes_threads_that_are_still_deleted_and_old() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
     let fid = forum(&t).await;
     let c = t.login_as(1).await;
     let old = new_thread(&t, &c, fid).await;
@@ -611,8 +601,8 @@ async fn reports_follow_their_post_when_a_thread_moves_to_another_forum() {
 #[tokio::test]
 async fn splitting_never_publishes_a_hidden_post() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let c = t.login_as(1).await;
     let tid = new_thread(&t, &c, fid).await;
@@ -664,7 +654,7 @@ async fn splitting_never_publishes_a_hidden_post() {
 #[tokio::test]
 async fn subscribers_hear_nothing_about_a_reply_hidden_before_the_job_ran() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
     let fid = forum(&t).await;
     let admin = t.login_as(1).await;
     let tid = new_thread(&t, &admin, fid).await;
@@ -746,7 +736,6 @@ async fn twitch_embeds_name_the_boards_own_host_as_their_parent() {
 async fn the_moderation_queue_honours_the_moderators_approve_and_delete_rights() {
     let t = test_app!();
     let fid = forum(&t).await;
-    let admin = t.login_as(1).await;
     let author = t.create_user("queueauthor", "Passw0rd-queueauthor").await;
     let moderator = t.create_user("limitedmod", "Passw0rd-limitedmod").await;
     // May approve threads, may not delete them.
@@ -757,7 +746,6 @@ async fn the_moderation_queue_honours_the_moderators_approve_and_delete_rights()
         .await
         .unwrap();
     t.app.invalidate(&["moderators"]).await.unwrap();
-    let _ = admin;
     let mut pending = vec![];
     for i in 0..2 {
         let tid: i32 = sqlx::query_scalar(
@@ -801,8 +789,8 @@ async fn the_moderation_queue_honours_the_moderators_approve_and_delete_rights()
 #[tokio::test]
 async fn posting_while_a_moderator_toggles_the_authors_thread_does_not_deadlock() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let author = t.create_user("busyposter", "Passw0rd-busyposter").await;
     let c = t.login_as(author).await;
@@ -846,8 +834,8 @@ async fn posting_while_a_moderator_toggles_the_authors_thread_does_not_deadlock(
 #[tokio::test]
 async fn splitting_posts_that_have_since_gone_leaves_no_empty_thread() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
-    setting(&t, "postmergemins", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
+    t.set_settings(&[("postmergemins", "0")]).await;
     let fid = forum(&t).await;
     let c = t.login_as(1).await;
     let tid = new_thread(&t, &c, fid).await;
@@ -913,7 +901,7 @@ async fn splitting_posts_that_have_since_gone_leaves_no_empty_thread() {
 #[tokio::test]
 async fn merging_with_a_thread_that_has_since_gone_is_refused_not_an_error() {
     let t = test_app!();
-    setting(&t, "postfloodcheck", "0").await;
+    t.set_settings(&[("postfloodcheck", "0")]).await;
     let fid = forum(&t).await;
     let c = t.login_as(1).await;
     let keep = new_thread(&t, &c, fid).await;

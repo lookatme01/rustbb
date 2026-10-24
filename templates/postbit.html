@@ -1,4 +1,4 @@
-{# expects: p (PostView), thread, is_mod, modperms, reaction_types #}
+{# expects: p (PostView), thread, is_mod, reaction_types #}
 {# One card per post, author on top. Each card stands alone, so a post linked on its own still says who wrote it.
    Rank stars and group images are left out: the title chip already says who someone is. #}
 <article class="post{% if p.visible == 0 %} unapproved{% elif p.visible == -1 %} deleted{% endif %}{% if p.ignored %} ignored-post{% endif %}" id="pid{{ p.pid }}" data-pid="{{ p.pid }}" aria-labelledby="pid{{ p.pid }}-by">

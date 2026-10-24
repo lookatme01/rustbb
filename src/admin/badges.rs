@@ -1,6 +1,6 @@
 //! Badges: define them, see who has them, award and revoke them by hand.
 
-use crate::admin::promotions::AnyForm;
+use crate::admin::{AnyForm, s};
 use crate::app::App;
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
@@ -21,13 +21,7 @@ pub fn router() -> Router<App> {
 }
 
 fn field(f: &AnyForm, k: &str) -> String {
-    match f.fields.get(k) {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
+    s(f.fields.get(k))
 }
 
 fn int(f: &AnyForm, k: &str) -> i32 {

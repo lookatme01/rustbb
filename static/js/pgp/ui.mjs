@@ -42,7 +42,6 @@ export const icons = {
   download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'),
   device: svg('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>'),
   cloud: svg('<path d="M7 18a4 4 0 01-.6-8 6 6 0 0111.4 1.5A3.5 3.5 0 0117.5 18z"/>'),
-  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   sparkle: svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>'),
   history: svg('<path d="M3 12a9 9 0 103-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>'),
   x: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
@@ -146,8 +145,8 @@ export function fprBlock(fpr) {
 
 export const when = (ts) => ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
 
-/** Status pill used across the identity screens. kind: verified | signed | changed | invalid | pending | locked | off */
+/** Status pill used across the identity screens. kind: verified | signed | changed | invalid | pending | locked | encrypted | off */
 export function seal(kind, label, sub) {
-  const ic = { verified: "shieldCheck", signed: "shield", changed: "shieldAlert", invalid: "shieldX", pending: "shield", locked: "lock", off: "shield", encrypted: "lock" }[kind] || "shield";
+  const ic = { verified: "shieldCheck", changed: "shieldAlert", invalid: "shieldX", locked: "lock", encrypted: "lock" }[kind] || "shield";
   return h(`span.pgp-seal.is-${kind}`, icon(ic), h("span.pgp-seal-text", h("strong", label), sub ? h("small", sub) : null));
 }

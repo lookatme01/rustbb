@@ -192,10 +192,8 @@ pub struct AuthorRow {
     pub username: String,
     pub usergroup: i32,
     pub displaygroup: i32,
-    pub additionalgroups: Vec<i32>,
     pub usertitle: String,
     pub avatar: String,
-    pub avatardimensions: String,
     pub signature: String,
     pub postnum: i32,
     pub threadnum: i32,
@@ -208,13 +206,9 @@ pub struct AuthorRow {
     pub website: String,
     pub suspendsignature: bool,
     pub suspendsigtime: i64,
-    pub birthday: String,
-    pub email: String,
-    pub hideemail: bool,
-    pub receivepms: bool,
 }
 
-pub const AUTHOR_COLS: &str = "uid, username, usergroup, displaygroup, additionalgroups, usertitle, avatar, avatardimensions, signature, postnum, threadnum, regdate, reputation, warningpoints, lastactive, invisible, away, website, suspendsignature, suspendsigtime, birthday, email, hideemail, receivepms";
+pub const AUTHOR_COLS: &str = "uid, username, usergroup, displaygroup, usertitle, avatar, signature, postnum, threadnum, regdate, reputation, warningpoints, lastactive, invisible, away, website, suspendsignature, suspendsigtime";
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct AuthorInfo {
@@ -224,11 +218,8 @@ pub struct AuthorInfo {
     pub usertitle: String,
     pub stars: i32,
     pub starimage: String,
-    pub groupimage: String,
     pub grouptitle: String,
     pub avatar: String,
-    pub avatar_w: i32,
-    pub avatar_h: i32,
     pub postnum: i32,
     pub threadnum: i32,
     pub regdate: i64,
@@ -241,8 +232,6 @@ pub struct AuthorInfo {
     pub fields: Vec<(String, String)>,
     /// Enabled badges in display order.
     pub badges: Vec<crate::badges::Shown>,
-    pub can_pm: bool,
-    pub can_email: bool,
 }
 
 /// Avatar URLs ("" = none) for many members at once: one indexed query for whoever isn't cached.
@@ -358,17 +347,9 @@ pub fn author_info(ctx: &CtxInner, r: &AuthorRow) -> AuthorInfo {
     if starimage.is_empty() {
         starimage = "/static/images/star.svg".into();
     }
-    let maxwarn = s.int("maxwarningpoints").max(1);
-    let (aw, ah) = r
-        .avatardimensions
-        .split_once('|')
-        .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
-        .unwrap_or((0, 0));
-    let online = cache.is_system(r.uid)
-        || !r.invisible && r.lastactive > now() - s.int("wolcutoffmins").max(1) * 60
-        || (r.invisible
-            && ctx.perms.canviewwolinvis
-            && r.lastactive > now() - s.int("wolcutoffmins").max(1) * 60);
+    let maxwarn = s.int("maxwarningpoints");
+    let active = r.lastactive > now() - s.int("wolcutoffmins").max(1) * 60;
+    let online = cache.is_system(r.uid) || active && (!r.invisible || ctx.perms.canviewwolinvis);
     let sig_allowed = !r.suspendsignature || (r.suspendsigtime > 0 && r.suspendsigtime < now());
     let show_sig = ctx.user.as_ref().map(|u| u.showsigs).unwrap_or(true);
     let signature = if sig_allowed && show_sig && !r.signature.is_empty() {
@@ -383,24 +364,19 @@ pub fn author_info(ctx: &CtxInner, r: &AuthorRow) -> AuthorInfo {
         usertitle,
         stars,
         starimage,
-        groupimage: group.map(|g| g.image.clone()).unwrap_or_default(),
         grouptitle: group.map(|g| g.title.clone()).unwrap_or_default(),
         avatar: r.avatar.clone(),
-        avatar_w: aw,
-        avatar_h: ah,
         postnum: r.postnum,
         threadnum: r.threadnum,
         regdate: r.regdate,
         reputation: r.reputation,
-        warninglevel: (r.warningpoints as i64 * 100 / maxwarn).min(100),
+        warninglevel: crate::member_file::warn_pct(r.warningpoints, maxwarn),
         online,
         away: r.away,
         website: r.website.clone(),
         signature,
         fields: vec![],
         badges: vec![],
-        can_pm: r.receivepms,
-        can_email: !r.hideemail,
     }
 }
 

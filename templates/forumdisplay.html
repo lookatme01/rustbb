@@ -38,16 +38,16 @@
 {% if pagination.pages > 1 %}<div class="toolbar">{{ m.pagination(pagination) }}</div>{% endif %}
 
 <section class="card thread-list rise" aria-labelledby="threads-title">
-  {% set sort_labels = {'lastpost':'Last post','started':'Start date','subject':'Subject','starter':'Author','replies':'Replies','views':'Views','rating':'Rating'} %}
+  {% set sorts = [('lastpost','Last post'),('started','Start date'),('subject','Subject'),('starter','Author'),('replies','Replies'),('views','Views'),('rating','Rating')] %}
   {% set filtered = (sortby and sortby != 'lastpost') or order == 'asc' or datecut or prefix %}
   <div class="card-head"><h2 id="threads-title">Threads</h2><div class="right head-tools"><span class="soft">{{ total|num }} {{ total|plural("thread","threads") }}</span>
   <details class="popmenu down">
-    <summary class="btn btn-ghost btn-sm">{% if filtered %}Sorted: {{ sort_labels[sortby] if sortby in sort_labels else 'Last post' }}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
+    <summary class="btn btn-ghost btn-sm">{% if filtered %}Sorted: {% for s in sorts if s[0] == sortby %}{{ s[1] }}{% else %}Last post{% endfor %}{{ ' ↑' if order == 'asc' else '' }}{% else %}Sort{% endif %}</summary>
     <div class="menu">
   <form method="get" action="{{ forum_url }}" class="filters menu-form">
     {% if prefixes %}<select name="prefix" aria-label="Prefix"><option value="0">Any prefix</option>{% for p in prefixes %}<option value="{{ p.pid }}"{% if prefix == p.pid %} selected{% endif %}>{{ p.prefix }}</option>{% endfor %}</select>{% endif %}
     <select name="sortby" aria-label="Sort by">
-      {% for s in [('lastpost','Last post'),('started','Start date'),('subject','Subject'),('starter','Author'),('replies','Replies'),('views','Views'),('rating','Rating')] %}<option value="{{ s[0] }}"{% if sortby == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}
+      {% for s in sorts %}<option value="{{ s[0] }}"{% if sortby == s[0] %} selected{% endif %}>{{ s[1] }}</option>{% endfor %}
     </select>
     <select name="order" aria-label="Order"><option value="desc"{% if order == 'desc' %} selected{% endif %}>High to low / newest first</option><option value="asc"{% if order == 'asc' %} selected{% endif %}>Low to high / oldest first</option></select>
     <select name="datecut" aria-label="From">

@@ -4,6 +4,7 @@ use crate::ctx::{CsrfForm, Ctx, de};
 use crate::error::{AppError, AppResult};
 use crate::models::Thread;
 use crate::perms::ForumPerms;
+use crate::routes::Empty;
 use crate::routes::showthread::check_thread;
 use crate::templates::url_thread;
 use crate::util::now;
@@ -189,9 +190,6 @@ pub async fn vote(
     ))
 }
 
-#[derive(Deserialize, Default)]
-pub struct Empty {}
-
 pub async fn undo_vote(
     ctx: Ctx,
     Path(tid): Path<i32>,
@@ -263,7 +261,7 @@ pub async fn edit_form(ctx: Ctx, Path(tid): Path<i32>) -> AppResult<Response> {
         .ok_or_else(|| AppError::not_found("poll"))?;
     ctx.render(
         "poll_form.html",
-        minijinja::context! { title => "Edit poll", edit => true, thread => &t, question => p.question, options => p.options.join("\n"), votes => p.votes, multiple => p.multiple, public => p.public, closed => p.closed, timeout => if p.timeout > 0 { (p.timeout - now()).max(0) / 86400 + 1 } else { 0 }, maxoptions => p.maxoptions },
+        minijinja::context! { title => "Edit poll", edit => true, thread => &t, question => p.question, options => p.options.join("\n"), multiple => p.multiple, public => p.public, closed => p.closed, timeout => if p.timeout > 0 { (p.timeout - now()).max(0) / 86400 + 1 } else { 0 }, maxoptions => p.maxoptions },
     )
     .await
 }

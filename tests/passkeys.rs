@@ -60,18 +60,6 @@ fn origin(url: &str) -> url::Url {
     url::Url::parse(url).unwrap()
 }
 
-async fn set(t: &TestApp, pairs: &[(&str, &str)]) {
-    for (k, v) in pairs {
-        sqlx::query("INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value")
-            .bind(k)
-            .bind(v)
-            .execute(&t.db.pool)
-            .await
-            .unwrap();
-    }
-    t.app.invalidate(&["settings"]).await.unwrap();
-}
-
 fn json(r: &common::Response) -> serde_json::Value {
     serde_json::from_str(&r.body).unwrap_or_else(|_| panic!("not JSON ({}): {}", r.status, r.body))
 }
@@ -131,7 +119,7 @@ async fn sign_in(t: &TestApp, dev: &mut Device, at: &str) -> (Client, common::Re
 #[tokio::test]
 async fn members_add_a_passkey_and_sign_in_with_it() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let uid = t.create_user("keyholder", PASSWORD).await;
     let c = t.login_as(uid).await;
     let mut dev = device();
@@ -241,7 +229,7 @@ async fn members_add_a_passkey_and_sign_in_with_it() {
 #[tokio::test]
 async fn a_passkey_made_for_another_site_is_rejected() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let uid = t.create_user("keyholder", PASSWORD).await;
     let c = t.login_as(uid).await;
     let mut dev = device();
@@ -260,7 +248,8 @@ async fn a_passkey_made_for_another_site_is_rejected() {
         .authenticate(&origin(BOARD), options, DefaultClientData)
         .await
         .unwrap();
-    set(&t, &[("bburl", "https://new.example.org")]).await;
+    t.set_settings(&[("bburl", "https://new.example.org")])
+        .await;
     let r = g
         .post_form(
             "/member/login/passkey/finish",
@@ -295,7 +284,8 @@ async fn passkeys_are_hidden_where_browsers_cannot_use_them() {
         .await;
     assert_eq!(r.status, 422);
     // And when an admin turns them off.
-    set(&t, &[("bburl", BOARD), ("enablepasskeys", "0")]).await;
+    t.set_settings(&[("bburl", BOARD), ("enablepasskeys", "0")])
+        .await;
     let page = t.client().get("/member/login").await;
     assert!(!page.body.contains("Sign in with a passkey"));
 }
@@ -336,7 +326,7 @@ async fn verified(t: &TestApp, uid: i32) -> i64 {
 #[tokio::test]
 async fn administrators_can_confirm_with_a_passkey_and_replay_is_rejected() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (uid, c, mut dev) = admin_account(&t, "passkeyadmin").await;
     // Keep the board's TOTP-enrollment policy while allowing user-verified passkey confirmation.
     sqlx::query("UPDATE users SET totp_secret = 'JBSWY3DPEHPK3PXP' WHERE uid = $1")
@@ -344,7 +334,7 @@ async fn administrators_can_confirm_with_a_passkey_and_replay_is_rejected() {
         .execute(&t.db.pool)
         .await
         .unwrap();
-    set(&t, &[("acp2fa", "1")]).await;
+    t.set_settings(&[("acp2fa", "1")]).await;
     let page = c.get("/admin/verify").await;
     assert!(page.body.contains("Continue with a passkey"));
     assert!(page.body.contains("Confirm your password"));
@@ -377,7 +367,7 @@ async fn administrators_can_confirm_with_a_passkey_and_replay_is_rejected() {
 #[tokio::test]
 async fn admin_passkeys_must_match_the_account_session_and_purpose() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (uid, c, mut dev) = admin_account(&t, "firstadmin").await;
     let (other_uid, other, mut other_dev) = admin_account(&t, "otheradmin").await;
     // A valid passkey for a different administrator must not elevate this session.
@@ -432,7 +422,7 @@ async fn admin_passkeys_must_match_the_account_session_and_purpose() {
 #[tokio::test]
 async fn admin_passkey_endpoints_keep_permission_csrf_expiry_and_setting_gates() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (uid, c, mut dev) = admin_account(&t, "gatedadmin").await;
     let r = t
         .client()
@@ -467,7 +457,7 @@ async fn admin_passkey_endpoints_keep_permission_csrf_expiry_and_setting_gates()
     );
     assert_eq!(verified(&t, uid).await, 0);
     let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
-    set(&t, &[("enablepasskeys", "0")]).await;
+    t.set_settings(&[("enablepasskeys", "0")]).await;
     assert!(
         !c.get("/admin/verify")
             .await
@@ -486,7 +476,7 @@ async fn admin_passkey_endpoints_keep_permission_csrf_expiry_and_setting_gates()
 #[tokio::test]
 async fn admin_passkey_redirects_stay_in_the_admin_cp() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (_, c, mut dev) = admin_account(&t, "redirectadmin").await;
     let signed = assertion(&c, &mut dev, "/admin/verify/passkey/begin").await;
     let r = c
@@ -506,7 +496,7 @@ async fn admin_passkey_redirects_stay_in_the_admin_cp() {
 async fn admin_passkey_assertions_without_user_verification_are_rejected() {
     use base64::Engine;
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (uid, c, mut dev) = admin_account(&t, "uvadmin").await;
     let r = c.post_form("/admin/verify/passkey/begin", &[]).await;
     assert_eq!(r.status, 200, "{}", r.body);
@@ -548,7 +538,7 @@ async fn admin_passkey_assertions_without_user_verification_are_rejected() {
 #[tokio::test]
 async fn admins_without_passkeys_see_only_password_confirmation_even_after_errors() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let uid = t.create_user("passwordadmin", PASSWORD).await;
     sqlx::query("UPDATE users SET usergroup = 4 WHERE uid = $1")
         .bind(uid)
@@ -577,7 +567,7 @@ async fn admins_without_passkeys_see_only_password_confirmation_even_after_error
 #[tokio::test]
 async fn passkey_clicks_do_not_lock_out_password_confirmation() {
     let t = test_app!();
-    set(&t, &[("bburl", BOARD)]).await;
+    t.set_settings(&[("bburl", BOARD)]).await;
     let (uid, c, _) = admin_account(&t, "throttleadmin").await;
     for _ in 0..10 {
         assert_eq!(

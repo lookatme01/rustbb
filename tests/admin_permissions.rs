@@ -3,15 +3,9 @@
 mod common;
 
 use common::TestApp;
-use rbb::util::now;
 
 async fn restricted_admin(t: &TestApp) -> common::Client {
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     sqlx::query("INSERT INTO adminoptions (uid, permissions) VALUES (1, '{\"users\": false, \"groups\": true}')")
         .execute(&t.db.pool)
         .await
@@ -110,12 +104,7 @@ async fn a_restricted_admin_cannot_route_members_into_an_admin_group() {
 #[tokio::test]
 async fn an_unrestricted_admin_can_grant_admin_cp_access_to_a_group() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     c.post_form(
         "/admin/groups/edit",
         &[("gid", "6"), ("title", "Moderators"), ("cancp", "1")],
@@ -146,12 +135,7 @@ async fn only_an_unrestricted_admin_can_download_a_database_backup() {
 #[tokio::test]
 async fn ban_filters_and_other_select_columns_save_through_the_generic_editor() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let r = c
         .post_form(
             "/admin/crud/banfilters/save",
@@ -201,12 +185,7 @@ async fn setting_value(t: &TestApp, name: &str) -> Option<String> {
 #[tokio::test]
 async fn a_rejected_settings_save_writes_nothing_and_absurd_values_are_refused() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let before = setting_value(&t, "postsperpage").await;
     for bad in ["0", "-3", "100000"] {
         let r = post_settings(
@@ -239,12 +218,7 @@ async fn a_rejected_settings_save_writes_nothing_and_absurd_values_are_refused()
 #[tokio::test]
 async fn an_admin_cannot_require_two_factor_before_having_it() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let fields = settings_form("security", &[("acp2fa", "1")]);
     let refs: Vec<(&str, &str)> = fields
         .iter()
@@ -271,12 +245,7 @@ async fn post_settings(
 #[tokio::test]
 async fn deleting_a_forum_takes_its_moderators_out_of_the_moderators_group() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     sqlx::query("INSERT INTO forums (fid, name, description, type, pid, parentlist, disporder) VALUES (40, 'Doomed', '', 'f', 0, '{40}', 40), (41, 'Kept', '', 'f', 0, '{41}', 41)")
         .execute(&t.db.pool)
         .await
@@ -364,12 +333,7 @@ async fn a_restricted_admin_cannot_reset_the_security_of_staff_accounts() {
 #[tokio::test]
 async fn the_generic_editor_refuses_numbers_that_do_not_fit_instead_of_wrapping_them() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let save = |order: &'static str| {
         let c = &c;
         async move {
@@ -400,12 +364,7 @@ async fn the_generic_editor_refuses_numbers_that_do_not_fit_instead_of_wrapping_
 #[tokio::test]
 async fn merging_users_leaves_no_self_reputation_and_one_vote_and_rating_per_person() {
     let t = test_app!();
-    let c = t.login_as(1).await;
-    sqlx::query("UPDATE logins SET acp_verified = $1 WHERE uid = 1")
-        .bind(now())
-        .execute(&t.db.pool)
-        .await
-        .unwrap();
+    let c = t.acp_admin().await;
     let src = t.create_user("mergesrc", "Passw0rd-mergesrc").await;
     let dst = t.create_user("mergedst", "Passw0rd-mergedst").await;
     let fid: i32 = sqlx::query_scalar("SELECT MIN(fid) FROM forums WHERE type = 'f'")

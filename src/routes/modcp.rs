@@ -792,7 +792,6 @@ pub async fn load_logs(
 
 #[derive(Deserialize, Default)]
 pub struct LogQuery {
-    pub page: Option<i64>,
     /// Show entries older than this log id.
     pub before: Option<i64>,
     pub uid: Option<i32>,
@@ -1059,7 +1058,6 @@ pub async fn announcement_delete(ctx: Ctx, CsrfForm(f): CsrfForm<AidForm>) -> Ap
 pub struct FindQuery {
     #[serde(default)]
     pub username: String,
-    pub page: Option<i64>,
 }
 
 pub async fn finduser(ctx: Ctx, Query(q): Query<FindQuery>) -> AppResult<Response> {
@@ -1087,7 +1085,8 @@ pub async fn finduser(ctx: Ctx, Query(q): Query<FindQuery>) -> AppResult<Respons
     .await
 }
 
-async fn load_user(ctx: &Ctx, uid: i32) -> AppResult<User> {
+/// A member by uid, or a not-found error.
+pub(crate) async fn load_user(ctx: &Ctx, uid: i32) -> AppResult<User> {
     sqlx::query_as(&format!(
         "SELECT {} FROM users WHERE uid = $1",
         crate::models::USER_COLUMNS

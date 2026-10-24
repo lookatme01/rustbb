@@ -92,6 +92,18 @@ fn usage(ctx: &Ctx, me: &User) -> (i64, i64) {
     (me.totalpms as i64, ctx.perms.pmquota as i64)
 }
 
+/// The uids stored under `to` or `bcc` in a message's `recipients` JSON.
+fn recipient_ids(recipients: &serde_json::Value, key: &str) -> Vec<i32> {
+    recipients[key]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_i64().map(|x| x as i32))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// An ILIKE pattern matching `s` literally: `%`, `_` and the escape character itself
 /// (backslash, Postgres' default) are escaped.
 fn like_pattern(s: &str) -> String {
@@ -315,14 +327,7 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                 }
                 Some("replyall") => {
                     subject = format!("Re: {}", pm.subject.trim_start_matches("Re: "));
-                    let ids: Vec<i32> = pm.recipients.0["to"]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_i64().map(|x| x as i32))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                    let ids: Vec<i32> = recipient_ids(&pm.recipients.0, "to");
                     let mut names: Vec<String> = sqlx::query_scalar(
                         "SELECT username FROM users WHERE uid = ANY($1) AND uid <> $2",
                     )
@@ -348,14 +353,7 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                     } else {
                         pm.message.clone()
                     };
-                    let ids: Vec<i32> = pm.recipients.0["to"]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_i64().map(|x| x as i32))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                    let ids: Vec<i32> = recipient_ids(&pm.recipients.0, "to");
                     let names: Vec<String> =
                         sqlx::query_scalar("SELECT username FROM users WHERE uid = ANY($1)")
                             .bind(&ids)
@@ -364,14 +362,7 @@ pub async fn compose(ctx: Ctx, Query(q): Query<ComposeQuery>) -> AppResult<Respo
                     to = names.join(", ");
                     // BCC recipients are stored beside the visible ones; sending the reopened
                     // draft must not drop them.
-                    let bcc_ids: Vec<i32> = pm.recipients.0["bcc"]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_i64().map(|x| x as i32))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                    let bcc_ids: Vec<i32> = recipient_ids(&pm.recipients.0, "bcc");
                     bcc = sqlx::query_scalar::<_, String>(
                         "SELECT username FROM users WHERE uid = ANY($1)",
                     )
@@ -1150,14 +1141,7 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
     } else {
         None
     };
-    let to_ids: Vec<i32> = pm.recipients.0["to"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_i64().map(|x| x as i32))
-                .collect()
-        })
-        .unwrap_or_default();
+    let to_ids: Vec<i32> = recipient_ids(&pm.recipients.0, "to");
     let to_names: Vec<(i32, String)> =
         sqlx::query_as("SELECT uid, username FROM users WHERE uid = ANY($1)")
             .bind(&to_ids)
@@ -1188,7 +1172,7 @@ pub async fn read(ctx: Ctx, Path(pmid): Path<i32>) -> AppResult<Response> {
                 pm => &pm, html => html, author => author, to => to_names, folders => folder_list(&me),
                 system_name => s.get("bbname"), pgp => pgp, sender_has_key => sender_has_key,
                 from_system => pm.fromid == 0 || ctx.cache.is_system(pm.fromid), can_contact => s.bool("contact"),
-                board => crate::routes::pgp::board_id(&ctx), uid => me.uid,
+                board => crate::routes::pgp::board_id(&ctx),
             },
         )
         .await?;

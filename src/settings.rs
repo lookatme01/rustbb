@@ -278,14 +278,6 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "datetime",
-        "regdateformat",
-        "Registered Date Format",
-        "Format used for join dates.",
-        "text",
-        "%b %Y"
-    ),
-    s!(
-        "datetime",
         "timezone",
         "Default Timezone",
         "IANA timezone used for guests and new users (e.g. America/New_York).",
@@ -433,14 +425,6 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "showthread",
-        "postlayout",
-        "Post Layout",
-        "Classic (author on left) or horizontal.",
-        "select:classic=Classic,horizontal=Horizontal",
-        "classic"
-    ),
-    s!(
-        "showthread",
         "quickreply",
         "Show Quick Reply Form",
         "",
@@ -516,22 +500,6 @@ pub static DEFS: &[SettingDef] = &[
         "showeditedby",
         "Show 'edited by' Messages",
         "",
-        "yesno",
-        "1"
-    ),
-    s!(
-        "showthread",
-        "showeditedbyadmin",
-        "Show 'edited by' for moderators",
-        "",
-        "yesno",
-        "1"
-    ),
-    s!(
-        "showthread",
-        "delayedthreadviews",
-        "Delayed Thread View Updates",
-        "Batch thread view counter updates (recommended for large boards).",
         "yesno",
         "1"
     ),
@@ -731,27 +699,11 @@ pub static DEFS: &[SettingDef] = &[
     ),
     s!(
         "member",
-        "allowbuddyonly",
-        "Allow 'buddy only' PMs",
-        "",
-        "yesno",
-        "1"
-    ),
-    s!(
-        "member",
         "usertppoptions",
         "User Selectable Threads Per Page",
         "",
         "text",
         "10,20,25,30,40,50"
-    ),
-    s!(
-        "member",
-        "allowusernamechange",
-        "Username change cooldown (days)",
-        "Minimum days between username changes for users allowed to change them.",
-        "numeric",
-        "30"
     ),
     s!(
         "member",
@@ -871,14 +823,6 @@ pub static DEFS: &[SettingDef] = &[
         "savedrafts",
         "Allow saving drafts",
         "",
-        "yesno",
-        "1"
-    ),
-    s!(
-        "posting",
-        "autosavedrafts",
-        "Autosave editor contents locally",
-        "Save editor contents in the browser while typing.",
         "yesno",
         "1"
     ),
@@ -1101,14 +1045,6 @@ pub static DEFS: &[SettingDef] = &[
         "postrep",
         "Allow Post Reputation",
         "Reputation tied to specific posts.",
-        "yesno",
-        "1"
-    ),
-    s!(
-        "reputation",
-        "multirep",
-        "Allow Multiple Reputation",
-        "Rate the same user for different posts.",
         "yesno",
         "1"
     ),
@@ -1664,8 +1600,4 @@ impl Settings {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
-}
-
-pub fn def(name: &str) -> Option<&'static SettingDef> {
-    DEFS.iter().find(|d| d.name == name)
 }

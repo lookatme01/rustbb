@@ -2,6 +2,7 @@
 //! filters, custom MyCode, attachment types, profile fields, prefixes, report reasons, security
 //! questions, help docs, calendars, warning types/levels, user titles, moderator tools, ban filters).
 
+use crate::admin::{AnyForm, s as field_str};
 use crate::ctx::{CsrfForm, Ctx};
 use crate::error::{AppError, AppResult};
 use crate::util::now;
@@ -10,7 +11,6 @@ use axum::extract::{Path, Query};
 use axum::response::Response;
 use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Clone, Copy, Serialize, PartialEq)]
 pub enum Kind {
@@ -683,7 +683,6 @@ pub async fn edit_form(
         v.sort();
         v
     };
-    let forums = crate::routes::forumdisplay::forum_jump(&ctx);
     let all_forums: Vec<(i32, String, usize)> = ctx
         .cache
         .forums
@@ -696,7 +695,6 @@ pub async fn edit_form(
             )
         })
         .collect();
-    let _ = forums;
     let fields: Vec<_> = t
         .fields
         .iter()
@@ -740,22 +738,6 @@ pub async fn edit_form(
         minijinja::context! { slug => t.slug, table_title => t.title, id => q.id.unwrap_or(0), fields => fields, groups => groups, forums => all_forums },
     )
     .await
-}
-
-#[derive(Deserialize, Default)]
-pub struct AnyForm {
-    #[serde(default, flatten)]
-    pub fields: HashMap<String, serde_json::Value>,
-}
-
-fn field_str(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Array(a)) => {
-            a.last().and_then(|x| x.as_str()).unwrap_or("").to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 fn field_ints(v: Option<&serde_json::Value>) -> Vec<i32> {

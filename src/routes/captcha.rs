@@ -1,5 +1,5 @@
-//! Built-in CAPTCHA: random digits drawn as jittered stroke paths in an SVG (no text nodes to
-//! scrape), with noise lines. Codes are single-use and expire after 30 minutes.
+//! Built-in CAPTCHA: random digits rendered into a distorted, speckled PNG (see [`png_for`]).
+//! Codes are single-use and expire after 30 minutes.
 
 use crate::ctx::Ctx;
 use crate::error::{AppError, AppResult};
@@ -89,7 +89,6 @@ const DIGITS: [&str; 10] = [
 /// speckled. This stops trivial scripts, not a determined solver: a board that needs more
 /// than that should use proof-of-work or an external captcha service.
 pub fn png_for(code: &str) -> Vec<u8> {
-    use rand::Rng;
     const W: u32 = 220;
     const H: u32 = 70;
     let mut rng = rand::thread_rng();

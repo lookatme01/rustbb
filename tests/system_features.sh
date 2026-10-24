@@ -138,7 +138,7 @@ hasnt "no banner" 'profile-ban'
 
 echo "# Cleanup"
 req "$ADMIN" "restore System settings" 303 --data-urlencode "my_post_key=$T" --data-urlencode "system_welcome_pm=0" \
-  --data-urlencode "system_welcome_subject=Welcome to {boardname}!" --data-urlencode "system_welcome_message=$(sql "SELECT 1" >/dev/null; printf 'Hi {username},\n\nWelcome to {boardname}! Take a moment to read the forum rules, then say hello.\n\nThis is an automated message, so replies aren'"'"'t read. If you need help, use the contact page.')" \
+  --data-urlencode "system_welcome_subject=Welcome to {boardname}!" --data-urlencode "system_welcome_message=$(printf 'Hi {username},\n\nWelcome to {boardname}! Take a moment to read the forum rules, then say hello.\n\nThis is an automated message, so replies aren'"'"'t read. If you need help, use the contact page.')" \
   --data-urlencode "system_autoclose_days=0" --data-urlencode "system_autoclose_forums=" --data-urlencode "system_log_expiries=1" "$BASE/admin/settings/system"
 for u in "$MUID" "$EVUID"; do req "$ADMIN" "delete test member $u" 303 --data-urlencode "my_post_key=$T" "$BASE/admin/users/$u/delete"; done
 

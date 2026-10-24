@@ -11,7 +11,19 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-/// Forums the viewer may search/list: (all viewable fids, fids restricted to own threads).
+const TOO_BROAD: &str = "Your search was too broad and took too long. Please use more specific search terms or narrow the forums searched.";
+
+/// A search query's result, with Postgres' statement timeout (SQLSTATE 57014) turned into
+/// `too_slow` for the member instead of a server error.
+pub(crate) fn within_timeout<T>(res: Result<T, sqlx::Error>, too_slow: &str) -> AppResult<T> {
+    match res {
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("57014") => {
+            Err(AppError::user(too_slow))
+        }
+        r => Ok(r?),
+    }
+}
+
 /// Forums the viewer may search: (all threads, only their own threads).
 pub fn searchable_forums(ctx: &Ctx) -> (Vec<i32>, Vec<i32>) {
     ctx.access()
@@ -133,6 +145,18 @@ async fn limited(
     if ctx.uid() == 0 {
         flood_check(ctx).await?;
     }
+    search_tx(ctx).await
+}
+
+/// A search slot (bounded by `search_sem`) and a transaction with a 5 s statement timeout.
+/// Optional filters and skewed keywords need a plan for their actual bind values even after
+/// SQLx has reused the prepared statement enough to consider a generic plan.
+async fn search_tx(
+    ctx: &Ctx,
+) -> AppResult<(
+    tokio::sync::SemaphorePermit<'_>,
+    sqlx::Transaction<'static, sqlx::Postgres>,
+)> {
     let permit = ctx
         .app
         .search_sem
@@ -284,18 +308,7 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             .collect();
         let order = sort_sql(&p.sortby, &p.sortordr, true);
         // Many `%word%` patterns are as expensive as full text: same concurrency cap and timeout.
-        let _permit = ctx
-            .app
-            .search_sem
-            .acquire()
-            .await
-            .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
-        let mut tx = ctx.app.db.begin().await?;
-        // Optional filters and skewed keywords need a plan for these bind values even
-        // after SQLx has reused the prepared statement enough to consider a generic plan.
-        sqlx::query("SELECT set_config('statement_timeout', '5s', true), set_config('plan_cache_mode', 'force_custom_plan', true)")
-            .execute(&mut *tx)
-            .await?;
+        let (_permit, mut tx) = search_tx(ctx).await?;
         let thread_sql = format!(
             "SELECT t.tid FROM threads t WHERE (t.fid = ANY($1) OR (t.fid = ANY($2) AND t.uid = $3)) AND t.visible = ANY($4)
                AND t.closed NOT LIKE 'moved|%'{word_sql}
@@ -319,18 +332,9 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
             thread_q = thread_q.bind(w);
         }
         let res: Result<Vec<i32>, sqlx::Error> = thread_q.fetch_all(&mut *tx).await;
-        match res {
-            Ok(v) => {
-                tx.commit().await?;
-                v
-            }
-            Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("57014") => {
-                return Err(AppError::user(
-                    "Your search was too broad and took too long. Please use more specific search terms or narrow the forums searched.",
-                ));
-            }
-            Err(e) => return Err(e.into()),
-        }
+        let v = within_timeout(res, TOO_BROAD)?;
+        tx.commit().await?;
+        v
     } else {
         // Full text over posts.
         let q = keywords.clone();
@@ -342,18 +346,7 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
                AND ($9 = 0 OR t.replies >= $9) AND ($11 = 0 OR t.prefix = $11)";
         // Cap concurrent full-text searches and bound their runtime so a burst of
         // expensive queries can never starve the connection pool.
-        let _permit = ctx
-            .app
-            .search_sem
-            .acquire()
-            .await
-            .map_err(|_| AppError::user("Search is temporarily unavailable."))?;
-        let mut tx = ctx.app.db.begin().await?;
-        // Optional filters and skewed keywords need a plan for these bind values even
-        // after SQLx has reused the prepared statement enough to consider a generic plan.
-        sqlx::query("SELECT set_config('statement_timeout', '5s', true), set_config('plan_cache_mode', 'force_custom_plan', true)")
-            .execute(&mut *tx)
-            .await?;
+        let (_permit, mut tx) = search_tx(ctx).await?;
         let res: Result<Vec<i32>, sqlx::Error> = if threads_mode {
             // Limit threads, not matching posts: a busy thread must not crowd out other
             // matches, and sorting must apply to the complete set before the limit.
@@ -407,18 +400,9 @@ pub async fn run_search(ctx: &Ctx, p: &SearchParams) -> AppResult<Response> {
                 .fetch_all(&mut *tx)
                 .await
         };
-        match res {
-            Ok(v) => {
-                tx.commit().await?;
-                v
-            }
-            Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("57014") => {
-                return Err(AppError::user(
-                    "Your search was too broad and took too long. Please use more specific search terms or narrow the forums searched.",
-                ));
-            }
-            Err(e) => return Err(e.into()),
-        }
+        let v = within_timeout(res, TOO_BROAD)?;
+        tx.commit().await?;
+        v
     };
     if ids.is_empty() {
         ctx.app
@@ -484,13 +468,13 @@ pub async fn results(
     Path(sid): Path<String>,
     Query(q): Query<PageQuery>,
 ) -> AppResult<Response> {
-    let row: Option<(i32, String, Vec<i32>, String, i64, serde_json::Value)> = sqlx::query_as(
-        "SELECT uid, resulttype, ids, keywords, dateline, params FROM searchlog WHERE sid = $1",
+    let row: Option<(i32, String, Vec<i32>, String, serde_json::Value)> = sqlx::query_as(
+        "SELECT uid, resulttype, ids, keywords, params FROM searchlog WHERE sid = $1",
     )
     .bind(&sid)
     .fetch_optional(&ctx.app.db)
     .await?;
-    let (owner, kind, ids, keywords, _dl, params) =
+    let (owner, kind, ids, keywords, params) =
         row.ok_or_else(|| AppError::user("The search results have expired. Please search again."))?;
     // Thread listings (what's new, unread, ...) are stored with their title.
     let listing = params["listing"].as_str().map(str::to_string);

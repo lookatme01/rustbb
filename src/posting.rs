@@ -246,7 +246,7 @@ pub async fn create_thread(
     } else if actor > 0 {
         (actor, ctx.username().to_string())
     } else {
-        (0, input_guest_name(input))
+        (0, "Guest".to_string())
     };
     // Content published as System carries no IP; the staff member's is kept in its authorship record.
     let ip = if input.as_system { "" } else { ctx.ip.as_str() };
@@ -428,11 +428,6 @@ async fn record_system_authorship(
         },
     )
     .await
-}
-
-fn input_guest_name(input: &PostInput) -> String {
-    let _ = input;
-    "Guest".to_string()
 }
 
 /// Create a reply. Returns (pid, visible, merged_into_previous).
